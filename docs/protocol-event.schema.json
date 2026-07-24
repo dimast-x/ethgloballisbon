@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openprocure.dev/schema/protocol-event-0.1.json",
+  "title": "OpenProcure Protocol Event",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "eventType",
+    "runId",
+    "organizationId",
+    "programId",
+    "actor",
+    "correlationId",
+    "occurredAt",
+    "data"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1" },
+    "eventId": { "type": "string", "minLength": 1 },
+    "eventType": {
+      "enum": [
+        "PROGRAM_CREATED",
+        "BUYER_ALLOCATED",
+        "VENDOR_APPROVED",
+        "OFFER_REGISTERED",
+        "ORDER_REJECTED_BY_POLICY",
+        "ORDER_CREATED",
+        "ORDER_ACCEPTED_BY_VENDOR",
+        "PAYMENT_SCHEDULE_CREATED",
+        "DELIVERY_SUBMITTED",
+        "DELIVERY_APPROVED",
+        "PAYMENT_SIGNATURE_ADDED",
+        "PAYMENT_EXECUTED"
+      ]
+    },
+    "runId": { "type": "string" },
+    "organizationId": { "type": "string" },
+    "programId": { "type": "string" },
+    "orderId": { "type": "string" },
+    "actor": {
+      "type": "object",
+      "required": ["actorId", "role", "actorType"],
+      "properties": {
+        "actorId": { "type": "string" },
+        "role": { "type": "string" },
+        "actorType": { "enum": ["HUMAN", "AGENT", "SYSTEM"] },
+        "hederaAccountId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "correlationId": { "type": "string" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "data": {}
+  },
+  "additionalProperties": false
+}

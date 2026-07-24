@@ -1,0 +1,128 @@
+import { describe, expect, it } from "vitest";
+import { medicalSupplyFixture, universityGpuFixture } from "../src/demo/fixtures";
+import { advanceDemo, createDemoSession, type DemoAction } from "../src/demo/simulator";
+import { createEvent, parseProtocolEvent } from "../src/protocol/events";
+import { fromDisplay, toDisplay } from "../src/protocol/money";
+import { validatePurchase } from "../src/protocol/policy";
+import { reduceProtocolEvents } from "../src/protocol/reducer";
+import { canonicalApprovalMessage } from "../src/wallet/approval";
+
+describe("money", () => {
+  it("uses exact atomic units", () => {
+    const value = fromDisplay("3.5");
+    expect(value.atomicAmount).toBe("350000000");
+    expect(toDisplay(value)).toBe("3.5");
+  });
+});
+
+describe("purchase policy", () => {
+  it("authorizes the compliant reference order", () => {
+    const offer = universityGpuFixture.offers.find(
+      (item) => item.id === universityGpuFixture.selectedOfferId,
+    )!;
+    const vendor = universityGpuFixture.vendors.find(
+      (item) => item.id === offer.vendorId,
+    )!;
+    const decision = validatePurchase({
+      program: universityGpuFixture.program,
+      allocation: universityGpuFixture.allocation,
+      vendor,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(decision).toMatchObject({ allowed: true, code: "AUTHORIZED" });
+  });
+
+  it("rejects a request above the remaining allocation", () => {
+    const decision = validatePurchase({
+      program: universityGpuFixture.program,
+      allocation: universityGpuFixture.allocation,
+      vendor: universityGpuFixture.vendors[2],
+      category: universityGpuFixture.offers[2].category,
+      amount: universityGpuFixture.rejectedAmount,
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasons).toContain(
+      "Order exceeds the buyer's remaining allocation.",
+    );
+  });
+
+  it("runs a non-GPU fixture through the unchanged core", () => {
+    const offer = medicalSupplyFixture.offers[0];
+    const decision = validatePurchase({
+      program: medicalSupplyFixture.program,
+      allocation: medicalSupplyFixture.allocation,
+      vendor: medicalSupplyFixture.vendors[0],
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(decision).toMatchObject({ allowed: true, code: "AUTHORIZED" });
+  });
+});
+
+describe("events and reducer", () => {
+  it("validates the protocol event envelope", () => {
+    const event = createEvent({
+      eventType: "PROGRAM_CREATED",
+      runId: "run_test",
+      organizationId: "org_test",
+      programId: "program_test",
+      actor: { actorId: "system", role: "SYSTEM", actorType: "SYSTEM" },
+      correlationId: "correlation_test",
+      data: { program: universityGpuFixture.program },
+    });
+    expect(parseProtocolEvent(event)).toEqual(event);
+  });
+
+  it("ignores duplicate event IDs", () => {
+    const session = createDemoSession(universityGpuFixture);
+    const projection = reduceProtocolEvents([
+      ...session.events,
+      session.events[0],
+    ]);
+    expect(projection.timeline).toHaveLength(session.events.length);
+  });
+
+  it("completes the lifecycle once despite duplicate commands", () => {
+    let session = createDemoSession(universityGpuFixture);
+    const actions: DemoAction[] = [
+      "REJECT_OVER_LIMIT",
+      "CREATE_ORDER",
+      "CREATE_ORDER",
+      "ACCEPT_ORDER",
+      "CREATE_SCHEDULE",
+      "SUBMIT_DELIVERY",
+      "APPROVE_DELIVERY",
+      "APPROVE_FINANCE",
+      "APPROVE_FINANCE",
+    ];
+    for (const action of actions) session = advanceDemo(session, action);
+    const order = Object.values(session.projection.orders)[0];
+    expect(order.status).toBe("PAYMENT_EXECUTED");
+    expect(order.approvals).toHaveLength(2);
+    expect(
+      session.events.filter((event) => event.eventType === "PAYMENT_EXECUTED"),
+    ).toHaveLength(1);
+    expect(session.projection.rejectedDecisions).toHaveLength(1);
+  });
+});
+
+describe("wallet approval envelope", () => {
+  it("binds consent to one exact role, order, schedule, amount, and account", () => {
+    const message = canonicalApprovalMessage({
+      protocolVersion: "0.1",
+      action: "APPROVE_PAYMENT",
+      role: "FINANCE",
+      programId: "program_ai_compute",
+      orderId: "order_1",
+      scheduleId: "0.0.70001",
+      asset: "HBAR",
+      atomicAmount: "350000000",
+      walletAccountId: "0.0.73102",
+    });
+    expect(message).toContain("role=FINANCE");
+    expect(message).toContain("scheduleId=0.0.70001");
+    expect(message).toContain("atomicAmount=350000000");
+    expect(message).toContain("walletAccountId=0.0.73102");
+  });
+});
