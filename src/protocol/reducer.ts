@@ -1,11 +1,15 @@
 import type { RecordedEvent } from "./events";
 import { add } from "./money";
 import type {
+  AgentAuthorizationDecision,
+  AgentDelegation,
   BuyerAllocation,
+  HumanBackingAttestation,
   Offer,
   Order,
   PolicyDecision,
   Program,
+  ResolvedAgentIdentity,
   Vendor,
 } from "./types";
 
@@ -16,6 +20,10 @@ export type ProtocolProjection = {
   vendors: Record<string, Vendor>;
   offers: Record<string, Offer>;
   orders: Record<string, Order>;
+  agentIdentities: Record<string, ResolvedAgentIdentity>;
+  humanBacking: Record<string, HumanBackingAttestation>;
+  agentDelegations: Record<string, AgentDelegation>;
+  agentAuthorizationDecisions: AgentAuthorizationDecision[];
   rejectedDecisions: PolicyDecision[];
   processedEventIds: string[];
   timeline: RecordedEvent[];
@@ -27,6 +35,10 @@ export function initialProjection(): ProtocolProjection {
     vendors: {},
     offers: {},
     orders: {},
+    agentIdentities: {},
+    humanBacking: {},
+    agentDelegations: {},
+    agentAuthorizationDecisions: [],
     rejectedDecisions: [],
     processedEventIds: [],
     timeline: [],
@@ -46,6 +58,10 @@ export function applyProtocolEvent(
     vendors: { ...state.vendors },
     offers: { ...state.offers },
     orders: { ...state.orders },
+    agentIdentities: { ...state.agentIdentities },
+    humanBacking: { ...state.humanBacking },
+    agentDelegations: { ...state.agentDelegations },
+    agentAuthorizationDecisions: [...state.agentAuthorizationDecisions],
     rejectedDecisions: [...state.rejectedDecisions],
     processedEventIds: [...state.processedEventIds, event.eventId],
     timeline: [...state.timeline, event],
@@ -143,6 +159,35 @@ export function applyProtocolEvent(
           };
         }
       }
+      break;
+    }
+    case "AGENT_IDENTITY_RESOLVED": {
+      const identity = (
+        event.data as { identity: ResolvedAgentIdentity }
+      ).identity;
+      next.agentIdentities[identity.agentId] = identity;
+      break;
+    }
+    case "AGENT_HUMAN_BACKING_VERIFIED": {
+      const attestation = (
+        event.data as { attestation: HumanBackingAttestation }
+      ).attestation;
+      next.humanBacking[attestation.subjectReference] = attestation;
+      break;
+    }
+    case "AGENT_DELEGATION_GRANTED": {
+      const delegation = (
+        event.data as { delegation: AgentDelegation }
+      ).delegation;
+      next.agentDelegations[delegation.agentId] = delegation;
+      break;
+    }
+    case "AGENT_AUTHORIZATION_EVALUATED": {
+      const decision = (
+        event.data as { decision: AgentAuthorizationDecision }
+      ).decision;
+      next.agentAuthorizationDecisions.push(decision);
+      if (!decision.allowed) next.rejectedDecisions.push(decision);
       break;
     }
   }

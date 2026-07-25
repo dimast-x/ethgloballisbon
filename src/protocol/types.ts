@@ -93,6 +93,62 @@ export type PolicyDecision = {
   evaluatedRules: string[];
 };
 
+export type PublicIdentity = {
+  scheme: string;
+  name: string;
+};
+
+export type ResolvedAgentIdentity = {
+  agentId: string;
+  publicIdentity: PublicIdentity;
+  organizationReference: string;
+  executionAccountId: string;
+  role: string;
+  protocolVersion: string;
+  delegationHash: string;
+  endpoint?: string;
+  resolutionHash: string;
+  resolvedAt: string;
+};
+
+export type HumanBackingAttestation = {
+  scheme: string;
+  verificationReference: string;
+  subjectReference: string;
+  verifiedAt: string;
+  expiresAt?: string;
+};
+
+export type AgentDelegation = {
+  delegationId: string;
+  organizationId: string;
+  principalId: string;
+  agentId: string;
+  allowedPrograms: string[];
+  allowedActions: string[];
+  allowedCategories: string[];
+  maxPerOrder: Money;
+  maxTotalSpend: Money;
+  validFrom: string;
+  validUntil: string;
+  revokedAt?: string;
+  integrityHash: string;
+};
+
+export type AgentAuthorizationDecision = PolicyDecision & {
+  agentId: string;
+  action: string;
+  delegationId?: string;
+};
+
+export type HumanBackingRequest = {
+  subjectReference: string;
+  action: string;
+  environment: string;
+  signal: string;
+  proof: unknown;
+};
+
 export type Actor = {
   actorId: string;
   role: string;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openprocure.dev/schema/protocol-event-0.1.json",
+  "$id": "https://openprocure.dev/schema/protocol-event-0.2.json",
   "title": "OpenProcure Protocol Event",
   "type": "object",
   "required": [
@@ -16,7 +16,7 @@
     "data"
   ],
   "properties": {
-    "schemaVersion": { "const": "0.1" },
+    "schemaVersion": { "enum": ["0.1", "0.2"] },
     "eventId": { "type": "string", "minLength": 1 },
     "eventType": {
       "enum": [
@@ -31,7 +31,11 @@
         "DELIVERY_SUBMITTED",
         "DELIVERY_APPROVED",
         "PAYMENT_SIGNATURE_ADDED",
-        "PAYMENT_EXECUTED"
+        "PAYMENT_EXECUTED",
+        "AGENT_IDENTITY_RESOLVED",
+        "AGENT_HUMAN_BACKING_VERIFIED",
+        "AGENT_DELEGATION_GRANTED",
+        "AGENT_AUTHORIZATION_EVALUATED"
       ]
     },
     "runId": { "type": "string" },

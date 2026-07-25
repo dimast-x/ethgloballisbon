@@ -1,5 +1,4 @@
-import { PublicKey } from "@hashgraph/sdk";
-import { proto } from "@hiero-ledger/proto";
+import { isAddress, verifyMessage, type Address, type Hex } from "viem";
 import {
   canonicalApprovalMessage,
   type WalletApprovalPayload,
@@ -10,12 +9,18 @@ export type { WalletApprovalPayload };
 
 export async function verifyWalletApproval(input: {
   payload: WalletApprovalPayload;
-  signatureMapBase64: string;
-  expectedAccountId: string;
-  mirrorNodeUrl?: string;
+  signatureHex: Hex;
+  expectedAddress: Address;
   now?: Date;
 }): Promise<boolean> {
-  if (input.payload.walletAccountId !== input.expectedAccountId) return false;
+  if (
+    !isAddress(input.payload.walletAccountId) ||
+    input.payload.walletAccountId.toLowerCase() !==
+      input.expectedAddress.toLowerCase() ||
+    input.payload.chainId !== 296
+  ) {
+    return false;
+  }
   const now = input.now ?? new Date();
   const issuedAt = new Date(input.payload.issuedAt);
   const expiresAt = new Date(input.payload.expiresAt);
@@ -28,24 +33,9 @@ export async function verifyWalletApproval(input: {
   ) {
     return false;
   }
-  const base =
-    input.mirrorNodeUrl ?? "https://testnet.mirrornode.hedera.com";
-  const response = await fetch(
-    `${base}/api/v1/accounts/${encodeURIComponent(input.expectedAccountId)}`,
-  );
-  if (!response.ok) return false;
-  const account = (await response.json()) as {
-    key?: { key?: string };
-  };
-  if (!account.key?.key) return false;
-  const publicKey = PublicKey.fromString(account.key.key);
-  const signatureMap = proto.SignatureMap.decode(
-    Buffer.from(input.signatureMapBase64, "base64"),
-  );
-  const pair = signatureMap.sigPair[0];
-  const signature = pair?.ed25519 ?? pair?.ECDSASecp256k1;
-  if (!signature) return false;
-  const message = canonicalApprovalMessage(input.payload);
-  const prefixed = `\x19Hedera Signed Message:\n${message.length}${message}`;
-  return publicKey.verify(Buffer.from(prefixed), signature);
+  return verifyMessage({
+    address: input.expectedAddress,
+    message: canonicalApprovalMessage(input.payload),
+    signature: input.signatureHex,
+  });
 }

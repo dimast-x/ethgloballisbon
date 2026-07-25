@@ -1,9 +1,12 @@
 import type {
+  AgentDelegation,
   Actor,
   BuyerAllocation,
   EvidenceReference,
+  HumanBackingAttestation,
   Money,
   Offer,
+  PublicIdentity,
   Vendor,
 } from "../protocol/types";
 
@@ -15,6 +18,24 @@ type CommandEnvelope = {
 };
 
 export type ProtocolCommand =
+  | (CommandEnvelope & {
+      type: "RESOLVE_AGENT_IDENTITY";
+      identity: PublicIdentity;
+    })
+  | (CommandEnvelope & {
+      type: "GRANT_AGENT_DELEGATION";
+      delegation: AgentDelegation;
+    })
+  | (CommandEnvelope & {
+      type: "RECORD_HUMAN_BACKING";
+      attestation: HumanBackingAttestation;
+    })
+  | (CommandEnvelope & {
+      type: "AUTHORIZE_AGENT_ACTION";
+      action: string;
+      category: string;
+      amount: Money;
+    })
   | (CommandEnvelope & {
       type: "ALLOCATE_BUYER";
       allocation: BuyerAllocation;
@@ -79,4 +100,3 @@ export type CommandResult = {
     retryable: boolean;
   };
 };
-

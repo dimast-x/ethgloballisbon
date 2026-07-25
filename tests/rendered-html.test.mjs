@@ -31,7 +31,7 @@ test("server-renders the OpenProcure startup shell and metadata", async () => {
   const html = await response.text();
   assert.match(
     html,
-    /<title>OpenProcure — Policy-controlled organizational spending<\/title>/i,
+    /<title>OpenProcure \| Policy-controlled organizational spending<\/title>/i,
   );
   assert.match(html, /Preparing OpenProcure/);
   assert.match(html, /Starting a fresh protocol run/);
@@ -42,7 +42,7 @@ test("server-renders the OpenProcure startup shell and metadata", async () => {
   );
 });
 
-test("keeps private Hedera configuration out of browser assets", async () => {
+test("keeps private Hedera and identity configuration out of browser assets", async () => {
   const assetRoot = new URL("../dist/client/assets/", import.meta.url);
   const files = await readdir(assetRoot);
   const javascriptAssets = files.filter((file) => file.endsWith(".js"));
@@ -54,4 +54,7 @@ test("keeps private Hedera configuration out of browser assets", async () => {
   assert.doesNotMatch(browserCode, /HEDERA_VERIFIER_RELAY_KEY/);
   assert.doesNotMatch(browserCode, /HEDERA_FINANCE_RELAY_KEY/);
   assert.doesNotMatch(browserCode, /operatorPrivateKey/);
+  assert.doesNotMatch(browserCode, /WORLD_RP_SIGNING_KEY/);
+  assert.doesNotMatch(browserCode, /WORLD_RP_ID/);
+  assert.doesNotMatch(browserCode, /ENS_RPC_URL/);
 });

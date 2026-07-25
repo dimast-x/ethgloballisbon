@@ -1,10 +1,22 @@
 import { fromDisplay } from "../protocol/money";
 import type {
+  AgentDelegation,
   BuyerAllocation,
   Offer,
+  PublicIdentity,
   Program,
   Vendor,
 } from "../protocol/types";
+
+export type DemoAgentFixture = {
+  agentId: string;
+  principalId: string;
+  publicIdentity: PublicIdentity;
+  organizationName: string;
+  executionAccountId: string;
+  role: string;
+  delegation: AgentDelegation;
+};
 
 export type DemoFixture = {
   slug: string;
@@ -16,6 +28,7 @@ export type DemoFixture = {
   offers: Offer[];
   selectedOfferId: string;
   rejectedAmount: ReturnType<typeof fromDisplay>;
+  agent: DemoAgentFixture;
 };
 
 export const universityGpuFixture: DemoFixture = {
@@ -103,6 +116,28 @@ export const universityGpuFixture: DemoFixture = {
   ],
   selectedOfferId: "offer_horizon",
   rejectedAmount: fromDisplay("5.5"),
+  agent: {
+    agentId: "agent_robotics_lab",
+    principalId: "principal_alice",
+    publicIdentity: { scheme: "ens", name: "buyer.robotics-lab.eth" },
+    organizationName: "lisbon-university.eth",
+    executionAccountId: "0.0.4859221",
+    role: "PROCUREMENT_AGENT",
+    delegation: {
+      delegationId: "delegation_robotics",
+      organizationId: "org_lisbon_university",
+      principalId: "principal_alice",
+      agentId: "agent_robotics_lab",
+      allowedPrograms: ["*"],
+      allowedActions: ["CREATE_ORDER", "CREATE_SCHEDULED_PAYMENT"],
+      allowedCategories: ["GPU_COMPUTE"],
+      maxPerOrder: fromDisplay("4"),
+      maxTotalSpend: fromDisplay("4"),
+      validFrom: "2025-01-01T00:00:00.000Z",
+      validUntil: "2030-01-01T00:00:00.000Z",
+      integrityHash: "fixture",
+    },
+  },
 };
 
 export const medicalSupplyFixture: DemoFixture = {
@@ -154,4 +189,26 @@ export const medicalSupplyFixture: DemoFixture = {
   ],
   selectedOfferId: "offer_care",
   rejectedAmount: fromDisplay("13"),
+  agent: {
+    agentId: "agent_clinic_north",
+    principalId: "principal_field_coordinator",
+    publicIdentity: { scheme: "did:web", name: "buyer.clinic.field-relief.example" },
+    organizationName: "field-relief.example",
+    executionAccountId: "service:clinic-north",
+    role: "FIELD_BUYER_AGENT",
+    delegation: {
+      delegationId: "delegation_clinic_north",
+      organizationId: "org_field_relief",
+      principalId: "principal_field_coordinator",
+      agentId: "agent_clinic_north",
+      allowedPrograms: ["*"],
+      allowedActions: ["CREATE_ORDER"],
+      allowedCategories: ["MEDICAL_SUPPLIES"],
+      maxPerOrder: fromDisplay("7"),
+      maxTotalSpend: fromDisplay("10"),
+      validFrom: "2025-01-01T00:00:00.000Z",
+      validUntil: "2030-01-01T00:00:00.000Z",
+      integrityHash: "fixture",
+    },
+  },
 };

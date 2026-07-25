@@ -1,10 +1,11 @@
 import { PrivateKey } from "@hashgraph/sdk";
-import { proto } from "@hiero-ledger/proto";
 import { describe, expect, it, vi } from "vitest";
+import { privateKeyToAccount } from "viem/accounts";
 import { HederaEventStore } from "../src/adapters/hedera";
 import {
   createUniversityRun,
   runProgramCommand,
+  verifyAgentHumanBacking,
 } from "../src/application/runtime";
 import type { ProtocolCommand } from "../src/application/commands";
 import { createEvent } from "../src/protocol/events";
@@ -101,6 +102,98 @@ describe("mode-aware application service", () => {
     ).toHaveLength(1);
     expect(duplicate.projection?.rejectedDecisions).toHaveLength(1);
   });
+
+  it("audits missing humanity and delegation limits before creating an agent order", async () => {
+    let session = await createUniversityRun("simulation");
+    const offer = session.projection.offers[session.selectedOfferId];
+    const agent = {
+      actorId: session.agentId,
+      role: "PROCUREMENT_AGENT",
+      actorType: "AGENT" as const,
+      hederaAccountId: session.agentExecutionAccountId,
+    };
+    const resolve = await runProgramCommand(session.programId, "simulation", {
+      type: "RESOLVE_AGENT_IDENTITY",
+      idempotencyKey: `${session.runId}:resolve-agent`,
+      actor: human("system", "SYSTEM"),
+      identity: session.agentIdentity,
+    });
+    session = { ...session, projection: resolve.projection! };
+
+    const unverified = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:unverified`,
+      actor: agent,
+      orderId: session.orderId,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(unverified.projection?.orders[session.orderId]).toBeUndefined();
+    expect(
+      unverified.projection?.agentAuthorizationDecisions.at(-1)?.code,
+    ).toBe("HUMAN_BACKING_REQUIRED");
+    session = { ...session, projection: unverified.projection! };
+
+    const verified = await verifyAgentHumanBacking({
+      programId: session.programId,
+      mode: "simulation",
+      agentId: session.agentId,
+      idempotencyKey: `${session.runId}:world`,
+      proof: undefined,
+    });
+    session = { ...session, projection: verified.projection! };
+
+    const overLimit = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:over-limit`,
+      actor: agent,
+      orderId: session.orderId,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: { ...offer.amount, atomicAmount: "420000000" },
+    });
+    expect(overLimit.projection?.orders[session.orderId]).toBeUndefined();
+    expect(
+      overLimit.projection?.agentAuthorizationDecisions.at(-1)?.code,
+    ).toBe("AGENT_ORDER_LIMIT_EXCEEDED");
+    session = { ...session, projection: overLimit.projection! };
+
+    const validCommand: ProtocolCommand = {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:valid-agent-order`,
+      actor: agent,
+      orderId: session.orderId,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    };
+    const valid = await runProgramCommand(
+      session.programId,
+      "simulation",
+      validCommand,
+    );
+    expect(valid.projection?.orders[session.orderId]?.status).toBe("CREATED");
+    expect(valid.projection?.agentAuthorizationDecisions.at(-1)?.code).toBe(
+      "AGENT_AUTHORIZED",
+    );
+    const duplicate = await runProgramCommand(
+      session.programId,
+      "simulation",
+      validCommand,
+    );
+    expect(
+      duplicate.projection?.timeline.filter(
+        (event) => event.eventType === "ORDER_CREATED",
+      ),
+    ).toHaveLength(1);
+  });
 });
 
 describe("Hedera Mirror event store", () => {
@@ -148,7 +241,9 @@ describe("Hedera Mirror event store", () => {
 
 describe("wallet approval verification", () => {
   it("accepts an exact unexpired signature and rejects an expired payload", async () => {
-    const key = PrivateKey.generateECDSA();
+    const account = privateKeyToAccount(
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
     const now = new Date("2026-07-24T18:31:00.000Z");
     const payload: WalletApprovalPayload = {
       protocolVersion: "0.1",
@@ -160,61 +255,46 @@ describe("wallet approval verification", () => {
       scheduleId: "0.0.7001",
       asset: "HBAR",
       atomicAmount: "350000000",
-      walletAccountId: "0.0.73102",
+      walletAccountId: account.address,
+      chainId: 296,
       idempotencyKey: "run_1:finance",
       issuedAt: "2026-07-24T18:30:00.000Z",
       expiresAt: "2026-07-24T18:35:00.000Z",
     };
     const message = canonicalApprovalMessage(payload);
-    const prefixed = `\x19Hedera Signed Message:\n${message.length}${message}`;
-    const signature = key.sign(
-      new TextEncoder().encode(prefixed),
-    );
-    const signatureMapBase64 = Buffer.from(
-      proto.SignatureMap.encode({
-        sigPair: [{ ECDSASecp256k1: signature }],
-      }).finish(),
-    ).toString("base64");
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({ key: { key: key.publicKey.toString() } }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const signatureHex = await account.signMessage({ message });
     await expect(
       verifyWalletApproval({
         payload,
-        signatureMapBase64,
-        expectedAccountId: payload.walletAccountId,
+        signatureHex,
+        expectedAddress: account.address,
         now,
       }),
     ).resolves.toBe(true);
     await expect(
       verifyWalletApproval({
         payload,
-        signatureMapBase64,
-        expectedAccountId: payload.walletAccountId,
+        signatureHex,
+        expectedAddress: account.address,
         now: new Date("2026-07-24T18:36:00.000Z"),
       }),
     ).resolves.toBe(false);
     await expect(
       verifyWalletApproval({
         payload,
-        signatureMapBase64,
-        expectedAccountId: "0.0.99999",
+        signatureHex,
+        expectedAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         now,
       }),
     ).resolves.toBe(false);
     await expect(
       verifyWalletApproval({
         payload: { ...payload, atomicAmount: "350000001" },
-        signatureMapBase64,
-        expectedAccountId: payload.walletAccountId,
+        signatureHex,
+        expectedAddress: account.address,
         now,
       }),
     ).resolves.toBe(false);
-    vi.unstubAllGlobals();
   });
 });
 

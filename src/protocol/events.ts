@@ -14,12 +14,16 @@ export const protocolEventTypes = [
   "DELIVERY_APPROVED",
   "PAYMENT_SIGNATURE_ADDED",
   "PAYMENT_EXECUTED",
+  "AGENT_IDENTITY_RESOLVED",
+  "AGENT_HUMAN_BACKING_VERIFIED",
+  "AGENT_DELEGATION_GRANTED",
+  "AGENT_AUTHORIZATION_EVALUATED",
 ] as const;
 
 export type ProtocolEventType = (typeof protocolEventTypes)[number];
 
 export type ProtocolEvent<T = unknown> = {
-  schemaVersion: "0.1";
+  schemaVersion: "0.1" | "0.2";
   eventId: string;
   eventType: ProtocolEventType;
   runId: string;
@@ -37,7 +41,7 @@ export type RecordedEvent<T = unknown> = ProtocolEvent<T> & {
 };
 
 export const protocolEventSchema = z.object({
-  schemaVersion: z.literal("0.1"),
+  schemaVersion: z.enum(["0.1", "0.2"]),
   eventId: z.string().min(1),
   eventType: z.enum(protocolEventTypes),
   runId: z.string().min(1),
@@ -67,7 +71,7 @@ export function createEvent<T>(
 ): ProtocolEvent<T> {
   const event = {
     ...input,
-    schemaVersion: "0.1" as const,
+    schemaVersion: "0.2" as const,
     eventId: input.eventId ?? crypto.randomUUID(),
     occurredAt: input.occurredAt ?? new Date().toISOString(),
   };

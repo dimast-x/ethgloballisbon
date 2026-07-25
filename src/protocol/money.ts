@@ -47,3 +47,7 @@ export function lte(left: Money, right: Money): boolean {
   assertCompatible(left, right);
   return BigInt(left.atomicAmount) <= BigInt(right.atomicAmount);
 }
+
+export function zeroLike(money: Money): Money {
+  return atomic(BigInt(0), money.asset, money.decimals);
+}

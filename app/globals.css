@@ -1315,6 +1315,177 @@ button:not(:disabled):active {
   font-weight: 800;
 }
 
+.agent-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(480px, 1.4fr);
+  gap: 48px;
+}
+
+.agent-intro {
+  padding-right: 36px;
+  border-right: 1px solid var(--line);
+}
+
+.agent-identity-card {
+  border: 1px solid var(--line-dark);
+  background: white;
+}
+
+.agent-name {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--green);
+}
+
+.agent-name span,
+.identity-audit-summary span {
+  display: block;
+  margin-bottom: 3px;
+  color: #7f857f;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-name strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.agent-identity-card dl {
+  margin: 0;
+  padding: 6px 16px;
+}
+
+.agent-identity-card dl div {
+  padding: 9px 0;
+  display: grid;
+  grid-template-columns: 115px 1fr;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+}
+
+.agent-identity-card dl div:last-child {
+  border-bottom: 0;
+}
+
+.agent-identity-card dt {
+  color: #7f857f;
+}
+
+.agent-identity-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-geist-mono), monospace;
+  text-align: right;
+}
+
+.agent-identity-card .secondary-action {
+  width: calc(100% - 32px);
+  margin: 10px 16px 16px;
+}
+
+.identity-readiness {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--orange);
+  background: var(--orange-soft);
+  color: #864426;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.authority-sequence {
+  border-top: 1px solid var(--line-dark);
+}
+
+.authority-step {
+  min-height: 94px;
+  padding: 15px 0;
+  display: grid;
+  grid-template-columns: 34px minmax(220px, 1fr) minmax(190px, auto);
+  gap: 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.authority-number {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-dark);
+  color: #7f857f;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+}
+
+.authority-step.ready .authority-number,
+.authority-step.complete .authority-number {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.authority-step h4 {
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+
+.authority-step p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.authority-step .primary-action,
+.authority-step .danger-action {
+  width: 100%;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.identity-audit-summary {
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--line);
+}
+
+.identity-audit-summary > div {
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid var(--line);
+}
+
+.identity-audit-summary > div:last-child {
+  border-right: 0;
+}
+
+.identity-audit-summary strong,
+.identity-audit-summary code {
+  display: block;
+}
+
+.identity-audit-summary strong {
+  margin-bottom: 5px;
+  font-size: 11px;
+}
+
+.identity-audit-summary code {
+  overflow: hidden;
+  color: #7f857f;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1050px) {
   .hero {
     grid-template-columns: 1fr;
@@ -1339,6 +1510,17 @@ button:not(:disabled):active {
   .approval-layout,
   .marketplace-layout {
     grid-template-columns: 1fr;
+  }
+
+  .agent-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-intro {
+    padding-right: 0;
+    padding-bottom: 28px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .buyer-brief {
@@ -1466,12 +1648,53 @@ button:not(:disabled):active {
     min-width: 760px;
   }
 
+  .authority-step {
+    grid-template-columns: 34px 1fr;
+  }
+
+  .authority-step button {
+    grid-column: 2;
+  }
+
+  .identity-audit-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .identity-audit-summary > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .identity-audit-summary > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
   .settlement-rail {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 480px) {
+  .authority-step {
+    grid-template-columns: 28px 1fr;
+  }
+
+  .authority-step button {
+    grid-column: 1 / -1;
+  }
+
+  .identity-audit-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .identity-audit-summary > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .identity-audit-summary > div:last-child {
+    border-bottom: 0;
+  }
+
   .marketplace-tools {
     align-items: stretch;
     flex-direction: column;

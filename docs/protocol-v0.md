@@ -21,7 +21,8 @@ Consumers ignore duplicate event IDs.
 
 ## Event envelope
 
-All events use schema version `0.1` and contain an event ID, run ID,
+Existing events may use schema version `0.1`. Identity-aware implementations
+emit `0.2`; reducers must replay both versions. Every event contains an event ID, run ID,
 organization ID, program ID, optional order ID, actor, correlation ID,
 application timestamp, and event-specific data. Ledger adapters may attach
 sequence, consensus timestamp, topic, and transaction references after
@@ -34,6 +35,16 @@ The normative JSON shape is in `docs/protocol-event.schema.json`.
 Authorization is deterministic. A decision contains `allowed`, a stable code,
 human-readable reasons, and every evaluated rule. Rejections are first-class
 audit events.
+
+Agent actions add public-identity resolution, human-backing, and bounded
+delegation checks before purchase policy. Identity and humanity adapters are
+provider-independent protocol boundaries. ENS and World are the first
+implementations, not protocol requirements.
+
+Protocol v0.2 adds `AGENT_IDENTITY_RESOLVED`,
+`AGENT_HUMAN_BACKING_VERIFIED`, `AGENT_DELEGATION_GRANTED`, and
+`AGENT_AUTHORIZATION_EVALUATED`. Proof bytes, secrets, and personal
+information are never event data.
 
 ## Evidence and privacy
 

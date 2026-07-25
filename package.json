@@ -17,6 +17,9 @@
     "demo:live": "tsx scripts/demo-cli.ts run testnet",
     "testnet:validate": "tsx scripts/demo-cli.ts validate",
     "audit:cli": "tsx scripts/demo-cli.ts audit",
+    "identity:validate": "tsx scripts/demo-cli.ts identity:validate",
+    "identity:resolve": "tsx scripts/demo-cli.ts identity:resolve",
+    "demo:agent": "tsx scripts/demo-cli.ts agent",
     "setup:testnet": "tsx scripts/setup-testnet.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
@@ -26,10 +29,12 @@
     "@hiero-ledger/proto": "^2.31.0",
     "@hiero-ledger/sdk": "^2.79.0",
     "@walletconnect/modal": "^2.7.0",
+    "@worldcoin/idkit": "^4.2.1",
     "lucide-react": "^0.468.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "viem": "^2.55.8",
     "zod": "^4.1.12"
   },
   "devDependencies": {

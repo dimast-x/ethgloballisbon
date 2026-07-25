@@ -9,6 +9,7 @@ export type WalletApprovalPayload = {
   asset: string;
   atomicAmount: string;
   walletAccountId: string;
+  chainId: 296;
   idempotencyKey: string;
   issuedAt: string;
   expiresAt: string;
@@ -29,9 +30,9 @@ export function canonicalApprovalMessage(
     `asset=${payload.asset}`,
     `atomicAmount=${payload.atomicAmount}`,
     `walletAccountId=${payload.walletAccountId}`,
+    `chainId=${payload.chainId}`,
     `idempotencyKey=${payload.idempotencyKey}`,
     `issuedAt=${payload.issuedAt}`,
     `expiresAt=${payload.expiresAt}`,
   ].join("\n");
 }
-

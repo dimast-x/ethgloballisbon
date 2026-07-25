@@ -22,6 +22,13 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
+import {
+  IDKitRequestWidget,
+  proofOfHuman,
+  type IDKitResult,
+  type RpContext,
+} from "@worldcoin/idkit";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { subtract, toDisplay } from "@/src/protocol/money";
 import type { EvidenceReference } from "@/src/protocol/types";
@@ -31,17 +38,23 @@ import type {
   ExecutionMode,
   ProtocolCommand,
 } from "@/src/application/commands";
-import type { ProgramSession, TestnetReadiness } from "@/src/application/runtime";
+import type {
+  IdentityReadiness,
+  ProgramSession,
+  TestnetReadiness,
+} from "@/src/application/runtime";
 import {
   canonicalApprovalMessage,
   type WalletApprovalPayload,
 } from "@/src/wallet/approval-message";
 import {
-  connectHashPack,
-  signHashPackMessage,
-} from "@/src/wallet/hashpack-client";
+  connectMetaMask,
+  shortAddress,
+  signMetaMaskMessage,
+} from "@/src/wallet/metamask-client";
+import type { Address, Hex } from "viem";
 
-const tabs = ["Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
+const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
 type Tab = (typeof tabs)[number];
 
 const eventLabels: Record<string, string> = {
@@ -57,12 +70,24 @@ const eventLabels: Record<string, string> = {
   DELIVERY_APPROVED: "Delivery independently verified",
   PAYMENT_SIGNATURE_ADDED: "Approval signature added",
   PAYMENT_EXECUTED: "Payment executed",
+  AGENT_IDENTITY_RESOLVED: "Agent identity resolved",
+  AGENT_HUMAN_BACKING_VERIFIED: "Human backing verified",
+  AGENT_DELEGATION_GRANTED: "Agent delegation granted",
+  AGENT_AUTHORIZATION_EVALUATED: "Agent authorization evaluated",
+};
+
+type WorldRequest = {
+  appId: string;
+  action: string;
+  environment: "staging" | "production";
+  signal: string;
+  rpContext: RpContext;
 };
 
 export function OpenProcureApp() {
   const [session, setSession] = useState<ProgramSession | null>(null);
   const [mode, setMode] = useState<ExecutionMode>("simulation");
-  const [activeTab, setActiveTab] = useState<Tab>("Buyer");
+  const [activeTab, setActiveTab] = useState<Tab>("Agent");
   const [notice, setNotice] = useState(
     "Starting a fresh protocol run…",
   );
@@ -70,7 +95,13 @@ export function OpenProcureApp() {
     "idle" | "pending" | "confirmed" | "failed"
   >("pending");
   const [readiness, setReadiness] = useState<TestnetReadiness | null>(null);
-  const [walletAccounts, setWalletAccounts] = useState<string[]>([]);
+  const [identityReadiness, setIdentityReadiness] =
+    useState<IdentityReadiness | null>(null);
+  const [worldRequest, setWorldRequest] = useState<WorldRequest | null>(null);
+  const [worldOpen, setWorldOpen] = useState(false);
+  const [roleWallets, setRoleWallets] = useState<
+    Partial<Record<"VERIFIER" | "FINANCE", Address>>
+  >({});
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [retryCommand, setRetryCommand] = useState<ProtocolCommand | null>(null);
   const [chosenOfferId, setChosenOfferId] = useState<string | null>(null);
@@ -82,8 +113,14 @@ export function OpenProcureApp() {
 
   async function refreshReadiness() {
     try {
-      const response = await fetch("/api/config/testnet", { cache: "no-store" });
-      setReadiness((await response.json()) as TestnetReadiness);
+      const [hederaResponse, identityResponse] = await Promise.all([
+        fetch("/api/config/testnet", { cache: "no-store" }),
+        fetch("/api/config/identity", { cache: "no-store" }),
+      ]);
+      setReadiness((await hederaResponse.json()) as TestnetReadiness);
+      setIdentityReadiness(
+        (await identityResponse.json()) as IdentityReadiness,
+      );
     } catch {
       setReadiness({
         ready: false,
@@ -91,7 +128,17 @@ export function OpenProcureApp() {
         issues: ["Configuration status could not be loaded."],
         publicConfig: {
           mirrorNodeUrl: "",
-          walletConnectProjectIdConfigured: false,
+          metaMaskRoleAddressesConfigured: false,
+        },
+      });
+      setIdentityReadiness({
+        ready: false,
+        issues: ["Identity configuration status could not be loaded."],
+        publicConfig: {
+          worldAction: "authorize-openprocure-agent",
+          worldEnvironment: "production",
+          ensRpcConfigured: false,
+          expectedDelegationHash: "",
         },
       });
     }
@@ -114,11 +161,13 @@ export function OpenProcureApp() {
       if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
       setMode(nextMode);
       setSession(body);
-      setWalletAccounts([]);
+      setRoleWallets({});
       setEvidenceFile(null);
       setRetryCommand(null);
       setChosenOfferId(body.selectedOfferId);
-      setActiveTab("Buyer");
+      setWorldRequest(null);
+      setWorldOpen(false);
+      setActiveTab("Agent");
       setOperationState("confirmed");
       setNotice(
         nextMode === "testnet"
@@ -172,6 +221,19 @@ export function OpenProcureApp() {
 
   function actor(role: string, actorId: string) {
     return { actorId, role, actorType: "HUMAN" as const };
+  }
+
+  function agentActor() {
+    const resolvedIdentity =
+      projection.agentIdentities[activeSession.agentId];
+    return {
+      actorId: activeSession.agentId,
+      role: "PROCUREMENT_AGENT",
+      actorType: "AGENT" as const,
+      hederaAccountId:
+        resolvedIdentity?.executionAccountId ??
+        activeSession.agentExecutionAccountId,
+    };
   }
 
   function commandFor(
@@ -236,10 +298,7 @@ export function OpenProcureApp() {
         delivery ? "verifier" : "finance",
       ),
       orderId: activeSession.orderId,
-      approvalReference:
-        mode === "simulation"
-          ? "wallet-authenticated:simulation-relay"
-          : "wallet-authenticated:pending",
+      approvalReference: "metamask-authenticated:pending",
     } as ProtocolCommand;
   }
 
@@ -267,7 +326,7 @@ export function OpenProcureApp() {
     successMessage: string,
     walletApproval?: {
       payload: WalletApprovalPayload;
-      signatureMapBase64: string;
+      signatureHex: Hex;
     },
   ) {
     setOperationState("pending");
@@ -306,29 +365,38 @@ export function OpenProcureApp() {
 
   async function connectRoleWallet(role: "VERIFIER" | "FINANCE") {
     if (mode === "simulation") {
-      const simulated =
-        role === "VERIFIER" ? "0.0.73101" : "0.0.73102";
-      setWalletAccounts((current) => [...new Set([...current, simulated])]);
-      setNotice(`${role} wallet authentication simulated.`);
+      setOperationState("confirmed");
+      setNotice(`${role} approval identity is ready in simulation mode.`);
       return;
     }
     setOperationState("pending");
-    setNotice("Open HashPack and approve the WalletConnect session.");
+    setNotice("Open MetaMask and connect your Hedera Testnet account.");
     try {
-      const accounts = await connectHashPack();
-      setWalletAccounts(accounts);
+      const address = await connectMetaMask();
       const expected =
         role === "VERIFIER"
-          ? readiness?.publicConfig.verifierWalletAccountId
-          : readiness?.publicConfig.financeWalletAccountId;
-      if (!expected || !accounts.includes(expected)) {
-        throw new Error(`HashPack must authorize the configured ${role} account.`);
+          ? readiness?.publicConfig.verifierWalletAddress
+          : readiness?.publicConfig.financeWalletAddress;
+      if (
+        mode === "testnet" &&
+        (!expected || expected.toLowerCase() !== address.toLowerCase())
+      ) {
+        throw new Error(
+          `MetaMask must use the configured ${role} address ${expected ?? "(missing)"}.`,
+        );
       }
+      const otherRole = role === "VERIFIER" ? "FINANCE" : "VERIFIER";
+      if (
+        roleWallets[otherRole]?.toLowerCase() === address.toLowerCase()
+      ) {
+        throw new Error("Verifier and Finance require different MetaMask accounts.");
+      }
+      setRoleWallets((current) => ({ ...current, [role]: address }));
       setOperationState("confirmed");
-      setNotice(`${role} HashPack account connected.`);
+      setNotice(`${role} MetaMask account ${shortAddress(address)} connected.`);
     } catch (error) {
       setOperationState("failed");
-      setNotice(error instanceof Error ? error.message : "HashPack connection failed.");
+      setNotice(error instanceof Error ? error.message : "MetaMask connection failed.");
     }
   }
 
@@ -337,24 +405,26 @@ export function OpenProcureApp() {
       role === "VERIFIER" ? "APPROVE_DELIVERY" : "APPROVE_FINANCE";
     const command = commandFor(action);
     if (mode === "simulation") {
-      await submitCommand(
-        command,
-        role === "VERIFIER"
-          ? "Delivery verified. One of two simulated signatures is present."
-          : "Threshold satisfied. Simulated payment executed exactly once.",
-      );
+      try {
+        await submitCommand(
+          command,
+          role === "VERIFIER"
+            ? "Delivery verified. The first simulated signature is recorded."
+            : "Threshold satisfied. The simulated payment was released.",
+        );
+      } catch (error) {
+        setOperationState("failed");
+        setNotice(error instanceof Error ? error.message : "Approval failed.");
+      }
       return;
     }
     if (!order?.scheduleId) {
       setNotice("The payment schedule is not ready.");
       return;
     }
-    const walletAccountId =
-      role === "VERIFIER"
-        ? readiness?.publicConfig.verifierWalletAccountId
-        : readiness?.publicConfig.financeWalletAccountId;
+    const walletAccountId = roleWallets[role];
     if (!walletAccountId) {
-      setNotice(`${role} wallet account is not configured.`);
+      setNotice(`Connect the ${role} MetaMask account first.`);
       return;
     }
     const issuedAt = new Date();
@@ -369,23 +439,26 @@ export function OpenProcureApp() {
       asset: order.amount.asset,
       atomicAmount: order.amount.atomicAmount,
       walletAccountId,
+      chainId: 296,
       idempotencyKey: command.idempotencyKey,
       issuedAt: issuedAt.toISOString(),
       expiresAt: new Date(issuedAt.valueOf() + 5 * 60_000).toISOString(),
     };
     try {
       setOperationState("pending");
-      setNotice("Approve the exact OpenProcure message in HashPack.");
-      const signatureMapBase64 = await signHashPackMessage(
+      setNotice("Review and sign the exact approval message in MetaMask.");
+      const signatureHex = await signMetaMaskMessage(
         walletAccountId,
         canonicalApprovalMessage(payload),
       );
       await submitCommand(
         command,
         role === "VERIFIER"
-          ? "Delivery verified and the first Hedera schedule signature confirmed."
-          : "Second signature confirmed; Hedera payment executed exactly once.",
-        { payload, signatureMapBase64 },
+          ? "MetaMask signature verified. Delivery approval recorded."
+          : mode === "testnet"
+            ? "MetaMask signature verified. Hedera settlement released."
+            : "MetaMask signature verified. Simulated settlement completed.",
+        { payload, signatureHex },
       );
     } catch (error) {
       setOperationState("failed");
@@ -418,13 +491,124 @@ export function OpenProcureApp() {
     );
   }
 
+  async function resolveAgent() {
+    setOperationState("pending");
+    setNotice(
+      mode === "testnet"
+        ? "Resolving the configured ENS identity and public records..."
+        : "Resolving the simulated public identity through the adapter...",
+    );
+    const response = await fetch("/api/agents/resolve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        programId: program.id,
+        identity: activeSession.agentIdentity,
+        idempotencyKey: `${activeSession.runId}:resolve-agent`,
+      }),
+    });
+    const result = (await response.json()) as CommandResult & { error?: string };
+    if (!response.ok || !result.projection) {
+      setOperationState("failed");
+      setNotice(result.error?.toString() ?? result.error ?? "Identity resolution failed.");
+      return;
+    }
+    setSession({ ...activeSession, projection: result.projection });
+    setOperationState("confirmed");
+    setNotice("Agent identity resolved and bound to this program.");
+  }
+
+  async function runAgentOrder(kind: "UNVERIFIED" | "OVER_LIMIT" | "VALID") {
+    const amount =
+      kind === "OVER_LIMIT"
+        ? { ...selectedOffer.amount, atomicAmount: "420000000" }
+        : selectedOffer.amount;
+    const command: ProtocolCommand = {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${activeSession.runId}:agent-order:${kind.toLowerCase()}`,
+      actor: agentActor(),
+      orderId: activeSession.orderId,
+      buyerId: activeSession.buyerId,
+      vendorId: selectedOffer.vendorId,
+      offerId: selectedOffer.id,
+      category: selectedOffer.category,
+      amount,
+    };
+    await submitCommand(
+      command,
+      kind === "VALID"
+        ? "Agent authorization passed. The 3.5 HBAR order was created."
+        : kind === "OVER_LIMIT"
+          ? "The 4.2 HBAR agent request was rejected by its 4 HBAR delegation."
+          : "The agent request was rejected because human backing is missing.",
+    );
+  }
+
+  async function beginWorldVerification() {
+    if (mode === "testnet" && !identityReadiness?.ready) {
+      setOperationState("failed");
+      setNotice(identityReadiness?.issues.join(" ") || "Identity integrations are not ready.");
+      return;
+    }
+    const response = await fetch("/api/agents/world/request", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        programId: program.id,
+        agentId: activeSession.agentId,
+      }),
+    });
+    const request = (await response.json()) as WorldRequest & { error?: string };
+    if (!response.ok) {
+      setOperationState("failed");
+      setNotice(request.error ?? "World verification request failed.");
+      return;
+    }
+    if (mode === "simulation") {
+      await recordWorldVerification(undefined);
+      return;
+    }
+    setWorldRequest(request);
+    setWorldOpen(true);
+  }
+
+  async function recordWorldVerification(proof: IDKitResult | undefined) {
+    setOperationState("pending");
+    setNotice(
+      mode === "testnet"
+        ? "Verifying the World proof on the server..."
+        : "Recording simulated World human backing...",
+    );
+    const response = await fetch("/api/agents/world/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        programId: program.id,
+        agentId: activeSession.agentId,
+        idempotencyKey: `${activeSession.runId}:world-verification`,
+        proof,
+      }),
+    });
+    const result = (await response.json()) as CommandResult & { error?: string };
+    if (!response.ok || !result.projection) {
+      setOperationState("failed");
+      throw new Error(result.error?.toString() ?? result.error ?? "World verification failed.");
+    }
+    setSession({ ...activeSession, projection: result.projection });
+    setOperationState("confirmed");
+    setNotice("World verified a unique human backing this agent.");
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
         <a className="brand" href="#" aria-label="OpenProcure home">
           <span className="brand-mark">OP</span>
           <span>OpenProcure</span>
-          <small>Protocol v0.1</small>
+          <small>Protocol v0.2</small>
         </a>
         <div className="mode-switch" aria-label="Execution mode">
           <button
@@ -547,13 +731,34 @@ export function OpenProcureApp() {
         </nav>
 
         <div className="workspace-body">
+          {activeTab === "Agent" && (
+            <AgentPanel
+              session={activeSession}
+              identity={projection.agentIdentities[activeSession.agentId]}
+              attestation={projection.humanBacking[activeSession.agentId]}
+              delegation={projection.agentDelegations[activeSession.agentId]}
+              decisions={projection.agentAuthorizationDecisions.filter(
+                (decision) => decision.agentId === activeSession.agentId,
+              )}
+              orderExists={Boolean(order)}
+              liveReady={Boolean(identityReadiness?.ready)}
+              liveIssues={identityReadiness?.issues ?? []}
+              onResolve={() => void resolveAgent()}
+              onUnverified={() => void runAgentOrder("UNVERIFIED")}
+              onVerify={() => void beginWorldVerification()}
+              onOverLimit={() => void runAgentOrder("OVER_LIMIT")}
+              onValid={() => void runAgentOrder("VALID")}
+            />
+          )}
           {activeTab === "Buyer" && (
             <BuyerPanel
               offers={offers}
               vendors={projection.vendors}
               selectedOfferId={selectedOffer.id}
               orderExists={Boolean(order)}
-              rejected={projection.rejectedDecisions.length > 0}
+              rejected={projection.timeline.some(
+                (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
+              )}
               onSelect={setChosenOfferId}
               onReject={() =>
                 run(
@@ -587,23 +792,13 @@ export function OpenProcureApp() {
           {activeTab === "Verifier" && (
             <ApprovalPanel
               role="VERIFIER"
+              mode={mode}
               title="Independent delivery verification"
               description="Review the delivery digest, authenticate the role wallet, then add the first required approval."
               connected={
-                mode === "simulation"
-                  ? walletAccounts.includes("0.0.73101")
-                  : Boolean(
-                      readiness?.publicConfig.verifierWalletAccountId &&
-                        walletAccounts.includes(
-                          readiness.publicConfig.verifierWalletAccountId,
-                        ),
-                    )
+                mode === "simulation" || Boolean(roleWallets.VERIFIER)
               }
-              accountId={
-                mode === "simulation"
-                  ? "0.0.73101"
-                  : readiness?.publicConfig.verifierWalletAccountId
-              }
+              accountId={roleWallets.VERIFIER}
               order={order}
               onConnect={() => void connectRoleWallet("VERIFIER")}
               onApprove={() => void approve("VERIFIER")}
@@ -612,23 +807,13 @@ export function OpenProcureApp() {
           {activeTab === "Finance" && (
             <ApprovalPanel
               role="FINANCE"
+              mode={mode}
               title="Treasury release"
               description="Confirm the approved evidence and add the second threshold signature to release settlement."
               connected={
-                mode === "simulation"
-                  ? walletAccounts.includes("0.0.73102")
-                  : Boolean(
-                      readiness?.publicConfig.financeWalletAccountId &&
-                        walletAccounts.includes(
-                          readiness.publicConfig.financeWalletAccountId,
-                        ),
-                    )
+                mode === "simulation" || Boolean(roleWallets.FINANCE)
               }
-              accountId={
-                mode === "simulation"
-                  ? "0.0.73102"
-                  : readiness?.publicConfig.financeWalletAccountId
-              }
+              accountId={roleWallets.FINANCE}
               order={order}
               onConnect={() => void connectRoleWallet("FINANCE")}
               onApprove={() => void approve("FINANCE")}
@@ -640,10 +825,31 @@ export function OpenProcureApp() {
               mode={mode}
               topicId={readiness?.publicConfig.topicId}
               order={order}
+              agentIdentity={projection.agentIdentities[activeSession.agentId]}
+              agentAttestation={projection.humanBacking[activeSession.agentId]}
+              delegation={projection.agentDelegations[activeSession.agentId]}
             />
           )}
         </div>
       </section>
+      {worldRequest && (
+        <IDKitRequestWidget
+          open={worldOpen}
+          onOpenChange={setWorldOpen}
+          app_id={worldRequest.appId as `app_${string}`}
+          action={worldRequest.action}
+          rp_context={worldRequest.rpContext}
+          environment={worldRequest.environment}
+          allow_legacy_proofs={true}
+          preset={proofOfHuman({ signal: worldRequest.signal })}
+          handleVerify={recordWorldVerification}
+          onSuccess={() => setWorldOpen(false)}
+          onError={() => {
+            setOperationState("failed");
+            setNotice("World verification did not complete.");
+          }}
+        />
+      )}
 
       <section className="settlement-rail">
         <div>
@@ -706,6 +912,175 @@ function Metric({
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function AgentPanel({
+  session,
+  identity,
+  attestation,
+  delegation,
+  decisions,
+  orderExists,
+  liveReady,
+  liveIssues,
+  onResolve,
+  onUnverified,
+  onVerify,
+  onOverLimit,
+  onValid,
+}: {
+  session: ProgramSession;
+  identity?: import("@/src/protocol/types").ResolvedAgentIdentity;
+  attestation?: import("@/src/protocol/types").HumanBackingAttestation;
+  delegation?: import("@/src/protocol/types").AgentDelegation;
+  decisions: import("@/src/protocol/types").AgentAuthorizationDecision[];
+  orderExists: boolean;
+  liveReady: boolean;
+  liveIssues: string[];
+  onResolve: () => void;
+  onUnverified: () => void;
+  onVerify: () => void;
+  onOverLimit: () => void;
+  onValid: () => void;
+}) {
+  const missingHumanRejected = decisions.some(
+    (decision) => decision.code === "HUMAN_BACKING_REQUIRED",
+  );
+  const limitRejected = decisions.some(
+    (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
+  );
+  const resolved = Boolean(identity);
+  const verified = Boolean(attestation);
+
+  return (
+    <div className="agent-layout">
+      <div className="agent-intro">
+        <PanelHeading
+          kicker="Delegated agent authority"
+          title="Prove identity before execution"
+          description="Public identity, human backing, and organizational delegation are separate checks. Passing one never bypasses the others."
+        />
+        <div className="agent-identity-card">
+          <div className="agent-name">
+            <Fingerprint size={21} />
+            <div>
+              <span>Public identity</span>
+              <strong>{session.agentIdentity.name}</strong>
+            </div>
+          </div>
+          <dl>
+            <div>
+              <dt>Agent ID</dt>
+              <dd>{identity?.agentId ?? "Not resolved"}</dd>
+            </div>
+            <div>
+              <dt>Organization</dt>
+              <dd>{identity?.organizationReference ?? "Not resolved"}</dd>
+            </div>
+            <div>
+              <dt>Execution account</dt>
+              <dd>{identity?.executionAccountId ?? "Not resolved"}</dd>
+            </div>
+            <div>
+              <dt>Protocol</dt>
+              <dd>{identity?.protocolVersion ?? "Not resolved"}</dd>
+            </div>
+          </dl>
+          <button className="secondary-action" onClick={onResolve} disabled={resolved}>
+            {resolved ? <Check size={16} /> : <Search size={16} />}
+            {resolved ? "Identity resolved" : "Resolve public identity"}
+          </button>
+        </div>
+        {!liveReady && (
+          <p className="identity-readiness">
+            Live ENS and World configuration is incomplete. Simulation remains
+            available. {liveIssues[0] ?? ""}
+          </p>
+        )}
+      </div>
+
+      <div className="authority-sequence">
+        <AuthorityStep
+          number="1"
+          title="Reject unverified authority"
+          description="Attempt the selected 3.5 HBAR order before World verification."
+          state={missingHumanRejected ? "complete" : resolved ? "ready" : "locked"}
+          actionLabel={
+            missingHumanRejected ? "Rejection audited" : "Test without human backing"
+          }
+          onAction={onUnverified}
+          disabled={!resolved || missingHumanRejected}
+          destructive
+        />
+        <AuthorityStep
+          number="2"
+          title="Verify human backing"
+          description="Use World ID to prove a unique human stands behind this agent."
+          state={verified ? "complete" : missingHumanRejected ? "ready" : "locked"}
+          actionLabel={verified ? "Human verified" : "Verify with World"}
+          onAction={onVerify}
+          disabled={!missingHumanRejected || verified}
+        />
+        <AuthorityStep
+          number="3"
+          title="Enforce the delegation"
+          description={`The active delegation permits ${delegation ? toDisplay(delegation.maxPerOrder) : "4"} HBAR per order.`}
+          state={limitRejected ? "complete" : verified ? "ready" : "locked"}
+          actionLabel={limitRejected ? "Limit rejection audited" : "Test 4.2 HBAR request"}
+          onAction={onOverLimit}
+          disabled={!verified || limitRejected}
+          destructive
+        />
+        <AuthorityStep
+          number="4"
+          title="Create the valid order"
+          description="Authorize the selected 3.5 HBAR offer through the same protocol service."
+          state={orderExists ? "complete" : limitRejected ? "ready" : "locked"}
+          actionLabel={orderExists ? "Order created" : "Authorize 3.5 HBAR order"}
+          onAction={onValid}
+          disabled={!limitRejected || orderExists}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AuthorityStep({
+  number,
+  title,
+  description,
+  state,
+  actionLabel,
+  onAction,
+  disabled,
+  destructive = false,
+}: {
+  number: string;
+  title: string;
+  description: string;
+  state: "locked" | "ready" | "complete";
+  actionLabel: string;
+  onAction: () => void;
+  disabled: boolean;
+  destructive?: boolean;
+}) {
+  return (
+    <section className={`authority-step ${state}`}>
+      <span className="authority-number">{number}</span>
+      <div>
+        <h4>{title}</h4>
+        <p>{description}</p>
+      </div>
+      <button
+        className={destructive ? "danger-action" : "primary-action"}
+        onClick={onAction}
+        disabled={disabled}
+      >
+        {state === "complete" ? <Check size={16} /> : <ArrowRight size={16} />}
+        {actionLabel}
+      </button>
+    </section>
   );
 }
 
@@ -873,7 +1248,13 @@ function BuyerPanel({
                 key={offer.id}
               >
                 <div className="product-image">
-                  <img src={meta.image} alt={meta.alt} />
+                  <Image
+                    src={meta.image}
+                    alt={meta.alt}
+                    width={600}
+                    height={360}
+                    unoptimized
+                  />
                   <span className="vendor-verified">
                     <BadgeCheck size={13} />
                     Verified vendor
@@ -1047,6 +1428,7 @@ function VendorPanel({
 
 function ApprovalPanel({
   role,
+  mode,
   title,
   description,
   connected,
@@ -1056,6 +1438,7 @@ function ApprovalPanel({
   onApprove,
 }: {
   role: "VERIFIER" | "FINANCE";
+  mode: ExecutionMode;
   title: string;
   description: string;
   connected: boolean;
@@ -1079,19 +1462,32 @@ function ApprovalPanel({
         <div className="wallet-card">
           <div className="wallet-icon"><WalletCards size={24} /></div>
           <div>
-            <span>HashPack · Hedera testnet</span>
+            <span>
+              {mode === "simulation"
+                ? "Simulated role identity"
+                : "MetaMask · Hedera testnet"}
+            </span>
             <strong>
-              {connected ? accountId : "Role wallet not connected"}
+              {mode === "simulation"
+                ? "Ready without an external wallet"
+                : connected && accountId
+                ? shortAddress(accountId)
+                : "Role wallet not connected"}
             </strong>
           </div>
           <button onClick={onConnect} disabled={connected}>
-            {connected ? "Authenticated" : "Connect"}
+            {mode === "simulation"
+              ? "Simulation ready"
+              : connected
+                ? "Authenticated"
+                : "Connect"}
           </button>
         </div>
         <p className="relay-note">
           <LockKeyhole size={14} />
-          Wallet-authenticated, demo-relayed Hedera approval. No production keys
-          are exposed to the browser.
+          {mode === "simulation"
+            ? "Simulation exercises the same approval state transitions without requesting a wallet signature."
+            : "MetaMask signs the exact approval. The server verifies it before the Hedera relay can act."}
         </p>
       </div>
       <div className="approval-card">
@@ -1129,11 +1525,17 @@ function AuditPanel({
   mode,
   topicId,
   order,
+  agentIdentity,
+  agentAttestation,
+  delegation,
 }: {
   events: import("@/src/protocol/events").RecordedEvent[];
   mode: ExecutionMode;
   topicId?: string;
   order?: Order;
+  agentIdentity?: import("@/src/protocol/types").ResolvedAgentIdentity;
+  agentAttestation?: import("@/src/protocol/types").HumanBackingAttestation;
+  delegation?: import("@/src/protocol/types").AgentDelegation;
 }) {
   return (
     <div>
@@ -1176,16 +1578,42 @@ function AuditPanel({
           </a>
         )}
       </div>
+      {(agentIdentity || delegation) && (
+        <div className="identity-audit-summary">
+          <div>
+            <span>Public agent</span>
+            <strong>{agentIdentity?.publicIdentity.name ?? "Pending"}</strong>
+            <code>{agentIdentity?.agentId ?? delegation?.agentId}</code>
+          </div>
+          <div>
+            <span>Resolution</span>
+            <strong>{agentIdentity ? "Bound" : "Pending"}</strong>
+            <code>{agentIdentity?.resolutionHash ?? "No resolution hash"}</code>
+          </div>
+          <div>
+            <span>Human backing</span>
+            <strong>{agentAttestation ? "World verified" : "Not verified"}</strong>
+            <code>
+              {agentAttestation?.verificationReference ?? "No verification reference"}
+            </code>
+          </div>
+          <div>
+            <span>Delegation</span>
+            <strong>{delegation?.delegationId ?? "Pending"}</strong>
+            <code>{delegation?.integrityHash ?? "No delegation hash"}</code>
+          </div>
+        </div>
+      )}
       <div className="audit-table">
         <div className="audit-head">
           <span>Seq.</span><span>Event</span><span>Actor</span><span>Submitted</span><span>Consensus</span><span>Ledger</span>
         </div>
         {[...events].reverse().map((event) => (
-          <div className={`audit-row ${event.eventType.includes("REJECTED") ? "rejected" : ""}`} key={event.eventId}>
+          <div className={`audit-row ${eventRejected(event) ? "rejected" : ""}`} key={event.eventId}>
             <code>#{event.ledgerReference?.sequenceNumber}</code>
             <div>
               <span className="event-icon">
-                {event.eventType.includes("REJECTED") ? <X size={13} /> : <Check size={13} />}
+                {eventRejected(event) ? <X size={13} /> : <Check size={13} />}
               </span>
               <strong>{eventLabels[event.eventType]}</strong>
               <small title={policyReasons(event)}>
@@ -1255,7 +1683,10 @@ function formatTime(value?: string) {
 function policyCode(
   event: import("@/src/protocol/events").RecordedEvent,
 ): string | undefined {
-  if (event.eventType !== "ORDER_REJECTED_BY_POLICY") return undefined;
+  if (
+    event.eventType !== "ORDER_REJECTED_BY_POLICY" &&
+    event.eventType !== "AGENT_AUTHORIZATION_EVALUATED"
+  ) return undefined;
   return (
     event.data as {
       decision?: import("@/src/protocol/types").PolicyDecision;
@@ -1266,10 +1697,25 @@ function policyCode(
 function policyReasons(
   event: import("@/src/protocol/events").RecordedEvent,
 ): string | undefined {
-  if (event.eventType !== "ORDER_REJECTED_BY_POLICY") return undefined;
+  if (
+    event.eventType !== "ORDER_REJECTED_BY_POLICY" &&
+    event.eventType !== "AGENT_AUTHORIZATION_EVALUATED"
+  ) return undefined;
   return (
     event.data as {
       decision?: import("@/src/protocol/types").PolicyDecision;
     }
   ).decision?.reasons.join(" ");
+}
+
+function eventRejected(
+  event: import("@/src/protocol/events").RecordedEvent,
+): boolean {
+  if (event.eventType.includes("REJECTED")) return true;
+  if (event.eventType !== "AGENT_AUTHORIZATION_EVALUATED") return false;
+  return !(
+    event.data as {
+      decision?: import("@/src/protocol/types").AgentAuthorizationDecision;
+    }
+  ).decision?.allowed;
 }

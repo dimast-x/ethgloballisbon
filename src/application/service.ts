@@ -1,6 +1,14 @@
-import type { EventStore, PaymentScheduler } from "../protocol/adapters";
+import type {
+  EventStore,
+  PaymentScheduler,
+  PublicIdentityResolver,
+} from "../protocol/adapters";
 import { createEvent, type ProtocolEvent, type RecordedEvent } from "../protocol/events";
-import { validatePurchase } from "../protocol/policy";
+import { add, zeroLike } from "../protocol/money";
+import {
+  validateAgentAuthorization,
+  validatePurchase,
+} from "../protocol/policy";
 import { reduceProtocolEvents, type ProtocolProjection } from "../protocol/reducer";
 import type {
   Order,
@@ -16,6 +24,7 @@ type SettlementConfig = {
 type ServiceOptions = {
   eventStore: EventStore;
   paymentScheduler: PaymentScheduler;
+  identityResolver?: PublicIdentityResolver;
   settlement: SettlementConfig;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
@@ -99,6 +108,82 @@ export class ProtocolApplicationService {
     };
 
     switch (command.type) {
+      case "RESOLVE_AGENT_IDENTITY": {
+        if (!this.options.identityResolver) {
+          throw new CommandError(
+            "IDENTITY_RESOLVER_UNAVAILABLE",
+            "No public identity resolver is configured.",
+          );
+        }
+        const identity = await this.options.identityResolver.resolve(
+          command.identity,
+        );
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "AGENT_IDENTITY_RESOLVED",
+              ),
+              eventType: "AGENT_IDENTITY_RESOLVED",
+              data: { identity },
+            }),
+          ),
+        ];
+      }
+      case "GRANT_AGENT_DELEGATION":
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "AGENT_DELEGATION_GRANTED",
+              ),
+              eventType: "AGENT_DELEGATION_GRANTED",
+              data: { delegation: command.delegation },
+            }),
+          ),
+        ];
+      case "RECORD_HUMAN_BACKING":
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "AGENT_HUMAN_BACKING_VERIFIED",
+              ),
+              eventType: "AGENT_HUMAN_BACKING_VERIFIED",
+              data: { attestation: command.attestation },
+            }),
+          ),
+        ];
+      case "AUTHORIZE_AGENT_ACTION": {
+        const decision = agentDecision(projection, command.actor, {
+          action: command.action,
+          category: command.category,
+          amount: command.amount,
+        });
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "AGENT_AUTHORIZATION_EVALUATED",
+              ),
+              eventType: "AGENT_AUTHORIZATION_EVALUATED",
+              data: {
+                decision,
+                category: command.category,
+                requestedAmount: command.amount,
+              },
+            }),
+          ),
+        ];
+      }
       case "ALLOCATE_BUYER":
         return [
           await this.appendOnce(
@@ -162,6 +247,50 @@ export class ProtocolApplicationService {
       }
       case "CREATE_ORDER": {
         if (projection.orders[command.orderId]) return [];
+        const appended: RecordedEvent[] = [];
+        if (command.actor.actorType === "AGENT") {
+          const storedIdentity =
+            projection.agentIdentities[command.actor.actorId];
+          const currentIdentity =
+            storedIdentity && this.options.identityResolver
+              ? await this.options.identityResolver.resolve(
+                  storedIdentity.publicIdentity,
+                )
+              : storedIdentity;
+          const authorization = agentDecision(
+            projection,
+            command.actor,
+            {
+              action: "CREATE_ORDER",
+              category: command.category,
+              amount: command.amount,
+            },
+            currentIdentity,
+            !storedIdentity ||
+              !currentIdentity ||
+              storedIdentity.resolutionHash === currentIdentity.resolutionHash,
+          );
+          appended.push(
+            await this.appendOnce(
+              createEvent({
+                ...base,
+                orderId: command.orderId,
+                eventId: eventId(
+                  command.idempotencyKey,
+                  "AGENT_AUTHORIZATION_EVALUATED",
+                ),
+                eventType: "AGENT_AUTHORIZATION_EVALUATED",
+                data: {
+                  decision: authorization,
+                  category: command.category,
+                  requestedAmount: command.amount,
+                  currentResolutionHash: currentIdentity?.resolutionHash,
+                },
+              }),
+            ),
+          );
+          if (!authorization.allowed) return appended;
+        }
         const decision = validatePurchase({
           program,
           allocation: projection.allocations[command.buyerId],
@@ -183,7 +312,7 @@ export class ProtocolApplicationService {
           status: "CREATED",
           approvals: [],
         };
-        return [
+        appended.push(
           await this.appendOnce(
             createEvent({
               ...base,
@@ -193,7 +322,8 @@ export class ProtocolApplicationService {
               data: { order, decision },
             }),
           ),
-        ];
+        );
+        return appended;
       }
       case "ACCEPT_ORDER": {
         const order = requireOrder(projection, command.orderId);
@@ -503,12 +633,48 @@ function commandComplete(
   projection: ProtocolProjection,
   command: ProtocolCommand,
 ): boolean {
+  switch (command.type) {
+    case "RESOLVE_AGENT_IDENTITY":
+      return Object.values(projection.agentIdentities).some(
+        (identity) =>
+          identity.publicIdentity.scheme === command.identity.scheme &&
+          identity.publicIdentity.name === command.identity.name,
+      );
+    case "GRANT_AGENT_DELEGATION":
+      return Boolean(
+        projection.agentDelegations[command.delegation.agentId],
+      );
+    case "RECORD_HUMAN_BACKING":
+      return Boolean(
+        projection.humanBacking[command.attestation.subjectReference],
+      );
+    case "AUTHORIZE_AGENT_ACTION":
+      return projection.timeline.some(
+        (event) =>
+          event.correlationId === command.idempotencyKey &&
+          event.eventType === "AGENT_AUTHORIZATION_EVALUATED",
+      );
+  }
   if (!("orderId" in command)) return true;
   const order = projection.orders[command.orderId];
+  if (!order && command.type === "CREATE_ORDER") {
+    return projection.timeline.some(
+      (event) =>
+        event.correlationId === command.idempotencyKey &&
+        event.eventType === "AGENT_AUTHORIZATION_EVALUATED",
+    );
+  }
   if (!order) return false;
   switch (command.type) {
     case "CREATE_ORDER":
-      return true;
+      return (
+        Boolean(order) ||
+        projection.timeline.some(
+          (event) =>
+            event.correlationId === command.idempotencyKey &&
+            event.eventType === "AGENT_AUTHORIZATION_EVALUATED",
+        )
+      );
     case "ACCEPT_ORDER":
       return Boolean(order.scheduleId);
     case "SUBMIT_DELIVERY":
@@ -520,6 +686,44 @@ function commandComplete(
     default:
       return true;
   }
+}
+
+function agentDecision(
+  projection: ProtocolProjection,
+  actor: ProtocolCommand["actor"],
+  request: { action: string; category: string; amount: import("../protocol/types").Money },
+  identityOverride?: import("../protocol/types").ResolvedAgentIdentity,
+  identityCurrent = true,
+) {
+  const program = requireProgram(projection);
+  const identity =
+    identityOverride ?? projection.agentIdentities[actor.actorId];
+  const delegation = projection.agentDelegations[actor.actorId];
+  const attestation = projection.humanBacking[actor.actorId];
+  const delegatedSpend = projection.timeline
+    .filter(
+      (event) =>
+        event.eventType === "ORDER_CREATED" &&
+        event.actor.actorType === "AGENT" &&
+        event.actor.actorId === actor.actorId,
+    )
+    .reduce((total, event) => {
+      const order = (event.data as { order: Order }).order;
+      return add(total, order.amount);
+    }, zeroLike(request.amount));
+  return validateAgentAuthorization({
+    agentId: actor.actorId,
+    action: request.action,
+    program,
+    identity,
+    identityCurrent,
+    attestation,
+    delegation,
+    executionAccountId: actor.hederaAccountId,
+    category: request.category,
+    amount: request.amount,
+    delegatedSpend,
+  });
 }
 
 function confirmedResult(

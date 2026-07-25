@@ -33,14 +33,12 @@ export async function POST(
     if (!session) {
       return Response.json({ error: "Program not found" }, { status: 404 });
     }
-    const command =
-      mode === "testnet"
-        ? await authenticateApprovalCommand({
-            command: body.command,
-            projection: session.projection,
-            proof: body.walletApproval,
-          })
-        : body.command;
+    const command = await authenticateApprovalCommand({
+      command: body.command,
+      projection: session.projection,
+      mode,
+      proof: body.walletApproval,
+    });
     const result = await runProgramCommand(programId, mode, command);
     return Response.json(result, {
       status: result.status === "FAILED" ? 409 : 200,
