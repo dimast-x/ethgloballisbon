@@ -20,6 +20,7 @@ export async function GET() {
     return Response.json({ available: false, network: "Hedera testnet" });
   }
   const projection = session.projection;
+  const program = session.projection.program;
   const order = Object.values(projection.orders).find(
     (candidate) => candidate.status === "PAYMENT_EXECUTED",
   );
@@ -30,8 +31,10 @@ export async function GET() {
   const delegationLimitRejected = projection.agentAuthorizationDecisions.some(
     (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
   );
-  const verifierAccountId = hedera.publicConfig.verifierAccountId;
-  const financeAccountId = hedera.publicConfig.financeAccountId;
+  const verifierAccountId = program.hedera?.verifierAccountId;
+  const financeAccountId = program.hedera?.financeAccountId;
+  const treasuryAccountId = program.hedera?.treasuryAccountId;
+  const vendorAccountId = order?.supplierSettlementAccountId;
   const directWallets = Boolean(
     verifierAccountId &&
       financeAccountId &&
@@ -61,8 +64,8 @@ export async function GET() {
         mirrorNodeUrl: hedera.publicConfig.mirrorNodeUrl,
         scheduleId: order.scheduleId,
         paymentTransactionId: order.paymentTransactionId,
-        treasuryAccountId: hedera.publicConfig.treasuryAccountId,
-        vendorAccountId: hedera.publicConfig.vendorAccountId,
+        treasuryAccountId,
+        vendorAccountId,
         amount: order.amount.atomicAmount,
       })
     : false;
@@ -115,10 +118,10 @@ export async function GET() {
         approvals: order.approvals,
       },
       accounts: {
-        treasury: hedera.publicConfig.treasuryAccountId,
-        vendor: hedera.publicConfig.vendorAccountId,
-        verifier: hedera.publicConfig.verifierAccountId,
-        finance: hedera.publicConfig.financeAccountId,
+        treasury: treasuryAccountId,
+        vendor: vendorAccountId,
+        verifier: verifierAccountId,
+        finance: financeAccountId,
       },
     },
   });

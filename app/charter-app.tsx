@@ -40,6 +40,7 @@ import type {
 } from "@/src/application/commands";
 import type {
   IdentityReadiness,
+  LiveProgramSetup,
   ProgramSession,
   TestnetReadiness,
 } from "@/src/application/runtime";
@@ -50,7 +51,7 @@ import {
   signHederaMessage,
   signHederaSchedule,
 } from "@/src/wallet/hedera-wallet-client";
-import { LandingPage } from "./landing-page";
+import { LandingPage, ProgramSetupPage } from "./landing-page";
 
 const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
 type Tab = (typeof tabs)[number];
@@ -162,6 +163,11 @@ export function CharterApp() {
   const [administratorSignInError, setAdministratorSignInError] = useState<
     string | null
   >(null);
+  const [programSetup, setProgramSetup] = useState<LiveProgramSetup>({
+    verifierAccountId: "",
+    financeAccountId: "",
+    vendorAccountId: "",
+  });
 
   useEffect(() => {
     void refreshReadiness().then((next) => {
@@ -170,7 +176,7 @@ export function CharterApp() {
         if (programId) {
           void resumeRun(programId);
         } else {
-          void startRun("testnet");
+          setOperationState("idle");
         }
       } else {
         void loadPublicShowcase();
@@ -292,7 +298,7 @@ export function CharterApp() {
         if (programId) {
           await resumeRun(programId);
         } else {
-          await startRun("testnet");
+          setOperationState("idle");
         }
       }
     } catch (error) {
@@ -306,14 +312,17 @@ export function CharterApp() {
     }
   }
 
-  async function startRun(nextMode: ExecutionMode) {
+  async function startRun(
+    nextMode: ExecutionMode,
+    setup: LiveProgramSetup = programSetup,
+  ) {
     setOperationState("pending");
     setNotice("Creating a fresh run and confirming its initialization through Mirror Node…");
     try {
       const response = await fetch("/api/demos/university-gpu/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: nextMode }),
+        body: JSON.stringify({ mode: nextMode, setup }),
       });
       const body = (await response.json()) as ProgramSession & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
@@ -338,7 +347,8 @@ export function CharterApp() {
       const body = (await response.json()) as ProgramSession & { error?: string };
       if (!response.ok) {
         window.localStorage.removeItem(activeLiveRunKey);
-        await startRun("testnet");
+        setOperationState("idle");
+        setNotice("Create a new program and choose its approval accounts.");
         return;
       }
       hydrateSession(body);
@@ -382,6 +392,19 @@ export function CharterApp() {
               ? () => setShowPublicProgram(true)
               : undefined
           }
+        />
+      );
+    }
+    if (readiness.ready && identityReadiness?.ready) {
+      return (
+        <ProgramSetupPage
+          values={programSetup}
+          creating={operationState === "pending"}
+          error={operationState === "failed" ? notice : null}
+          onChange={(field, value) =>
+            setProgramSetup((current) => ({ ...current, [field]: value }))
+          }
+          onCreate={() => void startRun("testnet", programSetup)}
         />
       );
     }
@@ -566,8 +589,8 @@ export function CharterApp() {
     try {
       const expectedAccountId =
         role === "VERIFIER"
-          ? readiness?.publicConfig.verifierAccountId
-          : readiness?.publicConfig.financeAccountId;
+          ? program.hedera?.verifierAccountId
+          : program.hedera?.financeAccountId;
       if (!expectedAccountId) {
         throw new Error(`The ${role} Hedera account is not configured.`);
       }

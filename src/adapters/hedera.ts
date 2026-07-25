@@ -22,8 +22,8 @@ export type HederaConfig = {
   operatorAccountId: string;
   operatorPrivateKey: string;
   topicId: string;
-  treasuryAccountId: string;
-  vendorAccountId: string;
+  treasuryAccountId?: string;
+  vendorAccountId?: string;
   mirrorNodeUrl?: string;
   verifierAccountId?: string;
   financeAccountId?: string;
@@ -32,8 +32,15 @@ export type HederaConfig = {
 export function createHederaClient(config: HederaConfig): Client {
   return Client.forTestnet().setOperator(
     config.operatorAccountId,
-    PrivateKey.fromString(config.operatorPrivateKey),
+    parseHederaPrivateKey(config.operatorPrivateKey),
   );
+}
+
+export function parseHederaPrivateKey(value: string): PrivateKey {
+  const raw = value.startsWith("0x") ? value.slice(2) : value;
+  return /^[0-9a-fA-F]{64}$/.test(raw)
+    ? PrivateKey.fromStringECDSA(raw)
+    : PrivateKey.fromString(value);
 }
 
 export class HederaEventStore implements EventStore {
@@ -366,10 +373,6 @@ export function hederaConfigFromEnv(): HederaConfig {
     operatorAccountId: required("HEDERA_OPERATOR_ID"),
     operatorPrivateKey: required("HEDERA_OPERATOR_KEY"),
     topicId: required("HEDERA_TOPIC_ID"),
-    treasuryAccountId: required("HEDERA_TREASURY_ACCOUNT_ID"),
-    vendorAccountId: required("HEDERA_VENDOR_ACCOUNT_ID"),
-    verifierAccountId: process.env.HEDERA_VERIFIER_ACCOUNT_ID,
-    financeAccountId: process.env.HEDERA_FINANCE_ACCOUNT_ID,
     mirrorNodeUrl: process.env.HEDERA_MIRROR_NODE_URL,
   };
 }

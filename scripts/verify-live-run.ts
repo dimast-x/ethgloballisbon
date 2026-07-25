@@ -41,10 +41,14 @@ for (let index = 1; index < events.length; index += 1) {
 }
 
 const projection = reduceProtocolEvents(events);
+const treasuryAccountId = projection.program?.hedera?.treasuryAccountId;
+assert(treasuryAccountId, "The program has no Hedera treasury account.");
 const order = Object.values(projection.orders).find(
   (candidate) => candidate.status === "PAYMENT_EXECUTED",
 );
 assert(order, "A completed order was not reconstructed.");
+const vendorAccountId = order.supplierSettlementAccountId;
+assert(vendorAccountId, "The completed order has no vendor settlement account.");
 assert(order.scheduleId, "The completed order has no schedule ID.");
 assert(order.paymentTransactionId, "The completed order has no payment transaction.");
 assert.equal(
@@ -132,7 +136,7 @@ const expectedAmount = Number(order.amount.atomicAmount);
 assert(
   successful.transfers?.some(
     (transfer) =>
-      transfer.account === config.treasuryAccountId &&
+      transfer.account === treasuryAccountId &&
       transfer.amount === -expectedAmount,
   ),
   "The exact treasury debit is absent from the payment transaction.",
@@ -140,7 +144,7 @@ assert(
 assert(
   successful.transfers?.some(
     (transfer) =>
-      transfer.account === config.vendorAccountId &&
+      transfer.account === vendorAccountId &&
       transfer.amount === expectedAmount,
   ),
   "The exact vendor credit is absent from the payment transaction.",
@@ -175,15 +179,15 @@ async function mirrorBalance(
 const [vendorBefore, vendorAfter, vendorCurrent, treasuryCurrent] =
   await Promise.all([
     mirrorBalance(
-      config.vendorAccountId,
+      vendorAccountId,
       `lt:${successful.consensus_timestamp}`,
     ),
     mirrorBalance(
-      config.vendorAccountId,
+      vendorAccountId,
       `lte:${successful.consensus_timestamp}`,
     ),
-    mirrorBalance(config.vendorAccountId),
-    mirrorBalance(config.treasuryAccountId),
+    mirrorBalance(vendorAccountId),
+    mirrorBalance(treasuryAccountId),
   ]);
 assert.equal(
   vendorAfter - vendorBefore,

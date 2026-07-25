@@ -20,7 +20,7 @@
     "identity:validate": "tsx scripts/demo-cli.ts identity:validate",
     "identity:resolve": "tsx scripts/demo-cli.ts identity:resolve",
     "demo:agent": "tsx scripts/demo-cli.ts agent",
-    "setup:testnet": "tsx scripts/setup-testnet.ts",
+    "setup:testnet": "tsx scripts/setup-platform-testnet.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

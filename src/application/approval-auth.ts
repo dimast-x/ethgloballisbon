@@ -31,8 +31,8 @@ export async function authenticateApprovalCommand(input: {
   const isDelivery = command.type === "APPROVE_DELIVERY";
   const expectedRole = isDelivery ? "DELIVERY_VERIFIER" : "FINANCE";
   const configuredAccountId = isDelivery
-    ? process.env.HEDERA_VERIFIER_ACCOUNT_ID
-    : process.env.HEDERA_FINANCE_ACCOUNT_ID;
+    ? program.hedera?.verifierAccountId
+    : program.hedera?.financeAccountId;
   if (!configuredAccountId) {
     throw new Error(`The ${expectedRole} Hedera account is not configured.`);
   }

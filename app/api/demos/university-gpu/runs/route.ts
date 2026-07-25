@@ -1,6 +1,7 @@
 import {
   createUniversityRun,
   getProgramSession,
+  type LiveProgramSetup,
 } from "@/src/application/runtime";
 import {
   authenticatedAdministratorId,
@@ -33,7 +34,12 @@ export async function POST(request: Request) {
     if (denied) return denied;
     const creatorId = authenticatedAdministratorId(request);
     if (!creatorId) return requireLiveMutationAdmin(request)!;
-    const session = await createUniversityRun("testnet", creatorId);
+    const body = (await request.json()) as { setup?: LiveProgramSetup };
+    const session = await createUniversityRun(
+      "testnet",
+      creatorId,
+      body.setup,
+    );
     return Response.json(session, { status: 201 });
   } catch (error) {
     return Response.json(

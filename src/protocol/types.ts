@@ -16,6 +16,12 @@ export type ProgramPolicy = {
   approvalRequirements: ApprovalRequirement[];
 };
 
+export type ProgramHederaConfig = {
+  treasuryAccountId: string;
+  verifierAccountId: string;
+  financeAccountId: string;
+};
+
 export type Program = {
   id: string;
   organizationId: string;
@@ -23,6 +29,7 @@ export type Program = {
   description: string;
   budget: Money;
   policy: ProgramPolicy;
+  hedera?: ProgramHederaConfig;
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "CLOSED";
 };
 

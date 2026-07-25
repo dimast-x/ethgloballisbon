@@ -98,8 +98,6 @@ describe("direct Hedera wallet approval confirmation", () => {
 
 describe("wallet receipt authentication", () => {
   it("binds the configured Hedera account to the approval command", async () => {
-    process.env.HEDERA_VERIFIER_ACCOUNT_ID = verifierAccountId;
-    process.env.HEDERA_FINANCE_ACCOUNT_ID = financeAccountId;
     const projection = approvalProjection();
     const command = await authenticateApprovalCommand({
       mode: "testnet",
@@ -129,8 +127,6 @@ describe("wallet receipt authentication", () => {
   });
 
   it("rejects a wallet account assigned to the wrong role", async () => {
-    process.env.HEDERA_VERIFIER_ACCOUNT_ID = verifierAccountId;
-    process.env.HEDERA_FINANCE_ACCOUNT_ID = financeAccountId;
     await expect(
       authenticateApprovalCommand({
         mode: "testnet",
@@ -152,9 +148,7 @@ describe("wallet receipt authentication", () => {
   });
 
   it("enforces verifier/finance separation of duties", async () => {
-    process.env.HEDERA_VERIFIER_ACCOUNT_ID = verifierAccountId;
-    process.env.HEDERA_FINANCE_ACCOUNT_ID = verifierAccountId;
-    const projection = approvalProjection();
+    const projection = approvalProjection(verifierAccountId);
     projection.orders.order_1 = {
       ...projection.orders.order_1,
       status: "DELIVERY_APPROVED",
@@ -185,11 +179,10 @@ describe("wallet receipt authentication", () => {
         proof: { accountId: verifierAccountId, transactionId },
       }),
     ).rejects.toThrow("different Hedera accounts");
-    process.env.HEDERA_FINANCE_ACCOUNT_ID = financeAccountId;
   });
 });
 
-function approvalProjection() {
+function approvalProjection(configuredFinanceAccountId = financeAccountId) {
   const money = { asset: "HBAR", atomicAmount: "350000000", decimals: 8 };
   const program: Program = {
     id: "program_1",
@@ -205,6 +198,11 @@ function approvalProjection() {
         { role: "DELIVERY_VERIFIER", count: 1 },
         { role: "FINANCE", count: 1 },
       ],
+    },
+    hedera: {
+      treasuryAccountId: "0.0.70003",
+      verifierAccountId,
+      financeAccountId: configuredFinanceAccountId,
     },
     status: "ACTIVE",
   };

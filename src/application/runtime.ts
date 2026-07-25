@@ -1,9 +1,10 @@
 import {
+  AccountCreateTransaction,
   AccountBalanceQuery,
   AccountId,
   AccountInfoQuery,
+  Hbar,
   KeyList,
-  PrivateKey,
   TopicInfoQuery,
 } from "@hashgraph/sdk";
 import {
@@ -11,6 +12,7 @@ import {
   HederaEventStore,
   HederaPaymentScheduler,
   hederaConfigFromEnv,
+  parseHederaPrivateKey,
 } from "../adapters/hedera";
 import {
   createWorldRpRequest,
@@ -23,11 +25,13 @@ import {
 import type { EventStore, PaymentScheduler } from "../protocol/adapters";
 import { createEvent, type ProtocolEvent, type RecordedEvent } from "../protocol/events";
 import type { ProtocolProjection } from "../protocol/reducer";
+import { reduceProtocolEvents } from "../protocol/reducer";
 import type {
   Approval,
   LedgerReference,
   PaymentStatus,
   Program,
+  ProgramHederaConfig,
   ResolvedAgentIdentity,
   ScheduledPayment,
   ScheduledPaymentRequest,
@@ -58,13 +62,20 @@ export type ProgramSession = RunMetadata & {
   projection: ProtocolProjection;
 };
 
+export type LiveProgramSetup = {
+  verifierAccountId: string;
+  financeAccountId: string;
+  vendorAccountId: string;
+};
+
 type Runtime = {
   memoryEvents: InMemoryEventStore;
   memoryPayments: InMemoryPaymentScheduler;
   runs: Map<string, RunMetadata>;
   inFlight: Map<string, Promise<CommandResult>>;
   identities: Map<string, ResolvedAgentIdentity>;
-  testnetService?: ProtocolApplicationService;
+  testnetEventStore?: HederaEventStore;
+  testnetServices: Map<string, ProtocolApplicationService>;
 };
 
 function runtime(): Runtime {
@@ -77,6 +88,7 @@ function runtime(): Runtime {
     runs: new Map(),
     inFlight: new Map(),
     identities: new Map(),
+    testnetServices: new Map(),
   };
   return root[runtimeKey];
 }
@@ -84,6 +96,7 @@ function runtime(): Runtime {
 export async function createUniversityRun(
   mode: ExecutionMode = "testnet",
   creatorActorId = "charter",
+  setup?: LiveProgramSetup,
 ): Promise<ProgramSession> {
   if (mode === "testnet") {
     const readiness = await getTestnetReadiness(true);
@@ -94,14 +107,24 @@ export async function createUniversityRun(
     }
   }
 
+  const hedera =
+    mode === "testnet"
+      ? await provisionProgramHedera(setup)
+      : undefined;
   const runId = `run_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
-  const fixture = materializeFixture(universityGpuFixture, runId, mode);
+  const fixture = materializeFixture(
+    universityGpuFixture,
+    runId,
+    mode,
+    setup,
+    hedera,
+  );
   const simulatedIdentity = resolvedFixtureIdentity(fixture);
   runtime().identities.set(
     `${simulatedIdentity.publicIdentity.scheme}:${simulatedIdentity.publicIdentity.name}`.toLowerCase(),
     simulatedIdentity,
   );
-  const service = serviceFor(mode);
+  const service = serviceFor(mode, fixture.program);
   const events = initialEvents(fixture, runId, creatorActorId);
   const projection = await service.appendInitialEvents(events);
   const selectedOfferId = fixture.selectedOfferId;
@@ -135,7 +158,7 @@ export async function createProgram(
     correlationId: `${runId}:program`,
     data: { program },
   });
-  const projection = await serviceFor(mode).appendInitialEvents([event]);
+  const projection = await serviceFor(mode, program).appendInitialEvents([event]);
   const metadata: RunMetadata = {
     mode,
     runId,
@@ -155,7 +178,7 @@ export async function getProgramSession(
   programId: string,
   mode: ExecutionMode = "testnet",
 ): Promise<ProgramSession | undefined> {
-  const projection = await serviceFor(mode).projection(programId);
+  const projection = await projectionFor(mode, programId);
   if (!projection.program) return undefined;
   const metadata = runtime().runs.get(programId) ?? {
     mode,
@@ -191,7 +214,11 @@ export async function runProgramCommand(
   const key = `${mode}:${programId}:${command.idempotencyKey}`;
   const current = runtime().inFlight.get(key);
   if (current) return current;
-  const pending = serviceFor(mode)
+  const projection = await projectionFor(mode, programId);
+  if (!projection.program) {
+    throw new Error(`Program ${programId} was not found.`);
+  }
+  const pending = serviceFor(mode, projection.program)
     .execute(programId, command)
     .finally(() => runtime().inFlight.delete(key));
   runtime().inFlight.set(key, pending);
@@ -203,7 +230,7 @@ export async function findOrder(
   orderId: string,
   mode: ExecutionMode,
 ) {
-  const projection = await serviceFor(mode).projection(programId);
+  const projection = await projectionFor(mode, programId);
   return projection.orders[orderId];
 }
 
@@ -214,10 +241,6 @@ export type TestnetReadiness = {
   issues: string[];
   publicConfig: {
     topicId?: string;
-    treasuryAccountId?: string;
-    vendorAccountId?: string;
-    verifierAccountId?: string;
-    financeAccountId?: string;
     mirrorNodeUrl: string;
     walletConnectConfigured: boolean;
   };
@@ -232,10 +255,6 @@ export async function getTestnetReadiness(
     "HEDERA_OPERATOR_ID",
     "HEDERA_OPERATOR_KEY",
     "HEDERA_TOPIC_ID",
-    "HEDERA_TREASURY_ACCOUNT_ID",
-    "HEDERA_VENDOR_ACCOUNT_ID",
-    "HEDERA_VERIFIER_ACCOUNT_ID",
-    "HEDERA_FINANCE_ACCOUNT_ID",
     "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID",
   ] as const;
   for (const name of required) {
@@ -253,20 +272,8 @@ export async function getTestnetReadiness(
   ) {
     issues.push("Iteration two supports HEDERA_NETWORK=testnet only.");
   }
-  if (
-    process.env.HEDERA_VERIFIER_ACCOUNT_ID &&
-    process.env.HEDERA_VERIFIER_ACCOUNT_ID ===
-      process.env.HEDERA_FINANCE_ACCOUNT_ID
-  ) {
-    issues.push("Verifier and finance Hedera accounts must be different.");
-  }
-
   validateAccount("HEDERA_OPERATOR_ID", issues);
   validateAccount("HEDERA_TOPIC_ID", issues);
-  validateAccount("HEDERA_TREASURY_ACCOUNT_ID", issues);
-  validateAccount("HEDERA_VENDOR_ACCOUNT_ID", issues);
-  validateAccount("HEDERA_VERIFIER_ACCOUNT_ID", issues);
-  validateAccount("HEDERA_FINANCE_ACCOUNT_ID", issues);
   validatePrivateKey("HEDERA_OPERATOR_KEY", issues);
 
   const mirrorNodeUrl =
@@ -278,10 +285,6 @@ export async function getTestnetReadiness(
       "Configured topic is not accessible through Mirror Node.",
       issues,
     );
-    await probeTreasury(
-      `${mirrorNodeUrl}/api/v1/accounts/${process.env.HEDERA_TREASURY_ACCOUNT_ID}`,
-      issues,
-    );
     await probeHederaConfiguration(issues);
   }
 
@@ -291,15 +294,9 @@ export async function getTestnetReadiness(
     issues,
     publicConfig: {
       topicId: process.env.HEDERA_TOPIC_ID,
-      treasuryAccountId: process.env.HEDERA_TREASURY_ACCOUNT_ID,
-      vendorAccountId: process.env.HEDERA_VENDOR_ACCOUNT_ID,
-      verifierAccountId: process.env.HEDERA_VERIFIER_ACCOUNT_ID,
-      financeAccountId: process.env.HEDERA_FINANCE_ACCOUNT_ID,
       mirrorNodeUrl,
       walletConnectConfigured: Boolean(
-        process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID &&
-          process.env.HEDERA_VERIFIER_ACCOUNT_ID &&
-          process.env.HEDERA_FINANCE_ACCOUNT_ID,
+        process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
       ),
     },
   };
@@ -462,7 +459,63 @@ export function agentAuthorizationSignal(
   return sha256(JSON.stringify(agentAuthorizationBinding(session, agentId)));
 }
 
-function serviceFor(mode: ExecutionMode): ProtocolApplicationService {
+async function provisionProgramHedera(
+  setup?: LiveProgramSetup,
+): Promise<ProgramHederaConfig> {
+  if (!setup) {
+    throw new Error(
+      "Verifier, finance, and vendor Hedera accounts are required.",
+    );
+  }
+  for (const [name, accountId] of Object.entries(setup)) {
+    try {
+      AccountId.fromString(accountId);
+    } catch {
+      throw new Error(`${name} is not a valid Hedera account ID.`);
+    }
+  }
+  if (setup.verifierAccountId === setup.financeAccountId) {
+    throw new Error("Verifier and finance must use different Hedera accounts.");
+  }
+
+  const platform = hederaConfigFromEnv();
+  const client = createHederaClient(platform);
+  try {
+    const [verifier, finance, vendor] = await Promise.all([
+      new AccountInfoQuery()
+        .setAccountId(setup.verifierAccountId)
+        .execute(client),
+      new AccountInfoQuery()
+        .setAccountId(setup.financeAccountId)
+        .execute(client),
+      new AccountInfoQuery().setAccountId(setup.vendorAccountId).execute(client),
+    ]);
+    if (!verifier.key || !finance.key || !vendor.key) {
+      throw new Error("One or more program accounts do not expose a usable key.");
+    }
+    const treasuryKey = new KeyList([verifier.key, finance.key], 2);
+    const response = await new AccountCreateTransaction()
+      .setKey(treasuryKey)
+      .setInitialBalance(new Hbar(5))
+      .execute(client);
+    const receipt = await response.getReceipt(client);
+    if (!receipt.accountId) {
+      throw new Error("Hedera did not return a treasury account ID.");
+    }
+    return {
+      treasuryAccountId: receipt.accountId.toString(),
+      verifierAccountId: setup.verifierAccountId,
+      financeAccountId: setup.financeAccountId,
+    };
+  } finally {
+    client.close();
+  }
+}
+
+function serviceFor(
+  mode: ExecutionMode,
+  program?: Program,
+): ProtocolApplicationService {
   if (mode === "simulation") {
     return new ProtocolApplicationService({
       eventStore: runtime().memoryEvents,
@@ -473,9 +526,17 @@ function serviceFor(mode: ExecutionMode): ProtocolApplicationService {
       pollTimeoutMs: 100,
     });
   }
-  const config = hederaConfigFromEnv();
-  runtime().testnetService ??= new ProtocolApplicationService({
-    eventStore: new HederaEventStore(config),
+  if (!program?.hedera) {
+    throw new Error("The program has no Hedera settlement configuration.");
+  }
+  const cached = runtime().testnetServices.get(program.id);
+  if (cached) return cached;
+  const config = {
+    ...hederaConfigFromEnv(),
+    ...program.hedera,
+  };
+  const service = new ProtocolApplicationService({
+    eventStore: testnetEventStore(),
     paymentScheduler: new HederaPaymentScheduler(config),
     identityResolver: new EnsPublicIdentityResolver({
       rpcUrl: process.env.ENS_RPC_URL,
@@ -484,13 +545,31 @@ function serviceFor(mode: ExecutionMode): ProtocolApplicationService {
     requireResolvedAgentIdentity: false,
     settlement: { payerAccountId: config.treasuryAccountId },
   });
-  return runtime().testnetService!;
+  runtime().testnetServices.set(program.id, service);
+  return service;
+}
+
+function testnetEventStore(): HederaEventStore {
+  runtime().testnetEventStore ??= new HederaEventStore(hederaConfigFromEnv());
+  return runtime().testnetEventStore!;
+}
+
+async function projectionFor(
+  mode: ExecutionMode,
+  programId: string,
+): Promise<ProtocolProjection> {
+  if (mode === "simulation") {
+    return serviceFor(mode).projection(programId);
+  }
+  return reduceProtocolEvents(await testnetEventStore().read(programId));
 }
 
 function materializeFixture(
   source: DemoFixture,
   runId: string,
   mode: ExecutionMode,
+  setup?: LiveProgramSetup,
+  hedera?: ProgramHederaConfig,
 ): DemoFixture {
   const suffix = runId.slice(-12);
   const programId = `${source.program.id}_${suffix}`;
@@ -514,7 +593,7 @@ function materializeFixture(
   return {
     ...source,
     buyerId,
-    program: { ...source.program, id: programId },
+    program: { ...source.program, id: programId, hedera },
     allocation: {
       ...source.allocation,
       id: `${source.allocation.id}_${suffix}`,
@@ -526,7 +605,7 @@ function materializeFixture(
       id: vendorIds.get(vendor.id)!,
       settlementAccountId:
         mode === "testnet" && vendor.id === selectedVendorId
-          ? process.env.HEDERA_VENDOR_ACCOUNT_ID!
+          ? setup!.vendorAccountId
           : vendor.settlementAccountId,
     })),
     offers: source.offers.map((offer) => ({
@@ -760,7 +839,7 @@ function validatePrivateKey(name: string, issues: string[]): void {
   const value = process.env[name];
   if (!value) return;
   try {
-    PrivateKey.fromString(value);
+    parseHederaPrivateKey(value);
   } catch {
     issues.push(`${name} is not a valid Hedera private key.`);
   }
@@ -779,91 +858,24 @@ async function probeMirrorEntity(
   }
 }
 
-async function probeTreasury(url: string, issues: string[]): Promise<void> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      issues.push("Configured treasury is not accessible through Mirror Node.");
-      return;
-    }
-    const body = (await response.json()) as { balance?: { balance?: number } };
-    if ((body.balance?.balance ?? 0) < 350_000_000) {
-      issues.push("Treasury balance is below the required 3.5 HBAR.");
-    }
-  } catch {
-    issues.push("Configured treasury is not accessible through Mirror Node.");
-  }
-}
-
 async function probeHederaConfiguration(issues: string[]): Promise<void> {
   let client;
   try {
     const config = hederaConfigFromEnv();
     client = createHederaClient(config);
-    const [
-      topic,
-      treasuryInfo,
-      verifierInfo,
-      financeInfo,
-      vendorBalance,
-      operatorBalance,
-      verifierBalance,
-      financeBalance,
-    ] = await Promise.all([
+    const [topic, operatorBalance] = await Promise.all([
       new TopicInfoQuery().setTopicId(config.topicId).execute(client),
-      new AccountInfoQuery()
-        .setAccountId(config.treasuryAccountId)
-        .execute(client),
-      new AccountInfoQuery()
-        .setAccountId(config.verifierAccountId!)
-        .execute(client),
-      new AccountInfoQuery()
-        .setAccountId(config.financeAccountId!)
-        .execute(client),
-      new AccountBalanceQuery()
-        .setAccountId(config.vendorAccountId)
-        .execute(client),
       new AccountBalanceQuery()
         .setAccountId(config.operatorAccountId)
         .execute(client),
-      new AccountBalanceQuery()
-        .setAccountId(config.verifierAccountId!)
-        .execute(client),
-      new AccountBalanceQuery()
-        .setAccountId(config.financeAccountId!)
-        .execute(client),
     ]);
     if (!topic.topicId) issues.push("The configured topic could not be queried.");
-    if (!vendorBalance.hbars) {
-      issues.push("The configured vendor account could not be queried.");
-    }
     if (operatorBalance.hbars.toTinybars().isZero()) {
       issues.push("The operator account has no HBAR for network fees.");
     }
-    if (verifierBalance.hbars.toTinybars().isZero()) {
-      issues.push("The verifier wallet has no HBAR for schedule-signing fees.");
-    }
-    if (financeBalance.hbars.toTinybars().isZero()) {
-      issues.push("The finance wallet has no HBAR for schedule-signing fees.");
-    }
-    const treasuryKey = treasuryInfo.key;
-    const rolePublicKeys = [verifierInfo.key, financeInfo.key]
-      .filter((key): key is NonNullable<typeof key> => Boolean(key))
-      .map((key) => key.toString());
-    if (
-      !(treasuryKey instanceof KeyList) ||
-      treasuryKey.threshold !== 2 ||
-      !rolePublicKeys.every((roleKey) =>
-        treasuryKey.toArray().some((key) => key.toString() === roleKey),
-      )
-    ) {
-      issues.push(
-        "Treasury key is not the configured verifier/finance 2-of-2 threshold.",
-      );
-    }
   } catch {
     issues.push(
-      "Operator access, topic access, or configured account keys could not be validated.",
+      "Operator access or the shared event topic could not be validated.",
     );
   } finally {
     client?.close();

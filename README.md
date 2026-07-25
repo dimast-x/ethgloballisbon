@@ -67,17 +67,13 @@ the production branch will deploy automatically.
 
 ## Testnet configuration
 
-Configure a funded Hedera testnet operator, the existing topic and settlement
-accounts, two distinct role accounts, WalletConnect, and World:
+Configure a funded Hedera testnet operator, one shared append-only event topic,
+WalletConnect, and World:
 
 ```text
 HEDERA_OPERATOR_ID
 HEDERA_OPERATOR_KEY
 HEDERA_TOPIC_ID
-HEDERA_TREASURY_ACCOUNT_ID
-HEDERA_VENDOR_ACCOUNT_ID
-HEDERA_VERIFIER_ACCOUNT_ID
-HEDERA_FINANCE_ACCOUNT_ID
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 WORLD_APP_ID
 WORLD_RP_ID
@@ -86,11 +82,14 @@ WORLD_ACTION
 CHARTER_SHOWCASE_PROGRAM_ID
 ```
 
-Run `npm run setup:testnet` to provision or validate the topic, treasury,
-vendor, and 2-of-2 verifier/finance threshold arrangement.
+Run `npm run setup:testnet` once to provision or validate the shared event
+topic. Each authenticated creator then supplies distinct verifier and finance
+wallet accounts plus a vendor settlement account in the application. Charter
+creates a dedicated 2-of-2 program treasury and records those accounts in the
+program's first Hedera event.
 
-Private keys remain server-side. Verifier and finance role keys remain inside
-their WalletConnect-compatible wallets. The browser submits native
+Only the platform operator key remains server-side. Verifier and finance role
+keys remain inside their WalletConnect-compatible wallets. The browser submits native
 `ScheduleSignTransaction` requests, and the server accepts an approval only
 after Hedera and Mirror Node confirm the configured signer and successful
 transaction.
