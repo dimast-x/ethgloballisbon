@@ -473,7 +473,11 @@ export function YareonApp() {
       const response = await fetch("/api/demos/university-gpu/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: nextMode, name: name.trim() }),
+        body: JSON.stringify({
+          mode: nextMode,
+          name: name.trim(),
+          setup: programSetup,
+        }),
       });
       const body = (await response.json()) as ProgramSession & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
@@ -481,7 +485,7 @@ export function YareonApp() {
       window.localStorage.setItem(activeLiveRunKey, body.programId);
       void loadPrograms();
       setOperationState("confirmed");
-      setNotice("Program created. Configure payment roles whenever you’re ready.");
+      setNotice("Program created and activated for supplier payments.");
     } catch (error) {
       setOperationState("failed");
       setNotice(error instanceof Error ? error.message : "Run creation failed.");

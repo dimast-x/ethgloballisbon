@@ -237,11 +237,13 @@ export function ProgramSettlementSettings({
           </p>
         </div>
         <button
-          className="program-settings-close"
+          className="op-primary"
           type="button"
-          onClick={() => onOpenChange(false)}
+          disabled={saving}
+          onClick={onSave}
         >
-          Do this later
+          {saving ? "Activating program…" : "Activate program"}
+          {!saving && <ArrowRight size={15} />}
         </button>
       </div>
       <div className="program-role-grid">
@@ -261,13 +263,12 @@ export function ProgramSettlementSettings({
           a separate finance approval.
         </span>
         <button
-          className="op-primary"
+          className="program-settings-close"
           type="button"
           disabled={saving}
-          onClick={onSave}
+          onClick={() => onOpenChange(false)}
         >
-          {saving ? "Activating program…" : "Save and activate"}
-          {!saving && <ArrowRight size={15} />}
+          Do this later
         </button>
       </div>
       {error && (
