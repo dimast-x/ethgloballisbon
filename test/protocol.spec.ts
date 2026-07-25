@@ -190,6 +190,64 @@ describe("events and reducer", () => {
     expect(projection.timeline).toHaveLength(session.events.length);
   });
 
+  it("activates a draft only after its own settlement roles are configured", () => {
+    const program = {
+      ...universityGpuFixture.program,
+      status: "DRAFT" as const,
+      hedera: undefined,
+    };
+    const vendor = {
+      ...universityGpuFixture.vendors[0],
+      settlementAccountId: "",
+    };
+    const base = {
+      runId: "run_deferred_setup",
+      organizationId: program.organizationId,
+      programId: program.id,
+      actor: { actorId: "admin", role: "ADMIN", actorType: "HUMAN" as const },
+    };
+    const projection = reduceProtocolEvents([
+      createEvent({
+        ...base,
+        eventType: "PROGRAM_CREATED",
+        correlationId: "create",
+        data: { program },
+      }),
+      createEvent({
+        ...base,
+        eventType: "VENDOR_APPROVED",
+        correlationId: "vendor",
+        data: { vendor },
+      }),
+      createEvent({
+        ...base,
+        eventType: "PROGRAM_SETTLEMENT_CONFIGURED",
+        correlationId: "configure",
+        data: {
+          hedera: {
+            treasuryAccountId: "0.0.80001",
+            verifierAccountId: "0.0.80002",
+            financeAccountId: "0.0.80003",
+          },
+          vendorId: vendor.id,
+          vendorSettlementAccountId: "0.0.80004",
+        },
+      }),
+    ]);
+
+    expect(projection.program).toMatchObject({
+      status: "ACTIVE",
+      hedera: {
+        treasuryAccountId: "0.0.80001",
+        verifierAccountId: "0.0.80002",
+        financeAccountId: "0.0.80003",
+      },
+    });
+    expect(projection.vendors[vendor.id].settlementAccountId).toBe(
+      "0.0.80004",
+    );
+  });
+
   it("completes the lifecycle once despite duplicate commands", () => {
     let session = createDemoSession(universityGpuFixture);
     const actions: DemoAction[] = [

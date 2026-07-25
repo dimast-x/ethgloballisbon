@@ -73,6 +73,7 @@ type Runtime = {
   memoryPayments: InMemoryPaymentScheduler;
   runs: Map<string, RunMetadata>;
   inFlight: Map<string, Promise<CommandResult>>;
+  settlementSetups: Map<string, Promise<ProgramSession>>;
   identities: Map<string, ResolvedAgentIdentity>;
   testnetEventStore?: HederaEventStore;
   testnetServices: Map<string, ProtocolApplicationService>;
@@ -87,9 +88,11 @@ function runtime(): Runtime {
     memoryPayments: new InMemoryPaymentScheduler(),
     runs: new Map(),
     inFlight: new Map(),
+    settlementSetups: new Map(),
     identities: new Map(),
     testnetServices: new Map(),
   };
+  root[runtimeKey]!.settlementSetups ??= new Map();
   return root[runtimeKey];
 }
 
@@ -97,6 +100,7 @@ export async function createUniversityRun(
   mode: ExecutionMode = "testnet",
   creatorActorId = "yareon",
   setup?: LiveProgramSetup,
+  programName?: string,
 ): Promise<ProgramSession> {
   if (mode === "testnet") {
     const readiness = await getTestnetReadiness(true);
@@ -108,7 +112,7 @@ export async function createUniversityRun(
   }
 
   const hedera =
-    mode === "testnet"
+    mode === "testnet" && setup
       ? await provisionProgramHedera(setup)
       : undefined;
   const runId = `run_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
@@ -118,6 +122,7 @@ export async function createUniversityRun(
     mode,
     setup,
     hedera,
+    programName,
   );
   const simulatedIdentity = resolvedFixtureIdentity(fixture);
   runtime().identities.set(
@@ -141,6 +146,59 @@ export async function createUniversityRun(
   };
   runtime().runs.set(fixture.program.id, metadata);
   return { ...metadata, projection };
+}
+
+export async function configureProgramSettlement(
+  programId: string,
+  setup: LiveProgramSetup,
+  actorId: string,
+): Promise<ProgramSession> {
+  const existing = runtime().settlementSetups.get(programId);
+  if (existing) return existing;
+  const pending = configureProgramSettlementOnce(programId, setup, actorId)
+    .finally(() => runtime().settlementSetups.delete(programId));
+  runtime().settlementSetups.set(programId, pending);
+  return pending;
+}
+
+async function configureProgramSettlementOnce(
+  programId: string,
+  setup: LiveProgramSetup,
+  actorId: string,
+): Promise<ProgramSession> {
+  const current = await getProgramSession(programId, "testnet");
+  if (!current?.projection.program) {
+    throw new Error(`Program ${programId} was not found.`);
+  }
+  if (current.projection.program.hedera) {
+    return current;
+  }
+
+  const selectedOffer = current.projection.offers[current.selectedOfferId];
+  if (!selectedOffer) {
+    throw new Error("The program vendor could not be resolved.");
+  }
+  const hedera = await provisionProgramHedera(setup);
+  const event = createEvent({
+    eventId: `${current.runId}:PROGRAM_SETTLEMENT_CONFIGURED`,
+    eventType: "PROGRAM_SETTLEMENT_CONFIGURED",
+    runId: current.runId,
+    organizationId: current.projection.program.organizationId,
+    programId,
+    actor: { actorId, role: "ADMIN", actorType: "HUMAN" },
+    correlationId: `${current.runId}:settlement`,
+    data: {
+      hedera,
+      vendorId: selectedOffer.vendorId,
+      vendorSettlementAccountId: setup.vendorAccountId,
+    },
+  });
+  const projection = await serviceFor(
+    "testnet",
+    current.projection.program,
+  ).appendInitialEvents([event]);
+  runtime().testnetServices.delete(programId);
+  return { ...current, projection };
 }
 
 export async function createProgram(
@@ -529,7 +587,16 @@ function serviceFor(
     });
   }
   if (!program?.hedera) {
-    throw new Error("The program has no Hedera settlement configuration.");
+    return new ProtocolApplicationService({
+      eventStore: testnetEventStore(),
+      paymentScheduler: runtime().memoryPayments,
+      identityResolver: new EnsPublicIdentityResolver({
+        rpcUrl: process.env.ENS_RPC_URL,
+        expectedOrganizationName: process.env.YAREON_ORGANIZATION_ENS_NAME,
+      }),
+      requireResolvedAgentIdentity: false,
+      settlement: { payerAccountId: hederaConfigFromEnv().operatorAccountId },
+    });
   }
   const cached = runtime().testnetServices.get(program.id);
   if (cached) return cached;
@@ -574,6 +641,7 @@ function materializeFixture(
   mode: ExecutionMode,
   setup?: LiveProgramSetup,
   hedera?: ProgramHederaConfig,
+  programName?: string,
 ): DemoFixture {
   const agentEnsName =
     process.env.YAREON_AGENT_ENS_NAME ?? process.env.CHARTER_AGENT_ENS_NAME;
@@ -602,7 +670,13 @@ function materializeFixture(
   return {
     ...source,
     buyerId,
-    program: { ...source.program, id: programId, hedera },
+    program: {
+      ...source.program,
+      id: programId,
+      name: programName?.trim() || source.program.name,
+      hedera,
+      status: mode === "testnet" && !hedera ? "DRAFT" : source.program.status,
+    },
     allocation: {
       ...source.allocation,
       id: `${source.allocation.id}_${suffix}`,
@@ -614,7 +688,7 @@ function materializeFixture(
       id: vendorIds.get(vendor.id)!,
       settlementAccountId:
         mode === "testnet" && vendor.id === selectedVendorId
-          ? setup!.vendorAccountId
+          ? setup?.vendorAccountId ?? ""
           : vendor.settlementAccountId,
     })),
     offers: source.offers.map((offer) => ({

@@ -9,6 +9,7 @@ import type {
   Order,
   PolicyDecision,
   Program,
+  ProgramHederaConfig,
   ResolvedAgentIdentity,
   Vendor,
 } from "./types";
@@ -71,6 +72,28 @@ export function applyProtocolEvent(
     case "PROGRAM_CREATED":
       next.program = (event.data as { program: Program }).program;
       break;
+    case "PROGRAM_SETTLEMENT_CONFIGURED": {
+      const { hedera, vendorId, vendorSettlementAccountId } = event.data as {
+        hedera: ProgramHederaConfig;
+        vendorId: string;
+        vendorSettlementAccountId: string;
+      };
+      if (next.program) {
+        next.program = {
+          ...next.program,
+          hedera,
+          status: "ACTIVE",
+        };
+      }
+      const vendor = next.vendors[vendorId];
+      if (vendor) {
+        next.vendors[vendorId] = {
+          ...vendor,
+          settlementAccountId: vendorSettlementAccountId,
+        };
+      }
+      break;
+    }
     case "BUYER_ALLOCATED": {
       const allocation = (event.data as { allocation: BuyerAllocation }).allocation;
       next.allocations[allocation.buyerId] = allocation;

@@ -34,11 +34,15 @@ export async function POST(request: Request) {
     if (denied) return denied;
     const creatorId = authenticatedAdministratorId(request);
     if (!creatorId) return requireLiveMutationAdmin(request)!;
-    const body = (await request.json()) as { setup?: LiveProgramSetup };
+    const body = (await request.json()) as {
+      setup?: LiveProgramSetup;
+      name?: string;
+    };
     const session = await createUniversityRun(
       "testnet",
       creatorId,
       body.setup,
+      body.name,
     );
     return Response.json(session, { status: 201 });
   } catch (error) {

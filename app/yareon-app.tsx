@@ -51,14 +51,19 @@ import {
   signHederaSchedule,
   submitHederaAuthenticationChallenge,
 } from "@/src/wallet/hedera-wallet-client";
-import { LandingPage, ProgramSetupPage } from "./landing-page";
+import {
+  LandingPage,
+  ProgramCreatePage,
+  ProgramSettlementSettings,
+} from "./landing-page";
 
 const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
 type Tab = (typeof tabs)[number];
 const activeLiveRunKey = "yareon_active_live_program";
 
 const eventLabels: Record<string, string> = {
-  PROGRAM_CREATED: "Program activated",
+  PROGRAM_CREATED: "Program created",
+  PROGRAM_SETTLEMENT_CONFIGURED: "Program payments activated",
   BUYER_ALLOCATED: "Buyer allocation granted",
   BUYER_ALLOCATION_UPFUNDED: "Buyer allocation upfunded",
   VENDOR_APPROVED: "Vendor approved",
@@ -168,6 +173,9 @@ export function YareonApp() {
     financeAccountId: "",
     vendorAccountId: "",
   });
+  const [programName, setProgramName] = useState("AI Research Compute Fund");
+  const [showSettlementSettings, setShowSettlementSettings] = useState(false);
+  const [settlementError, setSettlementError] = useState<string | null>(null);
 
   useEffect(() => {
     void refreshReadiness().then((next) => {
@@ -323,22 +331,22 @@ export function YareonApp() {
 
   async function startRun(
     nextMode: ExecutionMode,
-    setup: LiveProgramSetup = programSetup,
+    name: string = programName,
   ) {
     setOperationState("pending");
-    setNotice("Creating a fresh run and confirming its initialization through Mirror Node…");
+    setNotice("Creating your program and confirming it through Mirror Node…");
     try {
       const response = await fetch("/api/demos/university-gpu/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: nextMode, setup }),
+        body: JSON.stringify({ mode: nextMode, name: name.trim() }),
       });
       const body = (await response.json()) as ProgramSession & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
       hydrateSession(body);
       window.localStorage.setItem(activeLiveRunKey, body.programId);
       setOperationState("confirmed");
-      setNotice("Live run confirmed by Hedera Mirror Node.");
+      setNotice("Program created. Configure payment roles whenever you’re ready.");
     } catch (error) {
       setOperationState("failed");
       setNotice(error instanceof Error ? error.message : "Run creation failed.");
@@ -380,6 +388,53 @@ export function YareonApp() {
       setActiveTab("Agent");
   }
 
+  async function configureSettlement() {
+    if (!session) return;
+    setSettlementError(null);
+    setOperationState("pending");
+    setNotice("Creating this program’s treasury on Hedera testnet…");
+    try {
+      const response = await fetch(
+        `/api/programs/${encodeURIComponent(session.programId)}/settlement`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(programSetup),
+        },
+      );
+      const body = (await response.json()) as ProgramSession & {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Payment setup failed.");
+      }
+      hydrateSession(body);
+      setShowSettlementSettings(false);
+      setOperationState("confirmed");
+      setNotice("Payment roles saved. This program is now active.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Payment setup failed.";
+      setSettlementError(message);
+      setOperationState("failed");
+      setNotice(message);
+    }
+  }
+
+  function beginNewProgram() {
+    window.localStorage.removeItem(activeLiveRunKey);
+    setSession(null);
+    setProgramSetup({
+      verifierAccountId: "",
+      financeAccountId: "",
+      vendorAccountId: "",
+    });
+    setShowSettlementSettings(false);
+    setSettlementError(null);
+    setOperationState("idle");
+    setNotice("Name your new program to begin.");
+  }
+
   if (!session?.projection.program) {
     if (publicShowcase?.available && showPublicProgram) {
       return <VerifiedPublicProgram data={publicShowcase} />;
@@ -406,14 +461,12 @@ export function YareonApp() {
     }
     if (readiness.ready && identityReadiness?.ready) {
       return (
-        <ProgramSetupPage
-          values={programSetup}
+        <ProgramCreatePage
+          name={programName}
           creating={operationState === "pending"}
           error={operationState === "failed" ? notice : null}
-          onChange={(field, value) =>
-            setProgramSetup((current) => ({ ...current, [field]: value }))
-          }
-          onCreate={() => void startRun("testnet", programSetup)}
+          onNameChange={setProgramName}
+          onCreate={() => void startRun("testnet", programName)}
         />
       );
     }
@@ -822,11 +875,11 @@ export function YareonApp() {
         </div>
         <button
           className="reset-button"
-          onClick={() => void startRun(mode)}
+          onClick={beginNewProgram}
           disabled={operationState === "pending"}
         >
           <RefreshCw size={15} />
-          New run
+          New program
         </button>
       </header>
 
@@ -873,6 +926,24 @@ export function YareonApp() {
           <code>{activeSession.runId}</code>
         </div>
       </section>
+
+      {!program.hedera && (
+        <ProgramSettlementSettings
+          programName={program.name}
+          values={programSetup}
+          open={showSettlementSettings}
+          saving={operationState === "pending"}
+          error={settlementError}
+          onOpenChange={(open) => {
+            setShowSettlementSettings(open);
+            if (!open) setSettlementError(null);
+          }}
+          onChange={(field, value) =>
+            setProgramSetup((current) => ({ ...current, [field]: value }))
+          }
+          onSave={() => void configureSettlement()}
+        />
+      )}
 
       <div className="notice" role="status">
         <span>{notice}</span>

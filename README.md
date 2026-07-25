@@ -83,10 +83,11 @@ YAREON_SHOWCASE_PROGRAM_ID
 ```
 
 Run `npm run setup:testnet` once to provision or validate the shared event
-topic. Each authenticated creator then supplies distinct verifier and finance
-wallet accounts plus a vendor settlement account in the application. Yareon
-creates a dedicated 2-of-2 program treasury and records those accounts in the
-program's first Hedera event.
+topic. An authenticated creator can create a draft program with only a name and
+open its workspace immediately. Later, from that program's payment settings,
+they supply distinct verifier and finance wallets plus a vendor settlement
+account. Yareon then creates the dedicated 2-of-2 treasury and records the
+program-specific configuration in a `PROGRAM_SETTLEMENT_CONFIGURED` event.
 
 Only the platform operator key remains server-side. Verifier and finance role
 keys remain inside their WalletConnect-compatible wallets. The browser submits native
