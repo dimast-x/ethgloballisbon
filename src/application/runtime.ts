@@ -74,7 +74,6 @@ export type ProgramListItem = {
 export type LiveProgramSetup = {
   verifierAccountId: string;
   financeAccountId: string;
-  vendorAccountId: string;
 };
 
 type Runtime = {
@@ -122,7 +121,12 @@ export async function createUniversityRun(
 
   const hedera =
     mode === "testnet" && setup
-      ? await provisionProgramHedera(setup)
+      ? await provisionProgramHedera(
+          setup,
+          universityGpuFixture.vendors.map(
+            (vendor) => vendor.settlementAccountId,
+          ),
+        )
       : undefined;
   const runId = `run_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const fixture = materializeFixture(
@@ -183,11 +187,26 @@ async function configureProgramSettlementOnce(
     return current;
   }
 
-  const selectedOffer = current.projection.offers[current.selectedOfferId];
-  if (!selectedOffer) {
-    throw new Error("The program vendor could not be resolved.");
+  const approvedSuppliers = Object.values(current.projection.vendors).filter(
+    (vendor) => vendor.status === "APPROVED",
+  );
+  if (approvedSuppliers.length === 0) {
+    throw new Error("Add at least one approved supplier before activation.");
   }
-  const hedera = await provisionProgramHedera(setup);
+  const missingSettlement = approvedSuppliers.filter(
+    (vendor) => !vendor.settlementAccountId,
+  );
+  if (missingSettlement.length > 0) {
+    throw new Error(
+      `Every approved supplier needs its own settlement account. Missing: ${missingSettlement
+        .map((vendor) => vendor.name)
+        .join(", ")}.`,
+    );
+  }
+  const hedera = await provisionProgramHedera(
+    setup,
+    approvedSuppliers.map((vendor) => vendor.settlementAccountId!),
+  );
   const event = createEvent({
     eventId: `${current.runId}:PROGRAM_SETTLEMENT_CONFIGURED`,
     eventType: "PROGRAM_SETTLEMENT_CONFIGURED",
@@ -198,8 +217,6 @@ async function configureProgramSettlementOnce(
     correlationId: `${current.runId}:settlement`,
     data: {
       hedera,
-      vendorId: selectedOffer.vendorId,
-      vendorSettlementAccountId: setup.vendorAccountId,
       policy:
         setup.verifierAccountId && setup.financeAccountId
           ? current.projection.program.policy
@@ -572,15 +589,17 @@ export function agentAuthorizationSignal(
 
 async function provisionProgramHedera(
   setup?: LiveProgramSetup,
+  supplierSettlementAccountIds: string[] = [],
 ): Promise<ProgramHederaConfig> {
   if (!setup) {
-    throw new Error(
-      "Verifier, finance, and vendor Hedera accounts are required.",
-    );
+    throw new Error("Program payment setup is required.");
   }
-  for (const [name, accountId] of Object.entries(setup).filter(
-    ([, accountId]) => Boolean(accountId),
-  )) {
+  for (const [name, accountId] of [
+    ...Object.entries(setup),
+    ...supplierSettlementAccountIds.map(
+      (accountId, index) => [`supplierSettlementAccountId[${index}]`, accountId],
+    ),
+  ].filter(([, accountId]) => Boolean(accountId))) {
     try {
       AccountId.fromString(accountId);
     } catch {
@@ -596,29 +615,42 @@ async function provisionProgramHedera(
   }
 
   const platform = hederaConfigFromEnv();
-  if (!setup.verifierAccountId && !setup.financeAccountId) {
-    return {
-      treasuryAccountId: platform.operatorAccountId,
-    };
-  }
   if (!setup.verifierAccountId || !setup.financeAccountId) {
-    throw new Error(
-      "Provide both verifier and finance accounts for advanced approvals, or neither for policy-authorized payments.",
-    );
+    if (setup.verifierAccountId || setup.financeAccountId) {
+      throw new Error(
+        "Provide both verifier and finance accounts for advanced approvals, or neither for policy-authorized payments.",
+      );
+    }
   }
   const client = createHederaClient(platform);
   try {
-    const [verifier, finance, vendor] = await Promise.all([
+    const supplierAccounts = await Promise.all(
+      supplierSettlementAccountIds.map((accountId) =>
+        new AccountInfoQuery().setAccountId(accountId).execute(client),
+      ),
+    );
+    if (supplierAccounts.some((account) => !account.key)) {
+      throw new Error(
+        "One or more supplier settlement accounts do not expose a usable key.",
+      );
+    }
+    if (!setup.verifierAccountId && !setup.financeAccountId) {
+      return {
+        treasuryAccountId: platform.operatorAccountId,
+      };
+    }
+    const [verifier, finance] = await Promise.all([
       new AccountInfoQuery()
         .setAccountId(setup.verifierAccountId)
         .execute(client),
       new AccountInfoQuery()
         .setAccountId(setup.financeAccountId)
         .execute(client),
-      new AccountInfoQuery().setAccountId(setup.vendorAccountId).execute(client),
     ]);
-    if (!verifier.key || !finance.key || !vendor.key) {
-      throw new Error("One or more program accounts do not expose a usable key.");
+    if (!verifier.key || !finance.key) {
+      throw new Error(
+        "One or more approval accounts do not expose a usable key.",
+      );
     }
     const treasuryKey = new KeyList([verifier.key, finance.key], 2);
     const response = await new AccountCreateTransaction()
@@ -724,10 +756,6 @@ function materializeFixture(
   const offerIds = new Map(
     source.offers.map((offer) => [offer.id, `${offer.id}_${suffix}`]),
   );
-  const selectedVendorId = source.offers.find(
-    (offer) => offer.id === source.selectedOfferId,
-  )?.vendorId;
-
   const delegation = {
     ...source.agent.delegation,
     integrityHash: "",
@@ -762,10 +790,7 @@ function materializeFixture(
     vendors: source.vendors.map((vendor) => ({
       ...vendor,
       id: vendorIds.get(vendor.id)!,
-      settlementAccountId:
-        mode === "testnet" && vendor.id === selectedVendorId
-          ? setup?.vendorAccountId ?? ""
-          : vendor.settlementAccountId,
+      settlementAccountId: vendor.settlementAccountId,
     })),
     offers: source.offers.map((offer) => ({
       ...offer,

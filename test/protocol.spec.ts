@@ -190,7 +190,7 @@ describe("events and reducer", () => {
     expect(projection.timeline).toHaveLength(session.events.length);
   });
 
-  it("activates a draft only after its own settlement roles are configured", () => {
+  it("activates a draft without rewriting supplier settlement accounts", () => {
     const program = {
       ...universityGpuFixture.program,
       status: "DRAFT" as const,
@@ -198,7 +198,7 @@ describe("events and reducer", () => {
     };
     const vendor = {
       ...universityGpuFixture.vendors[0],
-      settlementAccountId: "",
+      settlementAccountId: "0.0.80004",
     };
     const base = {
       runId: "run_deferred_setup",
@@ -229,8 +229,6 @@ describe("events and reducer", () => {
             verifierAccountId: "0.0.80002",
             financeAccountId: "0.0.80003",
           },
-          vendorId: vendor.id,
-          vendorSettlementAccountId: "0.0.80004",
         },
       }),
     ]);
@@ -285,8 +283,6 @@ describe("events and reducer", () => {
         correlationId: "configure",
         data: {
           hedera: { treasuryAccountId: "0.0.80001" },
-          vendorId: vendor.id,
-          vendorSettlementAccountId: "0.0.80004",
           policy: directPolicy,
         },
       }),

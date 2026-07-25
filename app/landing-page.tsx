@@ -190,32 +190,19 @@ export function ProgramCreatePage({
 
 export function ProgramSettlementSettings({
   programName,
-  values,
   open,
   saving,
   error,
   onOpenChange,
-  onChange,
   onSave,
 }: {
   programName: string;
-  values: {
-    verifierAccountId: string;
-    financeAccountId: string;
-    vendorAccountId: string;
-  };
   open: boolean;
   saving: boolean;
   error?: string | null;
   onOpenChange: (open: boolean) => void;
-  onChange: (
-    field: "verifierAccountId" | "financeAccountId" | "vendorAccountId",
-    value: string,
-  ) => void;
   onSave: () => void;
 }) {
-  const complete = Boolean(values.vendorAccountId.trim());
-
   if (!open) {
     return (
       <section className="program-settings-callout">
@@ -226,8 +213,8 @@ export function ProgramSettlementSettings({
           <span>Program draft</span>
           <strong>Configure payments when you&apos;re ready</strong>
           <p>
-            Explore the workspace now. Add the receiving supplier wallet when
-            you are ready to activate purchases for <b>{programName}</b>.
+            Explore the workspace now. Activate purchases once every approved
+            supplier has its own settlement account.
           </p>
         </div>
         <button type="button" onClick={() => onOpenChange(true)}>
@@ -245,8 +232,8 @@ export function ProgramSettlementSettings({
           <span>Program settings</span>
           <h2>Set up supplier payments</h2>
           <p>
-            These accounts apply only to <b>{programName}</b>. You can leave
-            this unfinished and return later.
+            Yareon will validate the settlement account stored on every approved
+            supplier before activating <b>{programName}</b>.
           </p>
         </div>
         <button
@@ -258,27 +245,15 @@ export function ProgramSettlementSettings({
         </button>
       </div>
       <div className="program-role-grid">
-        {(
-          [[
-            "vendorAccountId",
-            "Supplier settlement",
-            "Receives this program's demo purchase.",
-          ]] as const
-        ).map(([field, label, help]) => (
-          <label className="program-role-field" key={field}>
-            <span className="program-role-copy">
-              <strong>{label}</strong>
-              <small>{help}</small>
-            </span>
-            <input
-              autoComplete="off"
-              inputMode="text"
-              placeholder="0.0.123456"
-              value={values[field]}
-              onChange={(event) => onChange(field, event.target.value)}
-            />
-          </label>
-        ))}
+        <div className="program-role-field">
+          <span className="program-role-copy">
+            <strong>Per-supplier settlement</strong>
+            <small>
+              Settlement accounts are configured when suppliers are added and
+              are never shared across the program.
+            </small>
+          </span>
+        </div>
       </div>
       <div className="program-setup-actions">
         <span>
@@ -288,7 +263,7 @@ export function ProgramSettlementSettings({
         <button
           className="op-primary"
           type="button"
-          disabled={!complete || saving}
+          disabled={saving}
           onClick={onSave}
         >
           {saving ? "Activating program…" : "Save and activate"}

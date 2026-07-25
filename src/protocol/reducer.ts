@@ -85,8 +85,8 @@ export function applyProtocolEvent(
     case "PROGRAM_SETTLEMENT_CONFIGURED": {
       const { hedera, vendorId, vendorSettlementAccountId, policy } = event.data as {
         hedera: ProgramHederaConfig;
-        vendorId: string;
-        vendorSettlementAccountId: string;
+        vendorId?: string;
+        vendorSettlementAccountId?: string;
         policy?: Program["policy"];
       };
       if (next.program) {
@@ -97,9 +97,11 @@ export function applyProtocolEvent(
           status: "ACTIVE",
         };
       }
-      const vendor = next.vendors[vendorId];
-      if (vendor) {
-        next.vendors[vendorId] = {
+      // Backward compatibility for older events that stored one program-level
+      // supplier destination. New events keep settlement accounts on suppliers.
+      const vendor = vendorId ? next.vendors[vendorId] : undefined;
+      if (vendor && vendorSettlementAccountId) {
+        next.vendors[vendor.id] = {
           ...vendor,
           settlementAccountId: vendorSettlementAccountId,
         };

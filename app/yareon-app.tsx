@@ -263,7 +263,6 @@ export function YareonApp() {
   const [programSetup, setProgramSetup] = useState<LiveProgramSetup>({
     verifierAccountId: "",
     financeAccountId: "",
-    vendorAccountId: "",
   });
   const [programName, setProgramName] = useState("AI Research Compute Fund");
   const [showSettlementSettings, setShowSettlementSettings] = useState(false);
@@ -567,7 +566,6 @@ export function YareonApp() {
     setProgramSetup({
       verifierAccountId: "",
       financeAccountId: "",
-      vendorAccountId: "",
     });
     setShowSettlementSettings(false);
     setSettlementError(null);
@@ -1316,7 +1314,6 @@ export function YareonApp() {
               {!program.hedera && (
                 <ProgramSettlementSettings
                   programName={program.name}
-                  values={programSetup}
                   open={showSettlementSettings}
                   saving={operationState === "pending"}
                   error={settlementError}
@@ -1324,9 +1321,6 @@ export function YareonApp() {
                     setShowSettlementSettings(open);
                     if (!open) setSettlementError(null);
                   }}
-                  onChange={(field, value) =>
-                    setProgramSetup((current) => ({ ...current, [field]: value }))
-                  }
                   onSave={() => void configureSettlement()}
                 />
               )}
