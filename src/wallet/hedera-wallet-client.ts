@@ -15,6 +15,18 @@ import {
 
 let connectorPromise: Promise<DAppConnector> | undefined;
 
+function signerNodeAccountId(signer: {
+  getNetwork(): Record<string, string | AccountId>;
+}): AccountId {
+  const nodeAccountId = Object.values(signer.getNetwork())[0];
+  if (!nodeAccountId) {
+    throw new Error("The Hedera wallet did not provide a network node.");
+  }
+  return typeof nodeAccountId === "string"
+    ? AccountId.fromString(nodeAccountId)
+    : nodeAccountId;
+}
+
 async function connector(): Promise<DAppConnector> {
   const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
   if (!projectId) {
@@ -101,7 +113,8 @@ export async function submitHederaAuthenticationChallenge(input: {
   const signer = instance.getSigner(accountId);
   const transaction = new TopicMessageSubmitTransaction()
     .setTopicId(input.topicId)
-    .setMessage(input.message);
+    .setMessage(input.message)
+    .setNodeAccountIds([signerNodeAccountId(signer)]);
   await transaction.freezeWithSigner(signer);
   const response = await transaction.executeWithSigner(signer);
   await response.getReceiptWithSigner(signer);
@@ -117,7 +130,7 @@ export async function signHederaSchedule(input: {
   const signer = instance.getSigner(accountId);
   const transaction = new ScheduleSignTransaction().setScheduleId(
     input.scheduleId,
-  );
+  ).setNodeAccountIds([signerNodeAccountId(signer)]);
   await transaction.freezeWithSigner(signer);
   const response = await transaction.executeWithSigner(signer);
   await response.getReceiptWithSigner(signer);
