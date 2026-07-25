@@ -14,13 +14,13 @@ describe("Hedera wallet authentication", () => {
   const secret = "test-only-secret-with-at-least-32-characters";
 
   it("creates and validates an administrator session cookie", () => {
-    const request = new Request("https://charter.example/api/auth/session");
+    const request = new Request("https://yareon.com/api/auth/session");
     const cookie = createAdministratorSessionCookie(
       request,
       "0.0.12345",
       { secret },
     );
-    const authenticated = new Request("https://charter.example/api", {
+    const authenticated = new Request("https://yareon.com/api", {
       headers: { cookie },
     });
 
@@ -29,7 +29,7 @@ describe("Hedera wallet authentication", () => {
     ).toBe("0.0.12345");
     expect(
       authenticatedAdministratorAccountId(
-        new Request("https://charter.example/api", {
+        new Request("https://yareon.com/api", {
           headers: {
             cookie: cookie.replace(
               `${ADMIN_SESSION_COOKIE}=`,
@@ -45,7 +45,7 @@ describe("Hedera wallet authentication", () => {
   it("verifies a wallet challenge against its Mirror Node public key", async () => {
     const privateKey = PrivateKey.generateED25519();
     const request = new Request(
-      "https://charter.example/api/auth/challenge",
+      "https://yareon.com/api/auth/challenge",
     );
     const challenge = issueAdministratorChallenge(
       request,
@@ -73,7 +73,7 @@ describe("Hedera wallet authentication", () => {
     expect(
       await verifyAdministratorChallenge({
         request: new Request(
-          "https://charter.example/api/auth/session",
+          "https://yareon.com/api/auth/session",
         ),
         accountId: "0.0.12345",
         token: challenge.token,
@@ -92,7 +92,7 @@ describe("Hedera wallet authentication", () => {
 
   it("binds challenges to the requesting origin and account", async () => {
     const request = new Request(
-      "https://charter.example/api/auth/challenge",
+      "https://yareon.com/api/auth/challenge",
     );
     const challenge = issueAdministratorChallenge(
       request,
@@ -117,7 +117,7 @@ describe("Hedera wallet authentication", () => {
   it("verifies an HCS authentication challenge from the wallet payer", async () => {
     process.env.HEDERA_TOPIC_ID = "0.0.90001";
     const request = new Request(
-      "https://charter.example/api/auth/challenge",
+      "https://yareon.com/api/auth/challenge",
     );
     const challenge = issueAdministratorChallenge(
       request,
@@ -150,7 +150,7 @@ describe("Hedera wallet authentication", () => {
     expect(
       await verifyAdministratorHcsChallenge({
         request: new Request(
-          "https://charter.example/api/auth/session",
+          "https://yareon.com/api/auth/session",
         ),
         accountId: "0.0.12345",
         token: challenge.token,

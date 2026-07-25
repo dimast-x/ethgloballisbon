@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { proto } from "@hiero-ledger/proto";
 import { PublicKey } from "@hiero-ledger/sdk";
 
-export const ADMIN_SESSION_COOKIE = "charter_admin_session";
+export const ADMIN_SESSION_COOKIE = "yareon_admin_session";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -33,7 +33,8 @@ type TokenOptions = {
 };
 
 export function isWalletAuthenticationConfigured(
-  secret = process.env.CHARTER_AUTH_SECRET,
+  secret =
+    process.env.YAREON_AUTH_SECRET ?? process.env.CHARTER_AUTH_SECRET,
 ): boolean {
   return Boolean(secret && secret.length >= 32);
 }
@@ -240,7 +241,7 @@ export function authenticatedAdministratorAccountId(
 
 function canonicalChallengeMessage(payload: ChallengePayload): string {
   return [
-    "Charter administrator authentication",
+    "Yareon administrator authentication",
     `version=${payload.version}`,
     `accountId=${payload.accountId}`,
     `network=${payload.network}`,
@@ -325,10 +326,12 @@ function verifyHederaMessageSignature(
   return publicKey.verify(Buffer.from(prefixedMessage), signature);
 }
 
-function authenticationSecret(value = process.env.CHARTER_AUTH_SECRET): string {
+function authenticationSecret(
+  value = process.env.YAREON_AUTH_SECRET ?? process.env.CHARTER_AUTH_SECRET,
+): string {
   if (!value || value.length < 32) {
     throw new Error(
-      "CHARTER_AUTH_SECRET must be configured with at least 32 characters.",
+      "YAREON_AUTH_SECRET must be configured with at least 32 characters.",
     );
   }
   return value;

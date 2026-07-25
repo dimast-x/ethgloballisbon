@@ -1,7 +1,9 @@
 import { getProgramSession, getTestnetReadiness } from "@/src/application/runtime";
 
 export async function GET() {
-  const programId = process.env.CHARTER_SHOWCASE_PROGRAM_ID;
+  const programId =
+    process.env.YAREON_SHOWCASE_PROGRAM_ID ??
+    process.env.CHARTER_SHOWCASE_PROGRAM_ID;
   const hedera = await getTestnetReadiness(false);
   if (!programId || !hedera.ready) {
     return Response.json({

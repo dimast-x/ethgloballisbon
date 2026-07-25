@@ -55,7 +55,7 @@ import { LandingPage, ProgramSetupPage } from "./landing-page";
 
 const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
 type Tab = (typeof tabs)[number];
-const activeLiveRunKey = "charter_active_live_program";
+const activeLiveRunKey = "yareon_active_live_program";
 
 const eventLabels: Record<string, string> = {
   PROGRAM_CREATED: "Program activated",
@@ -130,7 +130,7 @@ type PublicShowcase =
       };
     };
 
-export function CharterApp() {
+export function YareonApp() {
   const [session, setSession] = useState<ProgramSession | null>(null);
   const mode: ExecutionMode = "testnet";
   const [activeTab, setActiveTab] = useState<Tab>("Agent");
@@ -227,7 +227,7 @@ export function CharterApp() {
         ready: false,
         issues: ["Identity configuration status could not be loaded."],
         publicConfig: {
-          worldAction: "authorize-charter-agent",
+          worldAction: "authorize-yareon-agent",
           worldEnvironment: "production",
           ensRpcConfigured: false,
           expectedDelegationHash: "",
@@ -239,7 +239,7 @@ export function CharterApp() {
           ready: false,
           issues: ["Identity configuration status could not be loaded."],
           publicConfig: {
-            worldAction: "authorize-charter-agent",
+            worldAction: "authorize-yareon-agent",
             worldEnvironment: "production" as const,
             ensRpcConfigured: false,
             expectedDelegationHash: "",
@@ -275,7 +275,7 @@ export function CharterApp() {
         topicId = configuration.hedera.publicConfig.topicId;
       }
       if (!topicId) {
-        throw new Error("The Charter authentication topic is not configured.");
+        throw new Error("The Yareon authentication topic is not configured.");
       }
       const transactionId = await submitHederaAuthenticationChallenge({
         accountId,
@@ -811,9 +811,9 @@ export function CharterApp() {
   return (
     <main className="shell">
       <header className="topbar">
-        <div className="brand live-brand" aria-label="Charter">
+        <div className="brand live-brand" aria-label="Yareon">
           <span className="brand-mark">CH</span>
-          <span>Charter</span>
+          <span>Yareon</span>
           <small>Guided live run</small>
         </div>
         <div className="network-state">
@@ -1126,9 +1126,9 @@ function VerifiedPublicProgram({
   return (
     <main className="shell">
       <header className="topbar">
-        <div className="brand live-brand" aria-label="Charter">
+        <div className="brand live-brand" aria-label="Yareon">
           <span className="brand-mark">CH</span>
-          <span>Charter</span>
+          <span>Yareon</span>
           <small>Verified public program</small>
         </div>
         <div className="network-state">
@@ -1950,7 +1950,7 @@ function ApprovalPanel({
         </div>
         <p className="relay-note">
           <LockKeyhole size={14} />
-          Your wallet signs the native Hedera schedule directly. Charter
+          Your wallet signs the native Hedera schedule directly. Yareon
           records approval only after the signer appears on Hedera.
         </p>
       </div>

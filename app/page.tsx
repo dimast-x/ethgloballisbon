@@ -1,5 +1,5 @@
-import { CharterEntry } from "./charter-entry";
+import { YareonEntry } from "./yareon-entry";
 
 export default function Home() {
-  return <CharterEntry />;
+  return <YareonEntry />;
 }

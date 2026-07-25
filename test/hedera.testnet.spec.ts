@@ -16,10 +16,10 @@ describe.skipIf(!enabled)("completed Hedera testnet lifecycle", () => {
   it(
     "detects both wallet signers, execution, idempotency, reconstruction, and exact HBAR movement",
     async () => {
-      const programId = process.env.CHARTER_SHOWCASE_PROGRAM_ID;
+      const programId = process.env.YAREON_SHOWCASE_PROGRAM_ID;
       if (!programId) {
         throw new Error(
-          "CHARTER_SHOWCASE_PROGRAM_ID must identify a completed golden run.",
+          "YAREON_SHOWCASE_PROGRAM_ID must identify a completed golden run.",
         );
       }
       const runtime = await import("../src/application/runtime");

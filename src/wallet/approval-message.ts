@@ -19,7 +19,7 @@ export function canonicalApprovalMessage(
   payload: WalletApprovalPayload,
 ): string {
   return [
-    "Charter approval",
+    "Yareon approval",
     `protocolVersion=${payload.protocolVersion}`,
     `action=${payload.action}`,
     `role=${payload.role}`,

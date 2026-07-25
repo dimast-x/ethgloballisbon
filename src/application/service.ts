@@ -410,7 +410,7 @@ export class ProtocolApplicationService {
             payerAccountId: this.options.settlement.payerAccountId,
             payeeAccountId: order.supplierSettlementAccountId!,
             amount: order.amount,
-            memo: `charter:${program.id}:${order.id}`,
+            memo: `yareon:${program.id}:${order.id}`,
           });
           appended.push(
             await this.appendOnce(
@@ -495,7 +495,7 @@ export class ProtocolApplicationService {
             payerAccountId: this.options.settlement.payerAccountId,
             payeeAccountId: settlementAccountId,
             amount: acceptedOrder.amount,
-            memo: `charter:${program.id}:${acceptedOrder.id}`,
+            memo: `yareon:${program.id}:${acceptedOrder.id}`,
           });
           appended.push(
             await this.appendOnce(
@@ -735,7 +735,7 @@ export class ProtocolApplicationService {
 }
 
 const systemActor = {
-  actorId: "charter",
+  actorId: "yareon",
   role: "SYSTEM",
   actorType: "SYSTEM" as const,
 };

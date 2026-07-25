@@ -42,7 +42,7 @@ try {
     );
   } else {
     const response = await new TopicCreateTransaction()
-      .setTopicMemo("charter:shared-program-events:v0.2")
+      .setTopicMemo("yareon:shared-program-events:v0.2")
       .execute(client);
     const receipt = await response.getReceipt(client);
     if (!receipt.topicId) {

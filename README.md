@@ -1,13 +1,13 @@
-# Charter
+# Yareon
 
-Charter is a policy-controlled procurement system running on Hedera testnet.
+Yareon is a policy-controlled procurement system running on Hedera testnet.
 The public product exposes only network-backed behavior: HCS program events,
 Mirror Node reconstruction, World human backing, native Hedera wallet
 approvals, scheduled HBAR settlement, and public explorer evidence.
 
 There is no guest sandbox, simulated workspace, or D1-backed product mode.
 Public visitors can inspect a completed verified program when
-`CHARTER_SHOWCASE_PROGRAM_ID` is configured. Mutating a live program is limited
+`YAREON_SHOWCASE_PROGRAM_ID` is configured. Mutating a live program is limited
 to the Hedera wallet that created it.
 
 ## Real product flow
@@ -35,7 +35,7 @@ it does not substitute simulated data.
 “Create a live program” connects a Hedera testnet wallet, asks it to sign a
 short-lived challenge, verifies the signature against the account key from
 Mirror Node, and stores an HTTP-only administrator session. Configure
-`CHARTER_AUTH_SECRET` with at least 32 random characters.
+`YAREON_AUTH_SECRET` with at least 32 random characters.
 
 Release checks:
 
@@ -53,7 +53,7 @@ This is a native Next.js application and can be imported directly into Vercel.
 Use the default Next.js build settings and configure every value from
 `.env.example` in Project Settings → Environment Variables. Keep
 `HEDERA_OPERATOR_KEY`, `WORLD_RP_SIGNING_KEY`, `ENS_RPC_URL`, and
-`CHARTER_AUTH_SECRET` server-only.
+`YAREON_AUTH_SECRET` server-only.
 
 Deploy from the project directory with:
 
@@ -79,12 +79,12 @@ WORLD_APP_ID
 WORLD_RP_ID
 WORLD_RP_SIGNING_KEY
 WORLD_ACTION
-CHARTER_SHOWCASE_PROGRAM_ID
+YAREON_SHOWCASE_PROGRAM_ID
 ```
 
 Run `npm run setup:testnet` once to provision or validate the shared event
 topic. Each authenticated creator then supplies distinct verifier and finance
-wallet accounts plus a vendor settlement account in the application. Charter
+wallet accounts plus a vendor settlement account in the application. Yareon
 creates a dedicated 2-of-2 program treasury and records those accounts in the
 program's first Hedera event.
 
@@ -118,7 +118,7 @@ npm run audit:cli -- <programId> testnet
 - `src/protocol` — network-independent types, policy, events, and reducer.
 - `src/application` — commands, authorization, and live orchestration.
 - `src/adapters` — Hedera, Mirror Node, World, and ENS integration boundaries.
-- `app/charter-app.tsx` — Hedera-wallet-authenticated live workflow.
+- `app/yareon-app.tsx` — Hedera-wallet-authenticated live workflow.
 - `app/api/showcase` — verified public read model.
 - `docs/protocol-v0.md` — protocol semantics.
 - `docs/protocol-event.schema.json` — event envelope schema.

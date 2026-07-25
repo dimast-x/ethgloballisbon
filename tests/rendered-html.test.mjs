@@ -24,7 +24,7 @@ before(async () => {
       cwd: new URL("..", import.meta.url),
       env: {
         ...process.env,
-        CHARTER_AUTH_SECRET:
+        YAREON_AUTH_SECRET:
           "render-test-secret-with-at-least-32-characters",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -42,7 +42,7 @@ async function render() {
   return fetch(origin, { headers: { accept: "text/html" } });
 }
 
-test("server-renders the Charter landing page and metadata", async () => {
+test("server-renders the Yareon landing page and metadata", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -50,7 +50,7 @@ test("server-renders the Charter landing page and metadata", async () => {
   const html = await response.text();
   assert.match(
     html,
-    /<title>Charter \| Policy-controlled organizational spending<\/title>/i,
+    /<title>Yareon \| Policy-controlled organizational spending<\/title>/i,
   );
   assert.match(html, /Choice at the edge/);
   assert.match(html, /Create a live program/);
@@ -79,7 +79,7 @@ test("keeps private Hedera and identity configuration out of browser assets", as
   assert.doesNotMatch(browserCode, /WORLD_RP_SIGNING_KEY/);
   assert.doesNotMatch(browserCode, /WORLD_RP_ID/);
   assert.doesNotMatch(browserCode, /ENS_RPC_URL/);
-  assert.doesNotMatch(browserCode, /CHARTER_AUTH_SECRET/);
+  assert.doesNotMatch(browserCode, /YAREON_AUTH_SECRET/);
 });
 
 test("ships the resumable direct-wallet live flow and explorer proof links", async () => {
@@ -99,7 +99,7 @@ test("ships the resumable direct-wallet live flow and explorer proof links", asy
   assert.match(browserCode, /Authenticating wallet/);
   assert.match(browserCode, /\/api\/auth\/challenge/);
   assert.match(browserCode, /\/api\/auth\/session/);
-  assert.match(browserCode, /charter_active_live_program/);
+  assert.match(browserCode, /yareon_active_live_program/);
   assert.match(browserCode, /hashscan\.io\/testnet\/topic/);
   assert.match(browserCode, /hashscan\.io\/testnet\/schedule/);
   assert.match(browserCode, /hashscan\.io\/testnet\/transaction/);

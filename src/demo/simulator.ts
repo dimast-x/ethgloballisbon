@@ -5,7 +5,7 @@ import type { DemoFixture } from "./fixtures";
 import type { EvidenceReference, Order } from "../protocol/types";
 
 const systemActor = {
-  actorId: "charter_demo",
+  actorId: "yareon_demo",
   role: "SYSTEM",
   actorType: "SYSTEM" as const,
 };

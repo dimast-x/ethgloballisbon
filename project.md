@@ -1,6 +1,6 @@
-# Charter — Hackathon Master Context
+# Yareon — Hackathon Master Context
 
-**Working title:** Charter  
+**Working title:** Yareon
 **Event:** ETHGlobal Lisbon, July 2026  
 **Document purpose:** Canonical context for future product, engineering, design, pitch, and implementation conversations  
 **Status:** Hackathon execution brief — three-partner strategy committed  
@@ -10,7 +10,7 @@
 
 # 1. Executive Summary
 
-Charter is a programmable procurement and organizational spending system inspired by the operating model behind Ukraine’s outcome-linked military procurement reforms.
+Yareon is a programmable procurement and organizational spending system inspired by the operating model behind Ukraine’s outcome-linked military procurement reforms.
 
 The core idea is simple:
 
@@ -21,7 +21,7 @@ Most organizations currently choose between two imperfect models:
 1. **Centralized procurement**, which offers control but often becomes slow, opaque, politically influenced, and disconnected from end users.
 2. **Decentralized budgets**, which give teams autonomy but make it difficult to enforce policy, prevent abuse, verify delivery, and maintain a trustworthy audit trail.
 
-Charter proposes a third model:
+Yareon proposes a third model:
 
 1. An organization creates a funded procurement program.
 2. It defines who may buy, what they may buy, how much they may spend, and which vendors are eligible.
@@ -70,7 +70,7 @@ The three integrations answer different questions:
 |---|---|
 | Which persistent agent or organization is this, and where can its public metadata be discovered? | ENS |
 | Is the agent backed by a real, unique human? | World |
-| Is the action permitted, what happened, and did value move? | Hedera and Charter policy logic |
+| Is the action permitted, what happened, and did value move? | Hedera and Yareon policy logic |
 
 The combined trust chain is:
 
@@ -106,7 +106,7 @@ Hedera is the core execution, payment, and audit infrastructure.
 **Role:** Native procurement infrastructure  
 **Implementation constraint:** No Solidity and no smart contracts
 
-Charter will use the Hedera TypeScript SDK and at least these native services:
+Yareon will use the Hedera TypeScript SDK and at least these native services:
 
 - **Hedera Consensus Service**
   - Append-only procurement event history
@@ -194,7 +194,7 @@ World answers:
 
 > Is this agent actually backed by a real, unique human before organizational execution rights are granted?
 
-World does not determine the organization’s procurement policy. Human backing is necessary but not sufficient. Charter must still validate:
+World does not determine the organization’s procurement policy. Human backing is necessary but not sufficient. Yareon must still validate:
 
 - Organization membership
 - Delegation validity
@@ -303,7 +303,7 @@ agent.organization:
 lisbon-university.eth
 
 agent.endpoint:
-https://charter.example/agents/robotics-lab
+https://yareon.com/agents/robotics-lab
 
 agent.hederaAccount:
 0.0.4859221
@@ -318,7 +318,7 @@ agent.allowedCategorySummary:
 GPU_COMPUTE
 ```
 
-Sensitive authorization details are not stored publicly. ENS stores or resolves only public identity metadata and integrity references. The current active authority is still decided by Charter’s policy engine.
+Sensitive authorization details are not stored publicly. ENS stores or resolves only public identity metadata and integrity references. The current active authority is still decided by Yareon’s policy engine.
 
 ### Why ENS and World are not redundant
 
@@ -344,7 +344,7 @@ The demo should show:
 2. The application resolves the agent’s public metadata dynamically.
 3. The application resolves the linked organization and Hedera account.
 4. World verifies the agent’s human backing.
-5. Charter applies the organization-specific delegation.
+5. Yareon applies the organization-specific delegation.
 6. The audit trail displays the ENS name alongside the underlying identifiers.
 
 The values must not be hard-coded in the interface.
@@ -401,7 +401,7 @@ This creates recurring failure modes:
 - Payment before confirmed delivery
 - Fragmented evidence and documentation
 
-Charter is based on the belief that organizations should delegate **choice** without delegating away **control**.
+Yareon is based on the belief that organizations should delegate **choice** without delegating away **control**.
 
 ---
 
@@ -468,15 +468,15 @@ Audit log and dashboard update
 
 ## 4.1 One-sentence description
 
-> Charter is a programmable procurement platform that lets organizations delegate purchasing decisions without losing policy control, delivery verification, or auditability.
+> Yareon is a programmable procurement platform that lets organizations delegate purchasing decisions without losing policy control, delivery verification, or auditability.
 
 ## 4.2 Technical description
 
-> Charter is a Hedera-native, event-sourced procurement and agent authorization system using HCS for tamper-evident operational records, Scheduled Transactions for approval-gated payments, Mirror Node for state reconstruction, World AgentKit for human-backed delegated authority, and ENS for persistent agent and organization identity.
+> Yareon is a Hedera-native, event-sourced procurement and agent authorization system using HCS for tamper-evident operational records, Scheduled Transactions for approval-gated payments, Mirror Node for state reconstruction, World AgentKit for human-backed delegated authority, and ENS for persistent agent and organization identity.
 
 ## 4.3 Pitch-friendly description
 
-> Charter lets the people closest to a problem choose the right supplier, while the organization retains control of the rules, approvals, money, and audit trail.
+> Yareon lets the people closest to a problem choose the right supplier, while the organization retains control of the rules, approvals, money, and audit trail.
 
 ## 4.4 Long-term category
 
@@ -581,7 +581,7 @@ Order value:
 2. The program creation event is submitted to HCS.
 3. The Robotics Laboratory receives a 5,000-unit allocation.
 4. Three GPU providers are approved for the GPU_COMPUTE category.
-5. Charter resolves `buyer.robotics-lab.eth`, including its organization linkage, endpoint, and Hedera account.
+5. Yareon resolves `buyer.robotics-lab.eth`, including its organization linkage, endpoint, and Hedera account.
 6. The laboratory manager authorizes the ENS-identified agent, and World confirms that it is backed by a unique human.
 7. The agent evaluates the three offers.
 8. The agent proposes Horizon Cloud.
@@ -600,7 +600,7 @@ Order value:
 14. The independent verifier approves delivery.
 15. The university finance signer adds the final required signature.
 16. Hedera executes the payment.
-17. Charter detects the completed transaction.
+17. Yareon detects the completed transaction.
 18. A PAYMENT_EXECUTED event is submitted to HCS.
 19. The audit dashboard shows the entire lifecycle.
 
@@ -887,7 +887,7 @@ The architecture intentionally uses Hedera’s native services because:
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────┐
-│                     Charter API                        │
+│                     Yareon API                        │
 │                                                            │
 │ ENS Resolver                                               │
 │ World Human-Backing Verifier                               │
@@ -926,7 +926,7 @@ Persistent identity, discovery, endpoint and public-account metadata
 World:
 Evidence that the agent is backed by a unique human
 
-Charter:
+Yareon:
 Organizational membership, delegation, policy and state-machine logic
 
 Hedera:
@@ -1052,7 +1052,7 @@ Amount:
 3,500 test units
 
 Memo:
-charter:program_ai_compute_2026:order_0001
+yareon:program_ai_compute_2026:order_0001
 ```
 
 The schedule remains pending until the required signatures are collected.
@@ -1120,7 +1120,7 @@ Action request
 Deterministic policy decision
 ```
 
-A successful World proof does not automatically authorize spending. It proves the agent is backed by a human. Charter then checks the organization-specific delegation.
+A successful World proof does not automatically authorize spending. It proves the agent is backed by a human. Yareon then checks the organization-specific delegation.
 
 ---
 
@@ -1191,14 +1191,14 @@ Rejected actions are as important as successful actions.
 
 ## 11.1 Identity model
 
-Charter uses ENS as the public identity and discovery layer for agents and participating entities.
+Yareon uses ENS as the public identity and discovery layer for agents and participating entities.
 
 The application maintains a distinction between:
 
 - **Human-readable public identity:** ENS name
 - **Execution identity:** Hedera account or service identity
 - **Human principal assurance:** World proof
-- **Organizational authority:** Charter delegation
+- **Organizational authority:** Yareon delegation
 - **Internal immutable identifiers:** organization, program, actor, and order IDs
 
 Example:
@@ -1231,7 +1231,7 @@ Validate required fields and organization reference
         ↓
 Resolve World human-backing reference
         ↓
-Load current Charter delegation
+Load current Yareon delegation
         ↓
 Evaluate requested action
 ```
@@ -1321,7 +1321,7 @@ type AgentIdentity = {
 };
 ```
 
-The ENS name is the readable public identifier. The Hedera account is the concrete execution identity. The World reference and active Charter delegation determine whether the agent may act.
+The ENS name is the readable public identifier. The Hedera account is the concrete execution identity. The World reference and active Yareon delegation determine whether the agent may act.
 
 ## 12.3 Program
 
@@ -1581,7 +1581,7 @@ ENS does not prove:
 - That the named organization currently authorizes it
 - That a procurement action is valid
 
-Those questions are handled by World verification and Charter policy.
+Those questions are handled by World verification and Yareon policy.
 
 ## 15.2 What World contributes
 
@@ -1594,7 +1594,7 @@ World does not prove:
 - That the requested purchase is compliant
 - That a supplier delivered the promised result
 
-Those questions remain in Charter’s organizational policy and verification workflow.
+Those questions remain in Yareon’s organizational policy and verification workflow.
 
 ## 15.3 What Hedera contributes
 
@@ -1981,7 +1981,7 @@ The API should return both domain state and source references:
 # 21. Repository Structure
 
 ```text
-charter/
+yareon/
 ├── app/
 │   ├── admin/
 │   ├── buyer/
@@ -2232,7 +2232,7 @@ program
 
 > Organizations face a trade-off. Centralized procurement gives control but is slow and vulnerable to favoritism. Decentralized budgets give teams autonomy but make spending difficult to govern and audit.
 
-> Charter lets organizations decentralize supplier choice while keeping policy, approvals, payment, and accountability centrally enforceable.
+> Yareon lets organizations decentralize supplier choice while keeping policy, approvals, payment, and accountability centrally enforceable.
 
 ## 24.2 Create program
 
@@ -2326,7 +2326,7 @@ Show:
 
 ## 24.8 Closing
 
-> Charter turns procurement into a verifiable workflow: persistent agent identity, human-backed authority, deterministic policy, competitive choice, independent delivery verification, approval-gated payment, and a tamper-evident audit trail.
+> Yareon turns procurement into a verifiable workflow: persistent agent identity, human-backed authority, deterministic policy, competitive choice, independent delivery verification, approval-gated payment, and a tamper-evident audit trail.
 
 ---
 
@@ -2531,13 +2531,13 @@ Emphasize:
 
 Use the following condensed context when a future conversation cannot load this entire document:
 
-> I am building Charter for ETHGlobal Lisbon 2026. Charter is a programmable procurement system that lets organizations decentralize supplier choice while retaining policy control, separation of duties, delivery verification, approval-gated payment, and auditability.
+> I am building Yareon for ETHGlobal Lisbon 2026. Yareon is a programmable procurement system that lets organizations decentralize supplier choice while retaining policy control, separation of duties, delivery verification, approval-gated payment, and auditability.
 >
 > The primary demo is university GPU procurement. A university creates a funded program, allocates a restricted limit to a robotics laboratory, approves several GPU vendors, and lets a procurement agent choose an eligible vendor. The payment is created as a Hedera Scheduled Transaction but executes only after an independent verifier confirms delivery and a finance signer approves it. Every important state transition is written to Hedera Consensus Service, and the application reconstructs state and the audit timeline through Mirror Node.
 >
 > The project selects three partners. Under Hedera, it targets “No Solidity Allowed — Build with Hedera SDKs” and “AI & Agentic Payments on Hedera.” Under World, it targets “AgentKit New Use Cases.” Under ENS, it targets “Best ENS Integration for AI Agents.”
 >
-> ENS provides persistent human-readable identity and discovery for the procurement agent and organization. World proves that the agent is backed by a real, unique human. Charter’s deterministic policy engine then validates organization membership, delegation, amount, category, vendor approval, expiration, and separation of duties. Hedera provides HCS, Scheduled Transactions, payment execution, and Mirror Node.
+> ENS provides persistent human-readable identity and discovery for the procurement agent and organization. World proves that the agent is backed by a real, unique human. Yareon’s deterministic policy engine then validates organization membership, delegation, amount, category, vendor approval, expiration, and separation of duties. Hedera provides HCS, Scheduled Transactions, payment execution, and Mirror Node.
 >
 > The trust flow is: resolve `buyer.robotics-lab.eth`; verify its World human backing; validate its organizational delegation; create the order; verify delivery independently; collect payment approvals; execute the Hedera testnet payment; and display the complete audit history.
 >
@@ -2576,7 +2576,7 @@ Use the following condensed context when a future conversation cannot load this 
 
 # 33. Final Project Definition
 
-Charter is not a cryptocurrency marketplace and not a replacement for every procurement system.
+Yareon is not a cryptocurrency marketplace and not a replacement for every procurement system.
 
 It is a reusable trust and execution layer for organizational purchasing.
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://charter.dev/schema/protocol-event-0.2.json",
-  "title": "Charter Protocol Event",
+  "$id": "https://yareon.com/schema/protocol-event-0.2.json",
+  "title": "Yareon Protocol Event",
   "type": "object",
   "required": [
     "schemaVersion",

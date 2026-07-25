@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       type: "RESOLVE_AGENT_IDENTITY",
       idempotencyKey: body.idempotencyKey,
       actor: {
-        actorId: "charter",
+        actorId: "yareon",
         role: "SYSTEM",
         actorType: "SYSTEM",
       },

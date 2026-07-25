@@ -15,7 +15,7 @@ export function requireLiveMutationAdmin(request: Request): Response | null {
   return Response.json(
     {
       error:
-        "Connect and authenticate a Hedera wallet to create or administer a live Charter program.",
+        "Connect and authenticate a Hedera wallet to create or administer a live Yareon program.",
     },
     { status: 401 },
   );

@@ -9,15 +9,15 @@ import {
 describe("ENS public identity adapter", () => {
   it("normalizes and validates the required agent and organization records", async () => {
     const records: Record<string, string> = {
-      "com.charter.agent-id": "agent_1",
-      "com.charter.role": "PROCUREMENT_AGENT",
-      "com.charter.organization": "lisbon-university.eth",
-      "com.charter.hedera-account": "0.0.4859221",
-      "com.charter.delegation": "sha256:delegation",
-      "com.charter.world-reference": "world:proof-of-human",
-      "com.charter.protocol-version": "0.2",
+      "com.yareon.agent-id": "agent_1",
+      "com.yareon.role": "PROCUREMENT_AGENT",
+      "com.yareon.organization": "lisbon-university.eth",
+      "com.yareon.hedera-account": "0.0.4859221",
+      "com.yareon.delegation": "sha256:delegation",
+      "com.yareon.world-reference": "world:proof-of-human",
+      "com.yareon.protocol-version": "0.2",
       url: "https://example.test/agents/1",
-      "com.charter.organization-id": "org_lisbon_university",
+      "com.yareon.organization-id": "org_lisbon_university",
     };
     const client = {
       getEnsText: vi.fn(async ({ key }: { key: string }) => records[key] ?? null),
@@ -57,7 +57,7 @@ describe("World human-backing adapter", () => {
     appId: "app_test",
     rpId: "rp_test",
     signingKey: "0x01",
-    action: "authorize-charter-agent",
+    action: "authorize-yareon-agent",
     environment: "staging" as const,
   };
 

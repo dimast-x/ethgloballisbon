@@ -3,14 +3,14 @@
 import dynamic from "next/dynamic";
 import { LandingPage } from "./landing-page";
 
-const CharterApp = dynamic(
-  () => import("./charter-app").then((module) => module.CharterApp),
+const YareonApp = dynamic(
+  () => import("./yareon-app").then((module) => module.YareonApp),
   {
     ssr: false,
     loading: () => <LandingPage showcaseLoading />,
   },
 );
 
-export function CharterEntry() {
-  return <CharterApp />;
+export function YareonEntry() {
+  return <YareonApp />;
 }

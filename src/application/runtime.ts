@@ -95,7 +95,7 @@ function runtime(): Runtime {
 
 export async function createUniversityRun(
   mode: ExecutionMode = "testnet",
-  creatorActorId = "charter",
+  creatorActorId = "yareon",
   setup?: LiveProgramSetup,
 ): Promise<ProgramSession> {
   if (mode === "testnet") {
@@ -250,21 +250,20 @@ export async function getTestnetReadiness(
   probeNetwork = false,
 ): Promise<TestnetReadiness> {
   const issues: string[] = [];
+  const yareonAuthSecret =
+    process.env.YAREON_AUTH_SECRET ?? process.env.CHARTER_AUTH_SECRET;
   const required = [
-    "CHARTER_AUTH_SECRET",
     "HEDERA_OPERATOR_ID",
     "HEDERA_OPERATOR_KEY",
     "HEDERA_TOPIC_ID",
     "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID",
   ] as const;
+  if (!yareonAuthSecret) issues.push("Missing YAREON_AUTH_SECRET.");
   for (const name of required) {
     if (!process.env[name]) issues.push(`Missing ${name}.`);
   }
-  if (
-    process.env.CHARTER_AUTH_SECRET &&
-    process.env.CHARTER_AUTH_SECRET.length < 32
-  ) {
-    issues.push("CHARTER_AUTH_SECRET must contain at least 32 characters.");
+  if (yareonAuthSecret && yareonAuthSecret.length < 32) {
+    issues.push("YAREON_AUTH_SECRET must contain at least 32 characters.");
   }
   if (
     process.env.HEDERA_NETWORK &&
@@ -346,11 +345,14 @@ export async function getIdentityReadiness(
     ready: issues.length === 0,
     issues,
     publicConfig: {
-      agentEnsName: process.env.CHARTER_AGENT_ENS_NAME,
-      organizationEnsName: process.env.CHARTER_ORGANIZATION_ENS_NAME,
+      agentEnsName:
+        process.env.YAREON_AGENT_ENS_NAME ?? process.env.CHARTER_AGENT_ENS_NAME,
+      organizationEnsName:
+        process.env.YAREON_ORGANIZATION_ENS_NAME ??
+        process.env.CHARTER_ORGANIZATION_ENS_NAME,
       worldAppId,
       worldAction:
-        process.env.WORLD_ACTION ?? "authorize-charter-agent",
+        process.env.WORLD_ACTION ?? "authorize-yareon-agent",
       worldEnvironment: environment,
       ensRpcConfigured: Boolean(process.env.ENS_RPC_URL),
       expectedDelegationHash: delegationIntegrityHash(
@@ -372,7 +374,7 @@ export async function createAgentWorldRequest(
     return {
       appId: "app_simulation",
       rpId: "rp_simulation",
-      action: "authorize-charter-agent",
+      action: "authorize-yareon-agent",
       environment: "staging" as const,
       signal,
       rpContext: {
@@ -410,7 +412,7 @@ export async function verifyAgentHumanBacking(input: {
       : await new WorldHumanBackingVerifier(worldConfigFromEnv()).verify({
           subjectReference: input.agentId,
           action:
-            process.env.WORLD_ACTION ?? "authorize-charter-agent",
+            process.env.WORLD_ACTION ?? "authorize-yareon-agent",
           environment:
             process.env.WORLD_ENVIRONMENT === "staging"
               ? "staging"
@@ -427,7 +429,7 @@ export async function verifyAgentHumanBacking(input: {
     type: "RECORD_HUMAN_BACKING",
     idempotencyKey: input.idempotencyKey,
     actor: {
-      actorId: "charter",
+      actorId: "yareon",
       role: "SYSTEM",
       actorType: "SYSTEM",
     },
@@ -540,7 +542,9 @@ function serviceFor(
     paymentScheduler: new HederaPaymentScheduler(config),
     identityResolver: new EnsPublicIdentityResolver({
       rpcUrl: process.env.ENS_RPC_URL,
-      expectedOrganizationName: process.env.CHARTER_ORGANIZATION_ENS_NAME,
+      expectedOrganizationName:
+        process.env.YAREON_ORGANIZATION_ENS_NAME ??
+        process.env.CHARTER_ORGANIZATION_ENS_NAME,
     }),
     requireResolvedAgentIdentity: false,
     settlement: { payerAccountId: config.treasuryAccountId },
@@ -571,6 +575,11 @@ function materializeFixture(
   setup?: LiveProgramSetup,
   hedera?: ProgramHederaConfig,
 ): DemoFixture {
+  const agentEnsName =
+    process.env.YAREON_AGENT_ENS_NAME ?? process.env.CHARTER_AGENT_ENS_NAME;
+  const organizationEnsName =
+    process.env.YAREON_ORGANIZATION_ENS_NAME ??
+    process.env.CHARTER_ORGANIZATION_ENS_NAME;
   const suffix = runId.slice(-12);
   const programId = `${source.program.id}_${suffix}`;
   const buyerId = `${source.buyerId}_${suffix}`;
@@ -618,15 +627,15 @@ function materializeFixture(
     agent: {
       ...source.agent,
       publicIdentity:
-        mode === "testnet" && process.env.CHARTER_AGENT_ENS_NAME
+        mode === "testnet" && agentEnsName
           ? {
               scheme: "ens",
-              name: process.env.CHARTER_AGENT_ENS_NAME,
+              name: agentEnsName,
             }
           : source.agent.publicIdentity,
       organizationName:
-        mode === "testnet" && process.env.CHARTER_ORGANIZATION_ENS_NAME
-          ? process.env.CHARTER_ORGANIZATION_ENS_NAME
+        mode === "testnet" && organizationEnsName
+          ? organizationEnsName
           : source.agent.organizationName,
       delegation,
     },
@@ -636,7 +645,7 @@ function materializeFixture(
 function initialEvents(
   fixture: DemoFixture,
   runId: string,
-  creatorActorId = "charter",
+  creatorActorId = "yareon",
 ): ProtocolEvent[] {
   const base = {
     runId,
@@ -747,7 +756,7 @@ function resolvedFixtureIdentity(fixture: DemoFixture): ResolvedAgentIdentity {
     role: fixture.agent.role,
     protocolVersion: "0.2",
     delegationHash: fixture.agent.delegation.integrityHash,
-    endpoint: "https://charter.example/agents/reference",
+    endpoint: "https://yareon.com/agents/reference",
   };
   return {
     ...snapshot,

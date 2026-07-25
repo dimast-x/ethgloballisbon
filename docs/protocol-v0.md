@@ -1,6 +1,6 @@
-# Charter Protocol v0
+# Yareon Protocol v0
 
-Charter defines a network-independent event protocol for policy-controlled
+Yareon defines a network-independent event protocol for policy-controlled
 organizational purchasing. A program delegates bounded buying authority while
 preserving vendor eligibility, evidence, independent approval, settlement, and
 auditability.

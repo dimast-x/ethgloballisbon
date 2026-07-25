@@ -36,8 +36,8 @@ async function connector(): Promise<DAppConnector> {
     const origin = window.location.origin;
     const instance = new DAppConnector(
       {
-        name: "Charter",
-        description: "Direct Hedera approval for Charter scheduled payments",
+        name: "Yareon",
+        description: "Direct Hedera approval for Yareon scheduled payments",
         url: origin,
         icons: [`${origin}/og.png`],
       },

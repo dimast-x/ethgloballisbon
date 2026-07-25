@@ -13,9 +13,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "Charter | Policy-controlled organizational spending";
+const title = "Yareon | Policy-controlled organizational spending";
 const description =
   "A reusable procurement protocol for bounded authority, verified delivery, approval-gated settlement, and independently reconstructable audit history.";
+const siteUrl = new URL("https://yareon.com");
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -23,19 +24,28 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = host.startsWith("localhost") ? "http" : "https";
   const image = `${protocol}://${host}/og.png`;
   return {
+    metadataBase: siteUrl,
     title,
     description,
+    alternates: {
+      canonical: "/",
+    },
     openGraph: {
       title,
       description,
       type: "website",
-      images: [{ url: image, width: 1732, height: 909, alt: "Charter protocol trust chain" }],
+      url: siteUrl,
+      siteName: "Yareon",
+      images: [{ url: image, width: 1731, height: 909, alt: "Yareon protocol trust chain" }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
       images: [image],
+    },
+    icons: {
+      icon: "/icon.svg",
     },
   };
 }

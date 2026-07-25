@@ -14,10 +14,10 @@ try {
 }
 
 const programId =
-  process.argv[2] ?? process.env.CHARTER_SHOWCASE_PROGRAM_ID;
+  process.argv[2] ?? process.env.YAREON_SHOWCASE_PROGRAM_ID;
 if (!programId) {
   throw new Error(
-    "Pass a program ID or configure CHARTER_SHOWCASE_PROGRAM_ID.",
+    "Pass a program ID or configure YAREON_SHOWCASE_PROGRAM_ID.",
   );
 }
 

@@ -20,10 +20,10 @@ export function LandingPage({
   return (
     <main className="shell op-app landing-center-shell">
       <section className="landing-center-content">
-        <div className="op-brand" aria-label="Charter">
-          <span className="op-brand-mark">CH</span>
+        <div className="op-brand" aria-label="Yareon">
+          <span className="op-brand-mark">YA</span>
           <span>
-            <strong>Charter</strong>
+            <strong>Yareon</strong>
             <small>Policy-controlled spending</small>
           </span>
         </div>
@@ -99,10 +99,10 @@ export function ProgramSetupPage({
   return (
     <main className="shell op-app landing-center-shell">
       <section className="program-setup-card">
-        <div className="op-brand" aria-label="Charter">
-          <span className="op-brand-mark">CH</span>
+        <div className="op-brand" aria-label="Yareon">
+          <span className="op-brand-mark">YA</span>
           <span>
-            <strong>Charter</strong>
+            <strong>Yareon</strong>
             <small>New live program</small>
           </span>
         </div>
@@ -110,7 +110,7 @@ export function ProgramSetupPage({
           <span>Approval circuit</span>
           <h1>Choose who controls release.</h1>
           <p>
-            Charter creates a dedicated 2-of-2 treasury for this program. The
+            Yareon creates a dedicated 2-of-2 treasury for this program. The
             verifier confirms delivery; finance authorizes payment; the vendor
             receives settlement.
           </p>

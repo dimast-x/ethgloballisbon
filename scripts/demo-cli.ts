@@ -247,7 +247,7 @@ function human(actorId: string, role: string) {
 }
 
 function system() {
-  return { actorId: "charter", role: "SYSTEM", actorType: "SYSTEM" as const };
+  return { actorId: "yareon", role: "SYSTEM", actorType: "SYSTEM" as const };
 }
 
 function printSession(

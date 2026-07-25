@@ -20,13 +20,13 @@ import type {
 } from "../protocol/types";
 
 const agentRecordKeys = {
-  agentId: "com.charter.agent-id",
-  role: "com.charter.role",
-  organization: "com.charter.organization",
-  account: "com.charter.hedera-account",
-  delegation: "com.charter.delegation",
-  worldReference: "com.charter.world-reference",
-  version: "com.charter.protocol-version",
+  agentId: "com.yareon.agent-id",
+  role: "com.yareon.role",
+  organization: "com.yareon.organization",
+  account: "com.yareon.hedera-account",
+  delegation: "com.yareon.delegation",
+  worldReference: "com.yareon.world-reference",
+  version: "com.yareon.protocol-version",
   endpoint: "url",
 } as const;
 
@@ -86,11 +86,11 @@ export class EnsPublicIdentityResolver implements PublicIdentityResolver {
     }
     const organizationId = await this.client.getEnsText({
       name: normalize(records.organization),
-      key: "com.charter.organization-id",
+      key: "com.yareon.organization-id",
     });
     if (!organizationId) {
       throw new Error(
-        "ENS record com.charter.organization-id is required on the organization name.",
+        "ENS record com.yareon.organization-id is required on the organization name.",
       );
     }
     const snapshot = {
@@ -265,7 +265,7 @@ export function worldConfigFromEnv(): WorldIdentityConfig {
     appId: process.env.WORLD_APP_ID ?? process.env.NEXT_PUBLIC_WORLD_APP_ID,
     rpId: process.env.WORLD_RP_ID,
     signingKey: process.env.WORLD_RP_SIGNING_KEY,
-    action: process.env.WORLD_ACTION ?? "authorize-charter-agent",
+    action: process.env.WORLD_ACTION ?? "authorize-yareon-agent",
     environment:
       process.env.WORLD_ENVIRONMENT === "staging"
         ? ("staging" as const)
