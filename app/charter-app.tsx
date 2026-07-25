@@ -49,6 +49,7 @@ import {
   shortHederaAccount,
   signHederaSchedule,
 } from "@/src/wallet/hedera-wallet-client";
+import { LandingPage } from "./landing-page";
 
 const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
 type Tab = (typeof tabs)[number];
@@ -155,6 +156,7 @@ export function CharterApp() {
     null,
   );
   const [publicShowcaseLoaded, setPublicShowcaseLoaded] = useState(false);
+  const [showPublicProgram, setShowPublicProgram] = useState(false);
 
   useEffect(() => {
     void refreshReadiness().then((next) => {
@@ -292,42 +294,32 @@ export function CharterApp() {
   }
 
   if (!session?.projection.program) {
-    if (publicShowcase?.available) {
+    if (publicShowcase?.available && showPublicProgram) {
       return <VerifiedPublicProgram data={publicShowcase} />;
     }
     const issues = [
       ...(readiness?.issues ?? []),
       ...(identityReadiness?.issues ?? []),
     ];
-    const waitingForPublicProof =
-      readiness && !readiness.authorized && !publicShowcaseLoaded;
-    const unavailableForPublic =
-      readiness && !readiness.authorized && publicShowcaseLoaded;
+    if (!readiness?.authorized) {
+      return (
+        <LandingPage
+          showcaseAvailable={Boolean(publicShowcase?.available)}
+          showcaseLoading={!publicShowcaseLoaded}
+          onShowcase={
+            publicShowcase?.available
+              ? () => setShowPublicProgram(true)
+              : undefined
+          }
+        />
+      );
+    }
     return (
       <main className="shell loading-shell">
         <div className="loading-card">
-          {waitingForPublicProof ? <RefreshCw className="spin" size={24} /> : <ShieldCheck size={24} />}
-          <strong>
-            {waitingForPublicProof
-              ? "Loading verified public program"
-              : unavailableForPublic
-                ? "No verified live program is published"
-                : issues.length
-                  ? "Live system is not ready"
-                  : "Preparing live Charter"}
-          </strong>
-          <span>
-            {waitingForPublicProof
-              ? "Reconstructing public state from Hedera Mirror Node…"
-              : unavailableForPublic
-                ? "Sign in to create a real Hedera testnet program. The account that creates it becomes its administrator."
-                : issues.join(" ") || notice}
-          </span>
-          {unavailableForPublic && (
-            <a className="signin-action" href="/signin-with-chatgpt?return_to=%2F">
-              Sign in and create a program <ArrowRight size={15} />
-            </a>
-          )}
+          {issues.length ? <ShieldCheck size={24} /> : <RefreshCw className="spin" size={24} />}
+          <strong>{issues.length ? "Live system is not ready" : "Creating your live program"}</strong>
+          <span>{issues.join(" ") || notice}</span>
         </div>
       </main>
     );

@@ -26,7 +26,7 @@ async function render() {
   );
 }
 
-test("server-renders the real Charter testnet shell and metadata", async () => {
+test("server-renders the Charter landing page and metadata", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -36,7 +36,8 @@ test("server-renders the real Charter testnet shell and metadata", async () => {
     html,
     /<title>Charter \| Policy-controlled organizational spending<\/title>/i,
   );
-  assert.match(html, /Preparing live Charter/);
+  assert.match(html, /Let people buy/);
+  assert.match(html, /Create a live program/);
   assert.doesNotMatch(html, /sandbox|guest workspace|Connect MetaMask/i);
   assert.match(html, /\/og\.png/);
   assert.doesNotMatch(
