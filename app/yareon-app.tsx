@@ -1144,7 +1144,10 @@ export function YareonApp() {
     const result = (await response.json()) as CommandResult & { error?: string };
     if (!response.ok || !result.projection) {
       setOperationState("failed");
-      throw new Error(result.error?.toString() ?? result.error ?? "World verification failed.");
+      const message =
+        result.error?.toString() ?? result.error ?? "World verification failed.";
+      setNotice(message);
+      throw new Error(message);
     }
     setSession({ ...activeSession, projection: result.projection });
     setOperationState("confirmed");
@@ -1584,9 +1587,14 @@ export function YareonApp() {
           preset={proofOfHuman({ signal: worldRequest.signal })}
           handleVerify={recordWorldVerification}
           onSuccess={() => setWorldOpen(false)}
-          onError={() => {
+          onError={(errorCode) => {
             setOperationState("failed");
-            setNotice("World verification did not complete.");
+            setWorldOpen(false);
+            setNotice((current) =>
+              current === "Verifying the World proof on the server..."
+                ? `World verification did not complete (${errorCode}).`
+                : current,
+            );
           }}
         />
       )}

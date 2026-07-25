@@ -216,12 +216,6 @@ export class WorldHumanBackingVerifier implements HumanBackingVerifier {
     ) {
       throw new Error("The World proof signal does not match the authorization.");
     }
-    if (
-      typeof responseItem.expires_at_min !== "number" ||
-      responseItem.expires_at_min * 1000 <= Date.now()
-    ) {
-      throw new Error("The World proof has expired.");
-    }
     const response = await this.fetchImpl(
       `https://developer.world.org/api/v4/verify/${this.config.rpId}`,
       {
@@ -230,13 +224,28 @@ export class WorldHumanBackingVerifier implements HumanBackingVerifier {
         body: JSON.stringify(proof),
       },
     );
-    if (!response.ok) {
-      throw new Error(`World verification failed with status ${response.status}.`);
-    }
-    const verification = (await response.json()) as {
+    const verification = (await response.json().catch(() => ({}))) as {
       success?: boolean;
-      results?: Array<{ identifier?: string; success?: boolean }>;
+      message?: string;
+      results?: Array<{
+        identifier?: string;
+        success?: boolean;
+        code?: string;
+        detail?: string;
+      }>;
     };
+    if (!response.ok) {
+      const rejection =
+        verification.results?.find((result) => result.success === false) ??
+        verification.results?.[0];
+      const detail =
+        rejection?.detail ?? rejection?.code ?? verification.message;
+      throw new Error(
+        detail
+          ? `World verification rejected the proof: ${detail}`
+          : `World verification failed with status ${response.status}.`,
+      );
+    }
     if (
       verification.success !== true ||
       !verification.results?.some(
@@ -253,9 +262,6 @@ export class WorldHumanBackingVerifier implements HumanBackingVerifier {
       ),
       subjectReference: request.subjectReference,
       verifiedAt: new Date().toISOString(),
-      expiresAt: responseItem.expires_at_min
-        ? new Date(responseItem.expires_at_min * 1000).toISOString()
-        : undefined,
     };
   }
 }

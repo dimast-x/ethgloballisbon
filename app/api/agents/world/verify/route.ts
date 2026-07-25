@@ -44,8 +44,11 @@ export async function POST(request: Request) {
       status: result.status === "FAILED" ? 409 : 200,
     });
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Verification failed.";
+    console.warn("World verification failed:", message);
     return Response.json(
-      { error: error instanceof Error ? error.message : "Verification failed." },
+      { error: message },
       { status: 409 },
     );
   }

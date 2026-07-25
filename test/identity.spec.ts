@@ -165,8 +165,15 @@ describe("World human-backing adapter", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects expired proofOfHuman responses", async () => {
-    const verifier = new WorldHumanBackingVerifier(config, vi.fn());
+  it("forwards expires_at_min to World without treating it as local proof expiry", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        Response.json({
+          success: true,
+          results: [{ identifier: "proof_of_human", success: true }],
+        }),
+    );
+    const verifier = new WorldHumanBackingVerifier(config, fetchMock);
     await expect(
       verifier.verify({
         subjectReference: "agent_1",
@@ -182,11 +189,12 @@ describe("World human-backing adapter", () => {
               identifier: "proof_of_human",
               nullifier: "0x1234",
               signal_hash: hashSignal("expected"),
-              expires_at_min: Math.floor(Date.now() / 1000) - 1,
+              expires_at_min: 0,
             },
           ],
         },
       }),
-    ).rejects.toThrow("expired");
+    ).resolves.toMatchObject({ scheme: "world-id" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
