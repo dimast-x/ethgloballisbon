@@ -37,6 +37,10 @@ export type ProtocolCommand =
       amount: Money;
     })
   | (CommandEnvelope & {
+      type: "UPFUND_PROGRAM";
+      amount: Money;
+    })
+  | (CommandEnvelope & {
       type: "ALLOCATE_BUYER";
       allocation: BuyerAllocation;
     })

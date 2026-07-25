@@ -13,7 +13,7 @@ to the Hedera wallet that created it.
 ## Real product flow
 
 1. Create a funded procurement program on Hedera testnet.
-2. Grant one or more buyer allocations and append funds to a specific buyer.
+2. Append funds to the program, then grant or upfund one or more buyer allocations.
 3. Register approved suppliers and offers.
 4. Enforce buyer, category, program, and delegated-agent limits.
 5. Record delivery evidence by SHA-256 reference.

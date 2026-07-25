@@ -12,6 +12,10 @@ maximum order value, evidence requirement, and approval roles. Categories and
 roles are extensible strings. Amounts use integer atomic units and never
 floating-point arithmetic.
 
+Program funding is append-only. `PROGRAM_UPFUNDED` increases the program budget
+by a positive amount in the program asset; it never replaces the prior budget.
+Buyer allocations can then be appended up to the new total budget.
+
 Supplier eligibility is mutable program state, not a constant embedded in the
 policy. `SUPPLIER_UPDATED` activates or changes a supplier and its offer;
 `SUPPLIER_REMOVED` suspends the supplier for future purchases while preserving

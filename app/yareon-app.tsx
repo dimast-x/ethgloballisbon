@@ -11,6 +11,7 @@ import {
   FileCheck2,
   Fingerprint,
   Landmark,
+  LayoutDashboard,
   LockKeyhole,
   MapPin,
   RefreshCw,
@@ -57,13 +58,79 @@ import {
   ProgramSettlementSettings,
 } from "./landing-page";
 
-const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
+const tabs = [
+  "Overview",
+  "Agent",
+  "Buyer",
+  "Vendor",
+  "Verifier",
+  "Finance",
+  "Audit",
+] as const;
 type Tab = (typeof tabs)[number];
 const activeLiveRunKey = "yareon_active_live_program";
+
+const tabDetails: Record<Tab, { title: string; description: string }> = {
+  Overview: {
+    title: "Program overview",
+    description:
+      "Funding, configuration, and the live ledger-backed sequence for this program.",
+  },
+  Agent: {
+    title: "Agent authority",
+    description:
+      "Verify human backing and exercise the agent’s bounded purchasing authority.",
+  },
+  Buyer: {
+    title: "Buyer controls",
+    description:
+      "Manage program funding, buyer allocations, and policy-controlled orders.",
+  },
+  Vendor: {
+    title: "Vendor delivery",
+    description:
+      "Accept the order and submit tamper-evident evidence of delivery.",
+  },
+  Verifier: {
+    title: "Delivery verification",
+    description:
+      "Review delivery evidence and add the independent verifier approval.",
+  },
+  Finance: {
+    title: "Finance approval",
+    description:
+      "Authorize treasury settlement after delivery has been independently verified.",
+  },
+  Audit: {
+    title: "Program audit",
+    description:
+      "Inspect the event history reconstructed from Hedera Mirror Node.",
+  },
+};
+
+function TabIcon({ tab }: { tab: Tab }) {
+  switch (tab) {
+    case "Overview":
+      return <LayoutDashboard />;
+    case "Agent":
+      return <Cpu />;
+    case "Buyer":
+      return <WalletCards />;
+    case "Vendor":
+      return <Truck />;
+    case "Verifier":
+      return <BadgeCheck />;
+    case "Finance":
+      return <Landmark />;
+    case "Audit":
+      return <FileCheck2 />;
+  }
+}
 
 const eventLabels: Record<string, string> = {
   PROGRAM_CREATED: "Program created",
   PROGRAM_SETTLEMENT_CONFIGURED: "Program payments activated",
+  PROGRAM_UPFUNDED: "Program upfunded",
   BUYER_ALLOCATED: "Buyer allocation granted",
   BUYER_ALLOCATION_UPFUNDED: "Buyer allocation upfunded",
   VENDOR_APPROVED: "Vendor approved",
@@ -138,7 +205,7 @@ type PublicShowcase =
 export function YareonApp() {
   const [session, setSession] = useState<ProgramSession | null>(null);
   const mode: ExecutionMode = "testnet";
-  const [activeTab, setActiveTab] = useState<Tab>("Agent");
+  const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [notice, setNotice] = useState(
     "Starting a fresh protocol run…",
   );
@@ -157,6 +224,7 @@ export function YareonApp() {
   const [retryCommand, setRetryCommand] = useState<ProtocolCommand | null>(null);
   const [chosenOfferId, setChosenOfferId] = useState<string | null>(null);
   const [allocationAmounts, setAllocationAmounts] = useState<Record<string, string>>({});
+  const [programUpfundAmount, setProgramUpfundAmount] = useState("");
   const [newBuyerId, setNewBuyerId] = useState("");
   const [newBuyerAmount, setNewBuyerAmount] = useState("");
   const [publicShowcase, setPublicShowcase] = useState<PublicShowcase | null>(
@@ -395,7 +463,7 @@ export function YareonApp() {
       setChosenOfferId(body.selectedOfferId);
       setWorldRequest(null);
       setWorldOpen(false);
-      setActiveTab("Agent");
+      setActiveTab("Overview");
   }
 
   async function configureSettlement() {
@@ -434,6 +502,10 @@ export function YareonApp() {
   function beginNewProgram() {
     window.localStorage.removeItem(activeLiveRunKey);
     setSession(null);
+    setProgramUpfundAmount("");
+    setAllocationAmounts({});
+    setNewBuyerId("");
+    setNewBuyerAmount("");
     setProgramSetup({
       verifierAccountId: "",
       financeAccountId: "",
@@ -762,6 +834,25 @@ export function YareonApp() {
     setAllocationAmounts((current) => ({ ...current, [buyerId]: "" }));
   }
 
+  async function upfundProgram() {
+    const value = programUpfundAmount.trim();
+    if (!value || Number(value) <= 0) {
+      setOperationState("failed");
+      setNotice("Enter a positive amount to append to this program.");
+      return;
+    }
+    await submitCommand(
+      {
+        type: "UPFUND_PROGRAM",
+        idempotencyKey: `${activeSession.runId}:upfund-program:${crypto.randomUUID()}`,
+        actor: actor("ADMIN", "program-admin"),
+        amount: fromDisplay(value, program.budget.asset, program.budget.decimals),
+      },
+      `Program funding increased by ${value} ${program.budget.asset}.`,
+    );
+    setProgramUpfundAmount("");
+  }
+
   async function addBuyerAllocation() {
     const buyerId = newBuyerId.trim();
     const value = newBuyerAmount.trim();
@@ -872,134 +963,34 @@ export function YareonApp() {
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand live-brand" aria-label="Yareon">
+    <main className="program-cabinet">
+      <aside className="op-program-sidebar">
+        <div className="cabinet-brand" aria-label="Yareon">
           <span className="brand-mark">CH</span>
-          <span>Yareon</span>
-          <small>Guided live run</small>
+          <span>
+            <strong>Yareon</strong>
+            <small>Program cabinet</small>
+          </span>
         </div>
-        <div className="network-state">
-          <span className="network-dot" />
-          Hedera Testnet · World production
-        </div>
-        <button
-          className="reset-button"
-          onClick={beginNewProgram}
-          disabled={operationState === "pending"}
-        >
-          <RefreshCw size={15} />
-          New program
-        </button>
-      </header>
 
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <ShieldCheck size={15} />
-            Policy-controlled organizational spending
+        <div className="op-program-identity">
+          <span className="cabinet-program-avatar">
+            {program.name.slice(0, 2).toUpperCase()}
+          </span>
+          <div>
+            <strong>{program.name}</strong>
+            <small>{program.hedera ? "Active program" : "Program draft"}</small>
           </div>
-          <h1>
-            Choice at the edge.
-            <br />
-            <span>Control at the core.</span>
-          </h1>
-          <p>
-            A reusable procurement protocol for bounded buying authority,
-            independent delivery verification, approval-gated settlement, and a
-            tamper-evident operational history.
-          </p>
         </div>
-        <div className="protocol-flow" aria-label="Protocol trust flow">
-          <FlowNode icon={<Fingerprint size={18} />} label="Authority" index="01" />
-          <FlowNode icon={<FileCheck2 size={18} />} label="Evidence" index="02" />
-          <FlowNode icon={<LockKeyhole size={18} />} label="Approvals" index="03" />
-          <FlowNode icon={<Landmark size={18} />} label="Settlement" index="04" />
-        </div>
-      </section>
 
-      <section className="program-strip">
-        <div className="program-title">
-          <span>Reference implementation</span>
-          <h2>{program.name}</h2>
-          <p>{program.description}</p>
-        </div>
-        <Metric label="Program budget" value={`${toDisplay(program.budget)} HBAR`} />
-        <Metric label="Buyer allocation" value={`${toDisplay(allocation.totalLimit)} HBAR`} />
-        <Metric
-          label="Available now"
-          value={`${toDisplay(available)} HBAR`}
-          accent
-        />
-        <div className="run-id">
-          <span>Run</span>
-          <code>{activeSession.runId}</code>
-        </div>
-      </section>
-
-      {!program.hedera && (
-        <ProgramSettlementSettings
-          programName={program.name}
-          values={programSetup}
-          open={showSettlementSettings}
-          saving={operationState === "pending"}
-          error={settlementError}
-          onOpenChange={(open) => {
-            setShowSettlementSettings(open);
-            if (!open) setSettlementError(null);
-          }}
-          onChange={(field, value) =>
-            setProgramSetup((current) => ({ ...current, [field]: value }))
-          }
-          onSave={() => void configureSettlement()}
-        />
-      )}
-
-      <div className="notice" role="status">
-        <span>{notice}</span>
-        <span className="mirror-status">
-          <TimerReset size={14} />
-          {operationState === "pending"
-            ? "Pending confirmation"
-            : operationState === "failed"
-              ? "Action needs attention"
-              : "Mirror projection current"}
-        </span>
-        {operationState === "failed" && retryCommand && (
-          <button
-            className="retry-button"
-            onClick={() => {
-              if (retryCommand.type === "APPROVE_DELIVERY") {
-                void approve("VERIFIER");
-              } else if (retryCommand.type === "APPROVE_FINANCE") {
-                void approve("FINANCE");
-              } else {
-                void submitCommand(
-                  retryCommand,
-                  "Retry confirmed successfully.",
-                );
-              }
-            }}
-          >
-            Retry
-          </button>
-        )}
-      </div>
-
-      <LiveRunGuide
-        projection={projection}
-        order={order}
-        onNavigate={setActiveTab}
-      />
-
-      <section className="workspace">
-        <nav className="tabs" aria-label="Protocol roles">
+        <nav aria-label="Program workspace">
           {tabs.map((tab) => (
             <button
               key={tab}
               className={activeTab === tab ? "active" : ""}
               onClick={() => setActiveTab(tab)}
             >
+              <TabIcon tab={tab} />
               {tab}
               {tab === "Audit" && (
                 <span className="tab-count">{projection.timeline.length}</span>
@@ -1008,7 +999,152 @@ export function YareonApp() {
           ))}
         </nav>
 
-        <div className="workspace-body">
+        <div className="op-sidebar-foot">
+          <ShieldCheck size={17} />
+          <span>
+            <strong>Hedera Testnet</strong>
+            <small>
+              Program state is reconstructed from the public consensus log.
+            </small>
+          </span>
+        </div>
+      </aside>
+
+      <div className="op-program-main">
+        <header className="op-program-topbar">
+          <div className="cabinet-statuses">
+            <span className={`cabinet-status ${program.hedera ? "active" : "draft"}`}>
+              {program.hedera ? "Active" : "Draft"}
+            </span>
+            <span className="cabinet-network">
+              <span className="network-dot" />
+              Hedera Testnet
+            </span>
+          </div>
+          <button
+            className="reset-button"
+            onClick={beginNewProgram}
+            disabled={operationState === "pending"}
+          >
+            <RefreshCw size={15} />
+            New program
+          </button>
+        </header>
+
+        <div className="op-program-content">
+          <div className="cabinet-page-heading">
+            <span>{program.name}</span>
+            <h1>{tabDetails[activeTab].title}</h1>
+            <p>{tabDetails[activeTab].description}</p>
+          </div>
+
+          <div className="notice cabinet-notice" role="status">
+            <span>{notice}</span>
+            <span className="mirror-status">
+              <TimerReset size={14} />
+              {operationState === "pending"
+                ? "Pending confirmation"
+                : operationState === "failed"
+                  ? "Action needs attention"
+                  : "Mirror projection current"}
+            </span>
+            {operationState === "failed" && retryCommand && (
+              <button
+                className="retry-button"
+                onClick={() => {
+                  if (retryCommand.type === "APPROVE_DELIVERY") {
+                    void approve("VERIFIER");
+                  } else if (retryCommand.type === "APPROVE_FINANCE") {
+                    void approve("FINANCE");
+                  } else {
+                    void submitCommand(
+                      retryCommand,
+                      "Retry confirmed successfully.",
+                    );
+                  }
+                }}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+
+          {activeTab === "Overview" && (
+            <>
+              <section className="cabinet-budget-rail" aria-label="Program budget">
+                <Metric
+                  label="Program budget"
+                  value={`${toDisplay(program.budget)} ${program.budget.asset}`}
+                />
+                <Metric
+                  label="Buyer allocation"
+                  value={`${toDisplay(allocation.totalLimit)} ${program.budget.asset}`}
+                />
+                <Metric
+                  label="Available now"
+                  value={`${toDisplay(available)} ${program.budget.asset}`}
+                  accent
+                />
+                <div className="cabinet-run-id">
+                  <span>Run</span>
+                  <code>{activeSession.runId}</code>
+                </div>
+              </section>
+
+              {!program.hedera && (
+                <ProgramSettlementSettings
+                  programName={program.name}
+                  values={programSetup}
+                  open={showSettlementSettings}
+                  saving={operationState === "pending"}
+                  error={settlementError}
+                  onOpenChange={(open) => {
+                    setShowSettlementSettings(open);
+                    if (!open) setSettlementError(null);
+                  }}
+                  onChange={(field, value) =>
+                    setProgramSetup((current) => ({ ...current, [field]: value }))
+                  }
+                  onSave={() => void configureSettlement()}
+                />
+              )}
+
+              <LiveRunGuide
+                projection={projection}
+                order={order}
+                onNavigate={setActiveTab}
+              />
+
+              <section className="settlement-rail">
+                <div>
+                  <span>Settlement state</span>
+                  <strong>{completed ? "Payment executed" : order?.status?.replaceAll("_", " ") ?? "No order"}</strong>
+                </div>
+                <div className="progress-track" aria-label={`${progress} of 6 settlement steps`}>
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <span key={index} className={index < progress ? "complete" : ""} />
+                  ))}
+                </div>
+                <div className="threshold">
+                  <LockKeyhole size={18} />
+                  <span>
+                    Treasury threshold
+                    <strong>{order?.approvals.length ?? 0} / 2 signatures</strong>
+                  </span>
+                </div>
+                {completed && (
+                  <div className="paid-badge">
+                    <Check size={17} />
+                    3.5 HBAR settled
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
+          {activeTab !== "Overview" && (
+            <section className="workspace cabinet-workspace">
+              <div className="workspace-body">
           {activeTab === "Agent" && (
             <AgentPanel
               session={activeSession}
@@ -1031,7 +1167,9 @@ export function YareonApp() {
               offers={offers}
               vendors={projection.vendors}
               allocations={projection.allocations}
+              programBudget={program.budget}
               asset={program.budget.asset}
+              programUpfundAmount={programUpfundAmount}
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
               newBuyerAmount={newBuyerAmount}
@@ -1041,6 +1179,17 @@ export function YareonApp() {
                 (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
               )}
               onSelect={setChosenOfferId}
+              onProgramUpfundAmount={setProgramUpfundAmount}
+              onUpfundProgram={() =>
+                void upfundProgram().catch((error) => {
+                  setOperationState("failed");
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "The program could not be upfunded.",
+                  );
+                })
+              }
               onAllocationAmount={(buyerId, value) =>
                 setAllocationAmounts((current) => ({
                   ...current,
@@ -1136,8 +1285,11 @@ export function YareonApp() {
               delegation={projection.agentDelegations[activeSession.agentId]}
             />
           )}
+              </div>
+            </section>
+          )}
         </div>
-      </section>
+      </div>
       {worldRequest && (
         <IDKitRequestWidget
           open={worldOpen}
@@ -1157,30 +1309,6 @@ export function YareonApp() {
         />
       )}
 
-      <section className="settlement-rail">
-        <div>
-          <span>Settlement state</span>
-          <strong>{completed ? "Payment executed" : order?.status?.replaceAll("_", " ") ?? "No order"}</strong>
-        </div>
-        <div className="progress-track" aria-label={`${progress} of 6 settlement steps`}>
-          {Array.from({ length: 6 }).map((_, index) => (
-            <span key={index} className={index < progress ? "complete" : ""} />
-          ))}
-        </div>
-        <div className="threshold">
-          <LockKeyhole size={18} />
-          <span>
-            Treasury threshold
-            <strong>{order?.approvals.length ?? 0} / 2 signatures</strong>
-          </span>
-        </div>
-        {completed && (
-          <div className="paid-badge">
-            <Check size={17} />
-            3.5 HBAR settled
-          </div>
-        )}
-      </section>
     </main>
   );
 }
@@ -1574,7 +1702,9 @@ function BuyerPanel({
   offers,
   vendors,
   allocations,
+  programBudget,
   asset,
+  programUpfundAmount,
   allocationAmounts,
   newBuyerId,
   newBuyerAmount,
@@ -1582,6 +1712,8 @@ function BuyerPanel({
   orderExists,
   rejected,
   onSelect,
+  onProgramUpfundAmount,
+  onUpfundProgram,
   onAllocationAmount,
   onNewBuyerId,
   onNewBuyerAmount,
@@ -1593,7 +1725,9 @@ function BuyerPanel({
   offers: Offer[];
   vendors: Record<string, import("@/src/protocol/types").Vendor>;
   allocations: Record<string, import("@/src/protocol/types").BuyerAllocation>;
+  programBudget: import("@/src/protocol/types").Money;
   asset: string;
+  programUpfundAmount: string;
   allocationAmounts: Record<string, string>;
   newBuyerId: string;
   newBuyerAmount: string;
@@ -1601,6 +1735,8 @@ function BuyerPanel({
   orderExists: boolean;
   rejected: boolean;
   onSelect: (offerId: string) => void;
+  onProgramUpfundAmount: (value: string) => void;
+  onUpfundProgram: () => void;
   onAllocationAmount: (buyerId: string, value: string) => void;
   onNewBuyerId: (value: string) => void;
   onNewBuyerAmount: (value: string) => void;
@@ -1694,7 +1830,26 @@ function BuyerPanel({
           <div><span>Approvals</span><strong>Verifier + Finance</strong></div>
         </div>
         <div className="allocation-manager">
-          <div className="section-label">Live buyer allocations</div>
+          <div className="program-funding-row">
+            <div>
+              <span className="section-label">Program funding</span>
+              <strong>{toDisplay(programBudget)} {programBudget.asset}</strong>
+              <small>Append funds before assigning more buyer authority.</small>
+            </div>
+            <label>
+              <span className="sr-only">Amount to append to this program</span>
+              <input
+                inputMode="decimal"
+                placeholder={`Add ${asset}`}
+                value={programUpfundAmount}
+                onChange={(event) => onProgramUpfundAmount(event.target.value)}
+              />
+            </label>
+            <button onClick={onUpfundProgram}>Upfund program</button>
+          </div>
+          <div className="section-label allocation-section-label">
+            Live buyer allocations
+          </div>
           {Object.values(allocations).map((item) => (
             <div className="allocation-manager-row" key={item.buyerId}>
               <div>

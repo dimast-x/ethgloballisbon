@@ -115,6 +115,72 @@ describe("mode-aware application service", () => {
     expect(overBudget.error?.code).toBe("PROGRAM_BUDGET_EXCEEDED");
   });
 
+  it("upfunds a program without replacing its existing budget", async () => {
+    const session = await createUniversityRun("simulation");
+    const originalBudget = session.projection.program!.budget;
+    const upfundAmount = { ...originalBudget, atomicAmount: "1000000000" };
+    const idempotencyKey = `${session.runId}:upfund-program`;
+
+    const upfunded = await runProgramCommand(session.programId, "simulation", {
+      type: "UPFUND_PROGRAM",
+      idempotencyKey,
+      actor: human("program-admin", "ADMIN"),
+      amount: upfundAmount,
+    });
+
+    expect(upfunded.status).toBe("CONFIRMED");
+    expect(upfunded.projection?.program?.budget.atomicAmount).toBe("3000000000");
+    expect(
+      upfunded.projection?.timeline.filter(
+        (event) => event.eventType === "PROGRAM_UPFUNDED",
+      ),
+    ).toHaveLength(1);
+
+    const duplicate = await runProgramCommand(session.programId, "simulation", {
+      type: "UPFUND_PROGRAM",
+      idempotencyKey,
+      actor: human("program-admin", "ADMIN"),
+      amount: upfundAmount,
+    });
+    expect(duplicate.projection?.program?.budget.atomicAmount).toBe("3000000000");
+    expect(
+      duplicate.projection?.timeline.filter(
+        (event) => event.eventType === "PROGRAM_UPFUNDED",
+      ),
+    ).toHaveLength(1);
+
+    const allocation = session.projection.allocations[session.buyerId];
+    const zero = { ...allocation.totalLimit, atomicAmount: "0" };
+    const expandedAllocation = await runProgramCommand(
+      session.programId,
+      "simulation",
+      {
+        type: "ALLOCATE_BUYER",
+        idempotencyKey: `${session.runId}:allocate-from-upfund`,
+        actor: human("program-admin", "ADMIN"),
+        allocation: {
+          id: "allocation_upfunded_program",
+          programId: session.programId,
+          buyerId: "buyer_new_lab",
+          totalLimit: { ...originalBudget, atomicAmount: "2000000000" },
+          committed: zero,
+          paid: zero,
+          allowedCategories: [...allocation.allowedCategories],
+        },
+      },
+    );
+    expect(expandedAllocation.status).toBe("CONFIRMED");
+
+    const invalid = await runProgramCommand(session.programId, "simulation", {
+      type: "UPFUND_PROGRAM",
+      idempotencyKey: `${session.runId}:invalid-program-upfund`,
+      actor: human("program-admin", "ADMIN"),
+      amount: { ...originalBudget, atomicAmount: "0" },
+    });
+    expect(invalid.status).toBe("FAILED");
+    expect(invalid.error?.code).toBe("INVALID_PROGRAM_UPFUND_AMOUNT");
+  });
+
   it("runs the complete lifecycle and deduplicates commands", async () => {
     let session = await createUniversityRun("simulation");
     const offer = session.projection.offers[session.selectedOfferId];

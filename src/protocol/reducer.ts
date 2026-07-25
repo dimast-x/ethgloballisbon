@@ -72,6 +72,16 @@ export function applyProtocolEvent(
     case "PROGRAM_CREATED":
       next.program = (event.data as { program: Program }).program;
       break;
+    case "PROGRAM_UPFUNDED": {
+      const { amount } = event.data as { amount: Program["budget"] };
+      if (next.program) {
+        next.program = {
+          ...next.program,
+          budget: add(next.program.budget, amount),
+        };
+      }
+      break;
+    }
     case "PROGRAM_SETTLEMENT_CONFIGURED": {
       const { hedera, vendorId, vendorSettlementAccountId } = event.data as {
         hedera: ProgramHederaConfig;

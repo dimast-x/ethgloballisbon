@@ -213,6 +213,18 @@ export class ProtocolApplicationService {
           ),
         ];
       }
+      case "UPFUND_PROGRAM":
+        validateProgramUpfund(program, command.amount);
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(command.idempotencyKey, "PROGRAM_UPFUNDED"),
+              eventType: "PROGRAM_UPFUNDED",
+              data: { amount: command.amount },
+            }),
+          ),
+        ];
       case "ALLOCATE_BUYER":
         validateNewBuyerAllocation(projection, program, command.allocation);
         return [
@@ -904,6 +916,18 @@ function validateNewBuyerAllocation(
     );
   }
   assertAllocationBudget(projection, program, allocation.totalLimit);
+}
+
+function validateProgramUpfund(
+  program: Program,
+  amount: import("../protocol/types").Money,
+): void {
+  if (!isPositiveProgramMoney(amount, program)) {
+    throw new CommandError(
+      "INVALID_PROGRAM_UPFUND_AMOUNT",
+      "The program upfund amount must be positive and use the program asset.",
+    );
+  }
 }
 
 function validateBuyerUpfund(
