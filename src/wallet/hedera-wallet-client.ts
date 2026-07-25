@@ -8,9 +8,11 @@ import {
 } from "@hashgraph/hedera-wallet-connect";
 import {
   AccountId,
+  Hbar,
   LedgerId,
   ScheduleSignTransaction,
   TopicMessageSubmitTransaction,
+  TransferTransaction,
 } from "@hiero-ledger/sdk";
 
 let connectorPromise: Promise<DAppConnector> | undefined;
@@ -138,6 +140,38 @@ export async function signHederaSchedule(input: {
   const transaction = new ScheduleSignTransaction().setScheduleId(
     input.scheduleId,
   ).setNodeAccountIds([signerNodeAccountId(signer)]);
+  await transaction.freezeWithSigner(signer);
+  const response = await transaction.executeWithSigner(signer);
+  await response.getReceiptWithSigner(signer);
+  return {
+    accountId: input.accountId,
+    transactionId: response.transactionId.toString(),
+  };
+}
+
+export async function depositHbarToProgram(input: {
+  accountId: string;
+  treasuryAccountId: string;
+  atomicAmount: string;
+  programId: string;
+}): Promise<{ accountId: string; transactionId: string }> {
+  if (!/^\d+$/.test(input.atomicAmount) || BigInt(input.atomicAmount) <= 0n) {
+    throw new Error("Enter a positive HBAR deposit amount.");
+  }
+  const instance = await connector();
+  const accountId = AccountId.fromString(input.accountId);
+  const signer = instance.getSigner(accountId);
+  const transaction = new TransferTransaction()
+    .addHbarTransfer(
+      accountId,
+      Hbar.fromTinybars(`-${input.atomicAmount}`),
+    )
+    .addHbarTransfer(
+      AccountId.fromString(input.treasuryAccountId),
+      Hbar.fromTinybars(input.atomicAmount),
+    )
+    .setTransactionMemo(`yareon:deposit:${input.programId}`)
+    .setNodeAccountIds([signerNodeAccountId(signer)]);
   await transaction.freezeWithSigner(signer);
   const response = await transaction.executeWithSigner(signer);
   await response.getReceiptWithSigner(signer);

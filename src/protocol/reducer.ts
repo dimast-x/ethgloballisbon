@@ -78,6 +78,9 @@ export function applyProtocolEvent(
         next.program = {
           ...next.program,
           budget: add(next.program.budget, amount),
+          status: next.program.hedera?.fundingMode === "USER_DEPOSIT"
+            ? "ACTIVE"
+            : next.program.status,
         };
       }
       break;
@@ -94,7 +97,9 @@ export function applyProtocolEvent(
           ...next.program,
           hedera,
           policy: policy ?? next.program.policy,
-          status: "ACTIVE",
+          status: hedera.fundingMode === "USER_DEPOSIT"
+            ? "DRAFT"
+            : "ACTIVE",
         };
       }
       // Backward compatibility for older events that stored one program-level

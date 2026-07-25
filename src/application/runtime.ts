@@ -3,7 +3,6 @@ import {
   AccountBalanceQuery,
   AccountId,
   AccountInfoQuery,
-  Hbar,
   KeyList,
   TopicInfoQuery,
 } from "@hashgraph/sdk";
@@ -43,6 +42,7 @@ import type {
   ProtocolCommand,
 } from "./commands";
 import { ProtocolApplicationService } from "./service";
+import { verifyHederaProgramDeposit } from "./program-funding";
 
 const runtimeKey = "__openProcureRuntimeV2";
 
@@ -354,6 +354,56 @@ export async function runProgramCommand(
   return pending;
 }
 
+export async function recordProgramDeposit(input: {
+  programId: string;
+  transactionId: string;
+  amount: import("../protocol/types").Money;
+  depositorAccountId: string;
+  actorId: string;
+}): Promise<CommandResult> {
+  const session = await getProgramSession(input.programId, "testnet");
+  const program = session?.projection.program;
+  if (!session || !program?.hedera) {
+    throw new Error("Configure the program treasury before depositing funds.");
+  }
+  if (program.hedera.fundingMode !== "USER_DEPOSIT") {
+    throw new Error("This program does not support wallet deposits.");
+  }
+
+  const existingDeposit = (await testnetEventStore().readAll()).find(
+    (event) =>
+      event.eventType === "PROGRAM_UPFUNDED" &&
+      (event.data as { depositTransactionId?: string }).depositTransactionId ===
+        input.transactionId,
+  );
+  if (existingDeposit && existingDeposit.programId !== input.programId) {
+    throw new Error(
+      "This Hedera deposit transaction was already credited to another program.",
+    );
+  }
+
+  await verifyHederaProgramDeposit({
+    transactionId: input.transactionId,
+    depositorAccountId: input.depositorAccountId,
+    treasuryAccountId: program.hedera.treasuryAccountId,
+    programId: input.programId,
+    amount: input.amount,
+  });
+
+  return runProgramCommand(input.programId, "testnet", {
+    type: "UPFUND_PROGRAM",
+    idempotencyKey: `${session.runId}:deposit:${input.transactionId}`,
+    actor: {
+      actorId: input.actorId,
+      role: "ADMIN",
+      actorType: "HUMAN",
+      hederaAccountId: input.depositorAccountId,
+    },
+    amount: input.amount,
+    depositTransactionId: input.transactionId,
+  });
+}
+
 export async function findOrder(
   programId: string,
   orderId: string,
@@ -634,28 +684,35 @@ async function provisionProgramHedera(
         "One or more supplier settlement accounts do not expose a usable key.",
       );
     }
-    if (!setup.verifierAccountId && !setup.financeAccountId) {
-      return {
-        treasuryAccountId: platform.operatorAccountId,
-      };
-    }
-    const [verifier, finance] = await Promise.all([
-      new AccountInfoQuery()
-        .setAccountId(setup.verifierAccountId)
-        .execute(client),
-      new AccountInfoQuery()
-        .setAccountId(setup.financeAccountId)
-        .execute(client),
-    ]);
-    if (!verifier.key || !finance.key) {
+    const approvalAccounts =
+      setup.verifierAccountId && setup.financeAccountId
+        ? await Promise.all([
+            new AccountInfoQuery()
+              .setAccountId(setup.verifierAccountId)
+              .execute(client),
+            new AccountInfoQuery()
+              .setAccountId(setup.financeAccountId)
+              .execute(client),
+          ])
+        : undefined;
+    const operatorAccount = approvalAccounts
+      ? undefined
+      : await new AccountInfoQuery()
+          .setAccountId(platform.operatorAccountId)
+          .execute(client);
+    if (
+      approvalAccounts?.some((account) => !account.key) ||
+      (!approvalAccounts && !operatorAccount?.key)
+    ) {
       throw new Error(
-        "One or more approval accounts do not expose a usable key.",
+        "One or more treasury control accounts do not expose a usable key.",
       );
     }
-    const treasuryKey = new KeyList([verifier.key, finance.key], 2);
+    const treasuryKey = approvalAccounts
+      ? new KeyList(approvalAccounts.map((account) => account.key!), 2)
+      : operatorAccount!.key!;
     const response = await new AccountCreateTransaction()
       .setKey(treasuryKey)
-      .setInitialBalance(new Hbar(5))
       .execute(client);
     const receipt = await response.getReceipt(client);
     if (!receipt.accountId) {
@@ -663,6 +720,7 @@ async function provisionProgramHedera(
     }
     return {
       treasuryAccountId: receipt.accountId.toString(),
+      fundingMode: "USER_DEPOSIT",
       verifierAccountId: setup.verifierAccountId,
       financeAccountId: setup.financeAccountId,
     };
@@ -770,7 +828,11 @@ function materializeFixture(
       id: programId,
       name: programName?.trim() || source.program.name,
       hedera,
-      status: mode === "testnet" && !hedera ? "DRAFT" : source.program.status,
+      budget:
+        mode === "testnet"
+          ? { ...source.program.budget, atomicAmount: "0" }
+          : source.program.budget,
+      status: mode === "testnet" ? "DRAFT" : source.program.status,
       policy:
         mode === "testnet" &&
         !(setup?.verifierAccountId && setup?.financeAccountId)
@@ -786,6 +848,10 @@ function materializeFixture(
       id: `${source.allocation.id}_${suffix}`,
       programId,
       buyerId,
+      totalLimit:
+        mode === "testnet"
+          ? { ...source.allocation.totalLimit, atomicAmount: "0" }
+          : source.allocation.totalLimit,
     },
     vendors: source.vendors.map((vendor) => ({
       ...vendor,

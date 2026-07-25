@@ -174,7 +174,7 @@ export function ProgramCreatePage({
               <Check size={14} />
               {creating
                 ? "Publishing the program to Hedera testnet and waiting for confirmation…"
-                : "No supplier or treasury details are needed now."}
+                : "The dedicated treasury starts empty; fund it from your wallet in the workspace."}
             </span>
             {error && (
               <small className="program-setup-error" role="alert">

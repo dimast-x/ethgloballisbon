@@ -52,6 +52,7 @@ import type {
 import type { ProtocolProjection } from "@/src/protocol/reducer";
 import {
   connectHederaWallet,
+  depositHbarToProgram,
   shortHederaAccount,
   signHederaSchedule,
   submitHederaAuthenticationChallenge,
@@ -152,7 +153,7 @@ function TabIcon({ tab }: { tab: Tab }) {
 const eventLabels: Record<string, string> = {
   PROGRAM_CREATED: "Program created",
   PROGRAM_SETTLEMENT_CONFIGURED: "Program payments activated",
-  PROGRAM_UPFUNDED: "Program upfunded",
+  PROGRAM_UPFUNDED: "Program deposit confirmed",
   BUYER_ALLOCATED: "Buyer allocation granted",
   BUYER_ALLOCATION_UPFUNDED: "Buyer allocation upfunded",
   VENDOR_APPROVED: "Vendor approved",
@@ -486,7 +487,7 @@ export function YareonApp() {
       window.localStorage.setItem(activeLiveRunKey, body.programId);
       void loadPrograms();
       setOperationState("confirmed");
-      setNotice("Program created and activated for supplier payments.");
+      setNotice("Program treasury created. Deposit HBAR to activate it.");
     } catch (error) {
       setOperationState("failed");
       setNotice(error instanceof Error ? error.message : "Run creation failed.");
@@ -958,19 +959,68 @@ export function YareonApp() {
     const value = programUpfundAmount.trim();
     if (!value || Number(value) <= 0) {
       setOperationState("failed");
-      setNotice("Enter a positive amount to append to this program.");
+      setNotice("Enter a positive amount to deposit into this program.");
       return;
     }
-    await submitCommand(
+    if (!program.hedera?.treasuryAccountId) {
+      throw new Error("Configure the program treasury before depositing funds.");
+    }
+    const amount = fromDisplay(
+      value,
+      program.budget.asset,
+      program.budget.decimals,
+    );
+    setOperationState("pending");
+    setRetryCommand(null);
+    setNotice("Review and confirm the program deposit in your Hedera wallet.");
+    const authenticationResponse = await fetch("/api/auth/session", {
+      cache: "no-store",
+    });
+    const authentication = (await authenticationResponse.json()) as {
+      accountId?: string;
+    };
+    if (!authenticationResponse.ok || !authentication.accountId) {
+      throw new Error("Reconnect the administrator wallet before depositing.");
+    }
+    const accountId = await connectHederaWallet(authentication.accountId);
+    const receipt = await depositHbarToProgram({
+      accountId,
+      treasuryAccountId: program.hedera.treasuryAccountId,
+      atomicAmount: amount.atomicAmount,
+      programId: program.id,
+    });
+    setNotice("Deposit submitted; waiting for Mirror Node confirmation…");
+    const response = await fetch(
+      `/api/programs/${encodeURIComponent(program.id)}/funding`,
       {
-        type: "UPFUND_PROGRAM",
-        idempotencyKey: `${activeSession.runId}:upfund-program:${crypto.randomUUID()}`,
-        actor: actor("ADMIN", "program-admin"),
-        amount: fromDisplay(value, program.budget.asset, program.budget.decimals),
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          transactionId: receipt.transactionId,
+          amount,
+        }),
       },
-      `Program funding increased by ${value} ${program.budget.asset}.`,
+    );
+    const result = (await response.json()) as CommandResult & {
+      error?: string | { message?: string };
+    };
+    if (!response.ok || result.status === "FAILED") {
+      const message =
+        typeof result.error === "string"
+          ? result.error
+          : result.error?.message;
+      throw new Error(message ?? "The program deposit could not be verified.");
+    }
+    setSession((current) =>
+      current && result.projection
+        ? { ...current, projection: result.projection }
+        : current,
     );
     setProgramUpfundAmount("");
+    setOperationState("confirmed");
+    setNotice(
+      `${value} ${program.budget.asset} deposited from your wallet and confirmed on Hedera.`,
+    );
   }
 
   async function addBuyerAllocation() {
@@ -1327,6 +1377,27 @@ export function YareonApp() {
                 </div>
               </section>
 
+              {program.hedera?.fundingMode === "USER_DEPOSIT" &&
+                program.status === "DRAFT" && (
+                  <section className="program-settings-callout">
+                    <div className="program-settings-callout-icon">
+                      <CircleDollarSign size={18} />
+                    </div>
+                    <div>
+                      <span>Deposit required</span>
+                      <strong>Fund this program from your wallet</strong>
+                      <p>
+                        The treasury starts at zero. Deposit HBAR from the
+                        administrator wallet before allocating buyer authority.
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setActiveTab("Buyers")}>
+                      Deposit HBAR
+                      <ArrowRight size={15} />
+                    </button>
+                  </section>
+                )}
+
               {!program.hedera && (
                 <ProgramSettlementSettings
                   programName={program.name}
@@ -1410,6 +1481,7 @@ export function YareonApp() {
               policy={program.policy}
               allocations={projection.allocations}
               programBudget={program.budget}
+              treasuryAccountId={program.hedera?.treasuryAccountId}
               asset={program.budget.asset}
               programUpfundAmount={programUpfundAmount}
               allocationAmounts={allocationAmounts}
@@ -1428,7 +1500,7 @@ export function YareonApp() {
                   setNotice(
                     error instanceof Error
                       ? error.message
-                      : "The program could not be upfunded.",
+                      : "The program deposit could not be completed.",
                   );
                 })
               }
@@ -1501,6 +1573,7 @@ export function YareonApp() {
               policy={program.policy}
               allocations={projection.allocations}
               programBudget={program.budget}
+              treasuryAccountId={program.hedera?.treasuryAccountId}
               asset={program.budget.asset}
               programUpfundAmount={programUpfundAmount}
               allocationAmounts={allocationAmounts}
@@ -2272,6 +2345,7 @@ function BuyerPanel({
   policy,
   allocations,
   programBudget,
+  treasuryAccountId,
   asset,
   programUpfundAmount,
   allocationAmounts,
@@ -2297,6 +2371,7 @@ function BuyerPanel({
   policy: import("@/src/protocol/types").ProgramPolicy;
   allocations: Record<string, import("@/src/protocol/types").BuyerAllocation>;
   programBudget: import("@/src/protocol/types").Money;
+  treasuryAccountId?: string;
   asset: string;
   programUpfundAmount: string;
   allocationAmounts: Record<string, string>;
@@ -2417,7 +2492,11 @@ function BuyerPanel({
             <div>
               <span className="section-label">Program funding</span>
               <strong>{toDisplay(programBudget)} {programBudget.asset}</strong>
-              <small>Append funds before assigning more buyer authority.</small>
+              <small>
+                {treasuryAccountId
+                  ? `Deposit to ${shortHederaAccount(treasuryAccountId)} before assigning buyer authority.`
+                  : "Configure a treasury before depositing funds."}
+              </small>
             </div>
             <label>
               <span className="sr-only">Amount to append to this program</span>
@@ -2428,7 +2507,7 @@ function BuyerPanel({
                 onChange={(event) => onProgramUpfundAmount(event.target.value)}
               />
             </label>
-            <button onClick={onUpfundProgram}>Upfund program</button>
+            <button onClick={onUpfundProgram}>Deposit from wallet</button>
           </div>
           <div className="section-label allocation-section-label">
             Live buyer allocations

@@ -30,6 +30,15 @@ export async function POST(
       { status: 400 },
     );
   }
+  if (body.command.type === "UPFUND_PROGRAM") {
+    return Response.json(
+      {
+        error:
+          "Live program funding requires a verified wallet deposit. Use the funding endpoint.",
+      },
+      { status: 400 },
+    );
+  }
   try {
     const mode = "testnet" as const;
     const denied = requireLiveMutationAdmin(request);

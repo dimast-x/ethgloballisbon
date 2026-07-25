@@ -39,6 +39,7 @@ export type ProtocolCommand =
   | (CommandEnvelope & {
       type: "UPFUND_PROGRAM";
       amount: Money;
+      depositTransactionId?: string;
     })
   | (CommandEnvelope & {
       type: "ALLOCATE_BUYER";

@@ -221,7 +221,10 @@ export class ProtocolApplicationService {
               ...base,
               eventId: eventId(command.idempotencyKey, "PROGRAM_UPFUNDED"),
               eventType: "PROGRAM_UPFUNDED",
-              data: { amount: command.amount },
+              data: {
+                amount: command.amount,
+                depositTransactionId: command.depositTransactionId,
+              },
             }),
           ),
         ];

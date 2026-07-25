@@ -18,6 +18,7 @@ export type ProgramPolicy = {
 
 export type ProgramHederaConfig = {
   treasuryAccountId: string;
+  fundingMode?: "USER_DEPOSIT";
   verifierAccountId?: string;
   financeAccountId?: string;
 };
