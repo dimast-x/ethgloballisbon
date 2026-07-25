@@ -88,6 +88,13 @@ export async function connectHederaWallet(
   return signer.getAccountId().toString();
 }
 
+export async function disconnectHederaWallet(): Promise<void> {
+  if (!connectorPromise) return;
+  const instance = await connectorPromise;
+  await instance.disconnectAll();
+  connectorPromise = undefined;
+}
+
 export async function signHederaMessage(input: {
   accountId: string;
   message: string;

@@ -70,6 +70,14 @@ export class HederaEventStore implements EventStore {
   }
 
   async read(programId: string): Promise<RecordedEvent[]> {
+    return this.readEvents(programId);
+  }
+
+  async readAll(): Promise<RecordedEvent[]> {
+    return this.readEvents();
+  }
+
+  private async readEvents(programId?: string): Promise<RecordedEvent[]> {
     let url: URL | undefined = new URL(
       `/api/v1/topics/${this.config.topicId}/messages`,
       this.mirrorNodeUrl,
@@ -164,7 +172,7 @@ export class HederaEventStore implements EventStore {
           // challenges. Only valid protocol envelopes belong in projections.
           continue;
         }
-        if (event.programId !== programId) continue;
+        if (programId && event.programId !== programId) continue;
         events.push({
           ...event,
           ledgerReference: {
@@ -173,7 +181,7 @@ export class HederaEventStore implements EventStore {
             consensusTimestamp: reference.consensus_timestamp,
           },
         });
-        if (event.eventType === "PROGRAM_CREATED") {
+        if (programId && event.eventType === "PROGRAM_CREATED") {
           reachedProgramStart = true;
         }
       }

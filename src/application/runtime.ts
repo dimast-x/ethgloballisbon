@@ -62,6 +62,15 @@ export type ProgramSession = RunMetadata & {
   projection: ProtocolProjection;
 };
 
+export type ProgramListItem = {
+  programId: string;
+  name: string;
+  description: string;
+  status: Program["status"];
+  createdAt: string;
+  budget: Program["budget"];
+};
+
 export type LiveProgramSetup = {
   verifierAccountId: string;
   financeAccountId: string;
@@ -262,6 +271,43 @@ export async function getProgramSession(
       Object.values(projection.agentIdentities)[0]?.executionAccountId ?? "",
   };
   return { ...metadata, mode, projection };
+}
+
+export async function listAdministratorPrograms(
+  creatorActorId: string,
+): Promise<ProgramListItem[]> {
+  const events = await testnetEventStore().readAll();
+  const created = events.filter(
+    (event) =>
+      event.eventType === "PROGRAM_CREATED" &&
+      event.actor.actorId === creatorActorId,
+  );
+  const ownedProgramIds = new Set(created.map((event) => event.programId));
+  const eventsByProgram = new Map<string, RecordedEvent[]>();
+  for (const event of events) {
+    if (!ownedProgramIds.has(event.programId)) continue;
+    const current = eventsByProgram.get(event.programId) ?? [];
+    current.push(event);
+    eventsByProgram.set(event.programId, current);
+  }
+
+  return created
+    .map((event) => {
+      const projection = reduceProtocolEvents(
+        eventsByProgram.get(event.programId) ?? [event],
+      );
+      const program =
+        projection.program ?? (event.data as { program: Program }).program;
+      return {
+        programId: event.programId,
+        name: program.name,
+        description: program.description,
+        status: program.status,
+        createdAt: event.occurredAt,
+        budget: program.budget,
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function runProgramCommand(

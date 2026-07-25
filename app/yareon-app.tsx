@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   CircleDollarSign,
@@ -51,7 +52,9 @@ import {
   shortHederaAccount,
   signHederaSchedule,
   submitHederaAuthenticationChallenge,
+  disconnectHederaWallet,
 } from "@/src/wallet/hedera-wallet-client";
+import type { ProgramListItem } from "@/src/application/runtime";
 import {
   LandingPage,
   ProgramCreatePage,
@@ -247,6 +250,8 @@ export function YareonApp() {
   const [programName, setProgramName] = useState("AI Research Compute Fund");
   const [showSettlementSettings, setShowSettlementSettings] = useState(false);
   const [settlementError, setSettlementError] = useState<string | null>(null);
+  const [programs, setPrograms] = useState<ProgramListItem[]>([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
 
   useEffect(() => {
     void refreshReadiness().then((next) => {
@@ -254,6 +259,7 @@ export function YareonApp() {
         setAdministratorAuthenticated(Boolean(next.hedera.authorized));
       }
       if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
+        void loadPrograms();
         const programId = window.localStorage.getItem(activeLiveRunKey);
         if (programId) {
           void resumeRun(programId);
@@ -280,6 +286,27 @@ export function YareonApp() {
       });
     } finally {
       setPublicShowcaseLoaded(true);
+    }
+  }
+
+  async function loadPrograms() {
+    setProgramsLoading(true);
+    try {
+      const response = await fetch("/api/programs", { cache: "no-store" });
+      const body = (await response.json()) as {
+        programs?: ProgramListItem[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Programs could not load.");
+      }
+      setPrograms(body.programs ?? []);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Programs could not load.",
+      );
+    } finally {
+      setProgramsLoading(false);
     }
   }
 
@@ -388,6 +415,7 @@ export function YareonApp() {
 
       const next = await refreshReadiness();
       if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
+        await loadPrograms();
         const programId = window.localStorage.getItem(activeLiveRunKey);
         if (programId) {
           await resumeRun(programId);
@@ -423,6 +451,7 @@ export function YareonApp() {
       if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
       hydrateSession(body);
       window.localStorage.setItem(activeLiveRunKey, body.programId);
+      void loadPrograms();
       setOperationState("confirmed");
       setNotice("Program created. Configure payment roles whenever you’re ready.");
     } catch (error) {
@@ -447,6 +476,7 @@ export function YareonApp() {
         return;
       }
       hydrateSession(body);
+      window.localStorage.setItem(activeLiveRunKey, body.programId);
       setOperationState("confirmed");
       setNotice("Active live run reconstructed from Hedera Mirror Node.");
     } catch (error) {
@@ -517,6 +547,43 @@ export function YareonApp() {
     setNotice("Name your new program to begin.");
   }
 
+  async function disconnectAdministrator() {
+    setOperationState("pending");
+    try {
+      const [walletResult, sessionResult] = await Promise.allSettled([
+        disconnectHederaWallet(),
+        fetch("/api/auth/session", { method: "DELETE" }),
+      ]);
+      if (
+        sessionResult.status === "rejected" ||
+        !sessionResult.value.ok
+      ) {
+        throw new Error("The authenticated session could not be disconnected.");
+      }
+      window.localStorage.removeItem(activeLiveRunKey);
+      setSession(null);
+      setPrograms([]);
+      setAdministratorAuthenticated(false);
+      setAdministratorSignInError(null);
+      setRoleWallets({});
+      setOperationState("idle");
+      setNotice("Wallet disconnected.");
+      setReadiness((current) =>
+        current ? { ...current, authorized: false } : current,
+      );
+      if (walletResult.status === "rejected") {
+        setAdministratorSignInError(
+          "Yareon signed out, but the wallet app may still show its WalletConnect session.",
+        );
+      }
+    } catch (error) {
+      setOperationState("failed");
+      setNotice(
+        error instanceof Error ? error.message : "Wallet disconnect failed.",
+      );
+    }
+  }
+
   if (!session?.projection.program) {
     if (publicShowcase?.available && showPublicProgram) {
       return <VerifiedPublicProgram data={publicShowcase} />;
@@ -547,8 +614,12 @@ export function YareonApp() {
           name={programName}
           creating={operationState === "pending"}
           error={operationState === "failed" ? notice : null}
+          programs={programs}
+          programsLoading={programsLoading}
           onNameChange={setProgramName}
           onCreate={() => void startRun("testnet", programName)}
+          onOpenProgram={(programId) => void resumeRun(programId)}
+          onDisconnect={() => void disconnectAdministrator()}
         />
       );
     }
@@ -965,6 +1036,10 @@ export function YareonApp() {
   return (
     <main className="program-cabinet">
       <aside className="op-program-sidebar">
+        <button className="op-back-link" onClick={beginNewProgram}>
+          <ArrowLeft size={16} />
+          All programs
+        </button>
         <div className="cabinet-brand" aria-label="Yareon">
           <span className="brand-mark">CH</span>
           <span>
@@ -1006,6 +1081,13 @@ export function YareonApp() {
             <small>
               Program state is reconstructed from the public consensus log.
             </small>
+            <button
+              className="cabinet-disconnect"
+              type="button"
+              onClick={() => void disconnectAdministrator()}
+            >
+              Disconnect wallet
+            </button>
           </span>
         </div>
       </aside>

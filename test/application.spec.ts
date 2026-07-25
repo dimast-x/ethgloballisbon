@@ -423,6 +423,36 @@ describe("Hedera Mirror event store", () => {
     expect(events[0].ledgerReference?.consensusTimestamp).toBe("1.000000001");
     expect(events[2].ledgerReference?.sequenceNumber).toBe(5);
   });
+
+  it("enumerates protocol events across programs for creator-scoped indexes", async () => {
+    const key = PrivateKey.generateECDSA();
+    const mirrorFetch = vi.fn(async () =>
+      Response.json({
+        messages: [
+          mirrorTextMessage("Yareon administrator authentication", 3),
+          mirrorMessage(event("program_second", "event_second"), 2),
+          mirrorMessage(event("program_first", "event_first"), 1),
+        ],
+        links: { next: null },
+      }),
+    );
+    const store = new HederaEventStore(
+      {
+        operatorAccountId: "0.0.1001",
+        operatorPrivateKey: key.toString(),
+        topicId: "0.0.123",
+      },
+      mirrorFetch,
+    );
+
+    const events = await store.readAll();
+
+    expect(events.map((item) => item.programId)).toEqual([
+      "program_first",
+      "program_second",
+    ]);
+    expect(mirrorFetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("wallet approval verification", () => {
