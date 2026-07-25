@@ -51,6 +51,9 @@ export async function POST(
       proof: body.walletApproval,
     });
     const result = await runProgramCommand(programId, mode, command);
+    if (result.status === "FAILED") {
+      console.warn("Program command failed:", result.error);
+    }
     return Response.json(result, {
       status: result.status === "FAILED" ? 409 : 200,
     });

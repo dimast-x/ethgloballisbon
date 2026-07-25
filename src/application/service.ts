@@ -1010,23 +1010,24 @@ function commandComplete(
   if (!("orderId" in command)) return true;
   const order = projection.orders[command.orderId];
   if (!order && command.type === "CREATE_ORDER") {
-    return projection.timeline.some(
+    const authorization = projection.timeline.find(
       (event) =>
         event.correlationId === command.idempotencyKey &&
         event.eventType === "AGENT_AUTHORIZATION_EVALUATED",
+    );
+    return (
+      authorization !== undefined &&
+      (
+        authorization.data as {
+          decision?: { allowed?: boolean };
+        }
+      ).decision?.allowed === false
     );
   }
   if (!order) return false;
   switch (command.type) {
     case "CREATE_ORDER":
-      return (
-        Boolean(order) ||
-        projection.timeline.some(
-          (event) =>
-            event.correlationId === command.idempotencyKey &&
-            event.eventType === "AGENT_AUTHORIZATION_EVALUATED",
-        )
-      );
+      return Boolean(order);
     case "ACCEPT_ORDER":
       return Boolean(order.scheduleId);
     case "SUBMIT_DELIVERY":

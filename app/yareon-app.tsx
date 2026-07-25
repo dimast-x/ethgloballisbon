@@ -1092,14 +1092,21 @@ export function YareonApp() {
       category: selectedOffer.category,
       amount,
     };
-    await submitCommand(
-      command,
-      kind === "VALID"
-        ? "Agent authorization passed. The 3.5 HBAR order was created."
-        : kind === "OVER_LIMIT"
-          ? "The 4.2 HBAR agent request was rejected by its 4 HBAR delegation."
-          : "The agent request was rejected because human backing is missing.",
-    );
+    try {
+      await submitCommand(
+        command,
+        kind === "VALID"
+          ? `Agent authorization passed. The ${toDisplay(selectedOffer.amount)} HBAR order was created.`
+          : kind === "OVER_LIMIT"
+            ? "The 4.2 HBAR agent request was rejected by its 4 HBAR delegation."
+            : "The agent request was rejected because human backing is missing.",
+      );
+    } catch (error) {
+      setOperationState("failed");
+      setNotice(
+        error instanceof Error ? error.message : "Agent order could not complete.",
+      );
+    }
   }
 
   async function beginWorldVerification() {
@@ -1372,6 +1379,7 @@ export function YareonApp() {
               decisions={projection.agentAuthorizationDecisions.filter(
                 (decision) => decision.agentId === activeSession.agentId,
               )}
+              offerAmount={selectedOffer.amount}
               orderExists={Boolean(order)}
               liveReady={Boolean(identityReadiness?.ready)}
               liveIssues={identityReadiness?.issues ?? []}
@@ -1850,6 +1858,7 @@ function AgentPanel({
   attestation,
   delegation,
   decisions,
+  offerAmount,
   orderExists,
   liveReady,
   liveIssues,
@@ -1862,6 +1871,7 @@ function AgentPanel({
   attestation?: import("@/src/protocol/types").HumanBackingAttestation;
   delegation?: import("@/src/protocol/types").AgentDelegation;
   decisions: import("@/src/protocol/types").AgentAuthorizationDecision[];
+  offerAmount: import("@/src/protocol/types").Money;
   orderExists: boolean;
   liveReady: boolean;
   liveIssues: string[];
@@ -1870,6 +1880,7 @@ function AgentPanel({
   onOverLimit: () => void;
   onValid: () => void;
 }) {
+  const offerAmountLabel = `${toDisplay(offerAmount)} ${offerAmount.asset}`;
   const missingHumanRejected = decisions.some(
     (decision) => decision.code === "HUMAN_BACKING_REQUIRED",
   );
@@ -1924,7 +1935,7 @@ function AgentPanel({
         <AuthorityStep
           number="1"
           title="Reject unverified authority"
-          description="Attempt the selected 3.5 HBAR order before World verification."
+          description={`Attempt the selected ${offerAmountLabel} order before World verification.`}
           state={missingHumanRejected ? "complete" : "ready"}
           actionLabel={
             missingHumanRejected ? "Rejection audited" : "Test without human backing"
@@ -1955,9 +1966,11 @@ function AgentPanel({
         <AuthorityStep
           number="4"
           title="Create the valid order"
-          description="Authorize the selected 3.5 HBAR offer through the same protocol service."
+          description={`Authorize the selected ${offerAmountLabel} offer through the same protocol service.`}
           state={orderExists ? "complete" : limitRejected ? "ready" : "locked"}
-          actionLabel={orderExists ? "Order created" : "Authorize 3.5 HBAR order"}
+          actionLabel={
+            orderExists ? "Order created" : `Authorize ${offerAmountLabel} order`
+          }
           onAction={onValid}
           disabled={!limitRejected || orderExists}
         />

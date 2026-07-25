@@ -397,6 +397,25 @@ describe("mode-aware application service", () => {
       category: offer.category,
       amount: offer.amount,
     };
+    await runProgramCommand(session.programId, "simulation", {
+      type: "REMOVE_SUPPLIER",
+      idempotencyKey: `${session.runId}:temporarily-remove-agent-vendor`,
+      actor: human("program-admin", "ADMIN"),
+      vendorId: offer.vendorId,
+    });
+    const interrupted = await runProgramCommand(
+      session.programId,
+      "simulation",
+      validCommand,
+    );
+    expect(interrupted.status).toBe("FAILED");
+    expect(interrupted.projection?.orders[session.orderId]).toBeUndefined();
+    await runProgramCommand(session.programId, "simulation", {
+      type: "APPROVE_VENDOR",
+      idempotencyKey: `${session.runId}:restore-agent-vendor`,
+      actor: human("program-admin", "ADMIN"),
+      vendor: { ...session.projection.vendors[offer.vendorId], status: "APPROVED" },
+    });
     const valid = await runProgramCommand(
       session.programId,
       "simulation",
