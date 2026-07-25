@@ -1,4 +1,5 @@
 import {
+  getProgramTreasuryBalance,
   getProgramSession,
   runProgramCommand,
 } from "@/src/application/runtime";
@@ -34,7 +35,8 @@ export async function POST(
     return Response.json(
       {
         error:
-          "Live program funding requires a verified wallet deposit. Use the funding endpoint.",
+          "Refresh Yareon and choose “Deposit HBAR” so the transfer can be confirmed in your wallet.",
+        code: "WALLET_DEPOSIT_REQUIRED",
       },
       { status: 400 },
     );
@@ -63,7 +65,12 @@ export async function POST(
     if (result.status === "FAILED") {
       console.warn("Program command failed:", result.error);
     }
-    return Response.json(result, {
+    return Response.json({
+      ...result,
+      treasuryBalance: result.projection?.program
+        ? await getProgramTreasuryBalance(result.projection.program)
+        : undefined,
+    }, {
       status: result.status === "FAILED" ? 409 : 200,
     });
   } catch (error) {

@@ -35,7 +35,7 @@ import {
 } from "@worldcoin/idkit";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { fromDisplay, subtract, toDisplay } from "@/src/protocol/money";
+import { fromDisplay, toDisplay } from "@/src/protocol/money";
 import type { EvidenceReference } from "@/src/protocol/types";
 import type { Offer, Order } from "@/src/protocol/types";
 import type {
@@ -675,7 +675,6 @@ export function YareonApp() {
   const activeSession = session;
   const projection = activeSession.projection;
   const program = projection.program!;
-  const allocation = projection.allocations[activeSession.buyerId];
   const order = projection.orders[activeSession.orderId];
   const offers = Object.values(projection.offers).filter(
     (offer) => projection.vendors[offer.vendorId]?.status === "APPROVED",
@@ -687,11 +686,6 @@ export function YareonApp() {
     projection.vendors[requestedOffer.vendorId]?.status === "APPROVED"
       ? requestedOffer
       : offers[0] ?? requestedOffer ?? Object.values(projection.offers)[0];
-  const available = subtract(
-    subtract(allocation.totalLimit, allocation.committed),
-    allocation.paid,
-  );
-
   const completed = order?.status === "PAYMENT_EXECUTED";
   const visibleTabs = tabs.filter(
     (tab) =>
@@ -829,7 +823,10 @@ export function YareonApp() {
         body: JSON.stringify({ mode, command, walletApproval }),
       },
     );
-    const result = (await response.json()) as CommandResult & { error?: string };
+    const result = (await response.json()) as CommandResult & {
+      treasuryBalance?: import("@/src/protocol/types").Money;
+      error?: string;
+    };
     if (!response.ok || result.status === "FAILED") {
       const retryable = result.error?.retryable;
       setOperationState("failed");
@@ -840,7 +837,12 @@ export function YareonApp() {
     }
     setSession((current) =>
       current && result.projection
-        ? { ...current, projection: result.projection }
+        ? {
+            ...current,
+            projection: result.projection,
+            treasuryBalance:
+              result.treasuryBalance ?? current.treasuryBalance,
+          }
         : current,
     );
     setRetryCommand(null);
@@ -1002,6 +1004,7 @@ export function YareonApp() {
       },
     );
     const result = (await response.json()) as CommandResult & {
+      treasuryBalance?: import("@/src/protocol/types").Money;
       error?: string | { message?: string };
     };
     if (!response.ok || result.status === "FAILED") {
@@ -1013,7 +1016,11 @@ export function YareonApp() {
     }
     setSession((current) =>
       current && result.projection
-        ? { ...current, projection: result.projection }
+        ? {
+            ...current,
+            projection: result.projection,
+            treasuryBalance: result.treasuryBalance,
+          }
         : current,
     );
     setProgramUpfundAmount("");
@@ -1357,18 +1364,15 @@ export function YareonApp() {
 
           {activeTab === "Overview" && (
             <>
-              <section className="cabinet-budget-rail" aria-label="Program budget">
+              <section
+                className="cabinet-budget-rail program-funds-rail"
+                aria-label="Unspent program funds"
+              >
                 <Metric
-                  label="Program budget"
-                  value={`${toDisplay(program.budget)} ${program.budget.asset}`}
-                />
-                <Metric
-                  label="Buyer allocation"
-                  value={`${toDisplay(allocation.totalLimit)} ${program.budget.asset}`}
-                />
-                <Metric
-                  label="Available now"
-                  value={`${toDisplay(available)} ${program.budget.asset}`}
+                  label="Unspent program funds"
+                  value={`${toDisplay(
+                    activeSession.treasuryBalance ?? program.budget,
+                  )} ${program.budget.asset}`}
                   accent
                 />
                 <div className="cabinet-run-id">
@@ -1480,7 +1484,7 @@ export function YareonApp() {
               vendors={projection.vendors}
               policy={program.policy}
               allocations={projection.allocations}
-              programBudget={program.budget}
+              programFunds={activeSession.treasuryBalance ?? program.budget}
               treasuryAccountId={program.hedera?.treasuryAccountId}
               asset={program.budget.asset}
               programUpfundAmount={programUpfundAmount}
@@ -1572,7 +1576,7 @@ export function YareonApp() {
               vendors={projection.vendors}
               policy={program.policy}
               allocations={projection.allocations}
-              programBudget={program.budget}
+              programFunds={activeSession.treasuryBalance ?? program.budget}
               treasuryAccountId={program.hedera?.treasuryAccountId}
               asset={program.budget.asset}
               programUpfundAmount={programUpfundAmount}
@@ -2344,7 +2348,7 @@ function BuyerPanel({
   vendors,
   policy,
   allocations,
-  programBudget,
+  programFunds,
   treasuryAccountId,
   asset,
   programUpfundAmount,
@@ -2370,7 +2374,7 @@ function BuyerPanel({
   vendors: Record<string, import("@/src/protocol/types").Vendor>;
   policy: import("@/src/protocol/types").ProgramPolicy;
   allocations: Record<string, import("@/src/protocol/types").BuyerAllocation>;
-  programBudget: import("@/src/protocol/types").Money;
+  programFunds: import("@/src/protocol/types").Money;
   treasuryAccountId?: string;
   asset: string;
   programUpfundAmount: string;
@@ -2490,11 +2494,11 @@ function BuyerPanel({
         {view === "buyers" && <div className="allocation-manager">
           <div className="program-funding-row">
             <div>
-              <span className="section-label">Program funding</span>
-              <strong>{toDisplay(programBudget)} {programBudget.asset}</strong>
+              <span className="section-label">Unspent program funds</span>
+              <strong>{toDisplay(programFunds)} {programFunds.asset}</strong>
               <small>
                 {treasuryAccountId
-                  ? `Deposit to ${shortHederaAccount(treasuryAccountId)} before assigning buyer authority.`
+                  ? `Wallet deposits go directly to treasury ${shortHederaAccount(treasuryAccountId)}.`
                   : "Configure a treasury before depositing funds."}
               </small>
             </div>
@@ -2502,12 +2506,17 @@ function BuyerPanel({
               <span className="sr-only">Amount to append to this program</span>
               <input
                 inputMode="decimal"
-                placeholder={`Add ${asset}`}
+                placeholder={`Deposit ${asset}`}
                 value={programUpfundAmount}
                 onChange={(event) => onProgramUpfundAmount(event.target.value)}
               />
             </label>
-            <button onClick={onUpfundProgram}>Deposit from wallet</button>
+            <button
+              onClick={onUpfundProgram}
+              disabled={!treasuryAccountId}
+            >
+              Deposit HBAR
+            </button>
           </div>
           <div className="section-label allocation-section-label">
             Live buyer allocations

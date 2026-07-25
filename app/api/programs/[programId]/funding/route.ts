@@ -6,6 +6,7 @@ import {
 import { authenticatedAdministratorAccountId } from "@/src/application/wallet-auth";
 import {
   getProgramSession,
+  getProgramTreasuryBalance,
   recordProgramDeposit,
 } from "@/src/application/runtime";
 import type { Money } from "@/src/protocol/types";
@@ -59,7 +60,12 @@ export async function POST(
       depositorAccountId,
       actorId,
     });
-    return Response.json(result, {
+    return Response.json({
+      ...result,
+      treasuryBalance: result.projection?.program
+        ? await getProgramTreasuryBalance(result.projection.program)
+        : undefined,
+    }, {
       status: result.status === "FAILED" ? 409 : 200,
     });
   } catch (error) {

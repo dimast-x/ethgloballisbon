@@ -1,5 +1,6 @@
 import {
   createUniversityRun,
+  getProgramTreasuryBalance,
   getProgramSession,
   type LiveProgramSetup,
 } from "@/src/application/runtime";
@@ -25,7 +26,12 @@ export async function GET(request: Request) {
     session.projection,
   );
   if (ownershipDenied) return ownershipDenied;
-  return Response.json(session);
+  return Response.json({
+    ...session,
+    treasuryBalance: await getProgramTreasuryBalance(
+      session.projection.program!,
+    ),
+  });
 }
 
 export async function POST(request: Request) {
@@ -44,7 +50,15 @@ export async function POST(request: Request) {
       body.setup,
       body.name,
     );
-    return Response.json(session, { status: 201 });
+    return Response.json(
+      {
+        ...session,
+        treasuryBalance: session.projection.program
+          ? await getProgramTreasuryBalance(session.projection.program)
+          : undefined,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Run creation failed" },

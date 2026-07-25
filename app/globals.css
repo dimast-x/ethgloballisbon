@@ -911,6 +911,10 @@ button.live-brand {
   color: white;
 }
 
+.cabinet-budget-rail.program-funds-rail {
+  grid-template-columns: minmax(0, 3fr) minmax(190px, 1fr);
+}
+
 .cabinet-budget-rail > div {
   min-height: 78px;
   padding: 15px 18px;
@@ -2853,6 +2857,10 @@ button:not(:disabled):active {
 
   .cabinet-budget-rail > div:nth-child(-n + 2) {
     border-bottom: 1px solid #365049;
+  }
+
+  .cabinet-budget-rail.program-funds-rail > div:nth-child(-n + 2) {
+    border-bottom: 0;
   }
 }
 

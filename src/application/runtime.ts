@@ -28,6 +28,7 @@ import { reduceProtocolEvents } from "../protocol/reducer";
 import type {
   Approval,
   LedgerReference,
+  Money,
   PaymentStatus,
   Program,
   ProgramHederaConfig,
@@ -60,6 +61,7 @@ type RunMetadata = {
 
 export type ProgramSession = RunMetadata & {
   projection: ProtocolProjection;
+  treasuryBalance?: Money;
 };
 
 export type ProgramListItem = {
@@ -402,6 +404,25 @@ export async function recordProgramDeposit(input: {
     amount: input.amount,
     depositTransactionId: input.transactionId,
   });
+}
+
+export async function getProgramTreasuryBalance(
+  program: Program,
+): Promise<Money | undefined> {
+  if (!program.hedera?.treasuryAccountId) return undefined;
+  const client = createHederaClient(hederaConfigFromEnv());
+  try {
+    const balance = await new AccountBalanceQuery()
+      .setAccountId(program.hedera.treasuryAccountId)
+      .execute(client);
+    return {
+      asset: "HBAR",
+      decimals: 8,
+      atomicAmount: balance.hbars.toTinybars().toString(),
+    };
+  } finally {
+    client.close();
+  }
 }
 
 export async function findOrder(

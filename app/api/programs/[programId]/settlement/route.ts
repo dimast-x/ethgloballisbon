@@ -1,5 +1,6 @@
 import {
   configureProgramSettlement,
+  getProgramTreasuryBalance,
   getProgramSession,
   type LiveProgramSetup,
 } from "@/src/application/runtime";
@@ -36,7 +37,12 @@ export async function POST(
       setup,
       actorId,
     );
-    return Response.json(configured);
+    return Response.json({
+      ...configured,
+      treasuryBalance: configured.projection.program
+        ? await getProgramTreasuryBalance(configured.projection.program)
+        : undefined,
+    });
   } catch (error) {
     return Response.json(
       {
