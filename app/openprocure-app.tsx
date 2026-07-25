@@ -859,65 +859,69 @@ function BuyerPanel({
 
         <div className="offer-grid">
           {visibleOffers.map((offer) => {
-          const selected = offer.id === selectedOfferId;
-          const meta = marketplaceMeta[offer.id];
-          const vendorName = vendors[offer.vendorId]?.name ?? offer.vendorId;
-          const expanded = expandedOfferId === offer.id;
-          return (
-            <article
-              className={`product-tile ${selected ? "selected" : ""}`}
-              key={offer.id}
-            >
-              <div className="product-image">
-                <img src={meta.image} alt={meta.alt} />
-                <span className="vendor-verified">
-                  <BadgeCheck size={13} />
-                  Verified vendor
-                </span>
-              </div>
-              <div className="product-content">
-                <div className="product-vendor">{vendorName}</div>
-                <h4>A100 research cluster</h4>
-                <p>{meta.configuration} with {meta.memory}</p>
-                <div className="product-facts">
-                  <span><Truck size={14} /> {offer.deliveryDays}-day delivery</span>
-                  <span><MapPin size={14} /> {meta.location}</span>
+            const selected = offer.id === selectedOfferId;
+            const metaKey = Object.keys(marketplaceMeta).find(
+              (key) => offer.id === key || offer.id.startsWith(`${key}_`),
+            );
+            const meta =
+              marketplaceMeta[metaKey ?? "offer_horizon"];
+            const vendorName = vendors[offer.vendorId]?.name ?? offer.vendorId;
+            const expanded = expandedOfferId === offer.id;
+            return (
+              <article
+                className={`product-tile ${selected ? "selected" : ""}`}
+                key={offer.id}
+              >
+                <div className="product-image">
+                  <img src={meta.image} alt={meta.alt} />
+                  <span className="vendor-verified">
+                    <BadgeCheck size={13} />
+                    Verified vendor
+                  </span>
                 </div>
-                <div className="product-price">
-                  <strong>{toDisplay(offer.amount)} HBAR</strong>
-                  <span>fixed order total</span>
-                </div>
-                {expanded && (
-                  <div className="product-specs">
-                    <span><Cpu size={14} /> Dedicated research allocation</span>
-                    <span><ShieldCheck size={14} /> Delivery evidence required</span>
-                    <span><TimerReset size={14} /> {meta.availability}</span>
+                <div className="product-content">
+                  <div className="product-vendor">{vendorName}</div>
+                  <h4>A100 research cluster</h4>
+                  <p>{meta.configuration} with {meta.memory}</p>
+                  <div className="product-facts">
+                    <span><Truck size={14} /> {offer.deliveryDays}-day delivery</span>
+                    <span><MapPin size={14} /> {meta.location}</span>
                   </div>
-                )}
-                <div className="product-actions">
-                  <button
-                    className="details-button"
-                    onClick={() =>
-                      setExpandedOfferId(expanded ? null : offer.id)
-                    }
-                    aria-expanded={expanded}
-                  >
-                    Details
-                    <ChevronDown className={expanded ? "rotate" : ""} size={15} />
-                  </button>
-                  <button
-                    className="select-offer"
-                    onClick={() => onSelect(offer.id)}
-                    disabled={orderExists}
-                  >
-                    {selected ? <Check size={15} /> : null}
-                    {selected ? "Selected" : "Select"}
-                  </button>
+                  <div className="product-price">
+                    <strong>{toDisplay(offer.amount)} HBAR</strong>
+                    <span>fixed order total</span>
+                  </div>
+                  {expanded && (
+                    <div className="product-specs">
+                      <span><Cpu size={14} /> Dedicated research allocation</span>
+                      <span><ShieldCheck size={14} /> Delivery evidence required</span>
+                      <span><TimerReset size={14} /> {meta.availability}</span>
+                    </div>
+                  )}
+                  <div className="product-actions">
+                    <button
+                      className="details-button"
+                      onClick={() =>
+                        setExpandedOfferId(expanded ? null : offer.id)
+                      }
+                      aria-expanded={expanded}
+                    >
+                      Details
+                      <ChevronDown className={expanded ? "rotate" : ""} size={15} />
+                    </button>
+                    <button
+                      className="select-offer"
+                      onClick={() => onSelect(offer.id)}
+                      disabled={orderExists}
+                    >
+                      {selected ? <Check size={15} /> : null}
+                      {selected ? "Selected" : "Select"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </article>
-          );
-        })}
+              </article>
+            );
+          })}
         </div>
 
         {visibleOffers.length === 0 && (
