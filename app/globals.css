@@ -759,6 +759,36 @@ button.live-brand {
   cursor: pointer;
 }
 
+.cabinet-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cabinet-new-program {
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--green);
+  border-radius: 3px;
+  background: var(--green);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cabinet-new-program:hover {
+  background: color-mix(in srgb, var(--green) 88%, black);
+}
+
+.cabinet-new-program:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .cabinet-disconnect:hover {
   color: #9d2d24;
   border-color: #c98f89;
@@ -2827,6 +2857,15 @@ button:not(:disabled):active {
 }
 
 @media (max-width: 720px) {
+  .program-cabinet .cabinet-statuses {
+    display: none;
+  }
+
+  .program-cabinet .cabinet-topbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
   .topbar,
   .hero,
   .program-strip,

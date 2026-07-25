@@ -15,6 +15,7 @@ import {
   ListChecks,
   LockKeyhole,
   MapPin,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -1245,14 +1246,25 @@ export function YareonApp() {
               Hedera Testnet
             </span>
           </div>
-          <button
-            className="cabinet-disconnect"
-            type="button"
-            onClick={() => void disconnectAdministrator()}
-            disabled={operationState === "pending"}
-          >
-            Disconnect wallet
-          </button>
+          <div className="cabinet-topbar-actions">
+            <button
+              className="cabinet-new-program"
+              type="button"
+              onClick={beginNewProgram}
+              disabled={operationState === "pending"}
+            >
+              <Plus size={14} />
+              New program
+            </button>
+            <button
+              className="cabinet-disconnect"
+              type="button"
+              onClick={() => void disconnectAdministrator()}
+              disabled={operationState === "pending"}
+            >
+              Disconnect wallet
+            </button>
+          </div>
         </header>
 
         <div className="op-program-content">
