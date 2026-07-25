@@ -1,6 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { withLocalChatGPTAuth } from "../src/application/local-chatgpt-auth";
 
 interface Env {
   ASSETS: Fetcher;
@@ -40,7 +41,12 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const authenticatedRequest = withLocalChatGPTAuth(request);
+    if (authenticatedRequest instanceof Response) {
+      return authenticatedRequest;
+    }
+
+    return handler.fetch(authenticatedRequest, env, ctx);
   },
 };
 

@@ -36,7 +36,7 @@ test("server-renders the Charter landing page and metadata", async () => {
     html,
     /<title>Charter \| Policy-controlled organizational spending<\/title>/i,
   );
-  assert.match(html, /Let people buy/);
+  assert.match(html, /Choice at the edge/);
   assert.match(html, /Create a live program/);
   assert.doesNotMatch(html, /sandbox|guest workspace|Connect MetaMask/i);
   assert.match(html, /\/og\.png/);

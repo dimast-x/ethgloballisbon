@@ -32,6 +32,10 @@ The real application requires the testnet and identity values from
 `.env.example`. Without them, the UI reports that live operation is unavailable;
 it does not substitute simulated data.
 
+On localhost, “Create a live program” uses a local development identity because
+the hosted ChatGPT sign-in dispatcher is not present. Deployed Sites builds
+continue to use the real ChatGPT sign-in flow and authenticated-user headers.
+
 Release checks:
 
 ```bash
