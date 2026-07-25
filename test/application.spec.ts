@@ -298,7 +298,10 @@ describe("mode-aware application service", () => {
 describe("Hedera Mirror event store", () => {
   it("paginates, filters, and orders protocol events", async () => {
     const key = PrivateKey.generateECDSA();
-    const first = event("program_target", "event_2");
+    const first = {
+      ...event("program_target", "event_2"),
+      eventType: "AGENT_DELEGATION_GRANTED" as const,
+    };
     const ignored = event("program_other", "event_ignored");
     const second = event("program_target", "event_1");
     const pages = [
@@ -318,7 +321,8 @@ describe("Hedera Mirror event store", () => {
         links: { next: null },
       },
     ];
-    const mirrorFetch = vi.fn(async () => {
+    const mirrorFetch = vi.fn(async (input: URL | RequestInfo) => {
+      void input;
       const page = pages.shift();
       return new Response(JSON.stringify(page), {
         status: 200,
@@ -337,6 +341,7 @@ describe("Hedera Mirror event store", () => {
     );
     const events = await store.read("program_target");
     expect(mirrorFetch).toHaveBeenCalledTimes(2);
+    expect(mirrorFetch.mock.calls[0]?.[0].toString()).toContain("order=desc");
     expect(events.map((item) => item.eventId)).toEqual(["event_1", "event_2"]);
     expect(events[0].ledgerReference?.consensusTimestamp).toBe("1.000000001");
   });

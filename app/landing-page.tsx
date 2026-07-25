@@ -140,7 +140,9 @@ export function ProgramCreatePage({
             </button>
             <span className="program-create-later">
               <Check size={14} />
-              No verifier, finance, vendor, or treasury details needed now.
+              {creating
+                ? "Publishing the program to Hedera testnet and waiting for confirmation…"
+                : "No verifier, finance, vendor, or treasury details needed now."}
             </span>
             {error && (
               <small className="program-setup-error" role="alert">

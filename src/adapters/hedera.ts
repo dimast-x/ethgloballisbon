@@ -75,9 +75,10 @@ export class HederaEventStore implements EventStore {
       this.mirrorNodeUrl,
     );
     url.searchParams.set("limit", "100");
-    url.searchParams.set("order", "asc");
+    url.searchParams.set("order", "desc");
     const events: RecordedEvent[] = [];
     let pages = 0;
+    let reachedProgramStart = false;
 
     while (url && pages < 100) {
       const response = await this.mirrorFetch(url);
@@ -112,9 +113,12 @@ export class HederaEventStore implements EventStore {
             consensusTimestamp: message.consensus_timestamp,
           },
         });
+        if (event.eventType === "PROGRAM_CREATED") {
+          reachedProgramStart = true;
+        }
       }
       pages += 1;
-      url = body.links?.next
+      url = !reachedProgramStart && body.links?.next
         ? new URL(body.links.next, this.mirrorNodeUrl)
         : undefined;
     }

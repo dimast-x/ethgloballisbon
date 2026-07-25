@@ -46,15 +46,26 @@ export class ProtocolApplicationService {
     return reduceProtocolEvents(await this.options.eventStore.read(programId));
   }
 
-  async appendInitialEvents(events: ProtocolEvent[]): Promise<ProtocolProjection> {
-    for (const event of events) {
-      await this.appendOnce(event);
-    }
-    await this.waitForEvent(
-      events[0]?.programId ?? "",
-      events.at(-1)?.eventId ?? "",
+  async appendInitialEvents(
+    events: ProtocolEvent[],
+    assumeNewProgram = false,
+  ): Promise<ProtocolProjection> {
+    const programId = events[0]?.programId ?? "";
+    const existingIds = new Set(
+      assumeNewProgram
+        ? []
+        : (await this.options.eventStore.read(programId)).map(
+            (event) => event.eventId,
+          ),
     );
-    return this.projection(events[0]?.programId ?? "");
+    const missing = events.filter((event) => !existingIds.has(event.eventId));
+    await Promise.all(
+      missing.map((event) => this.options.eventStore.append(event)),
+    );
+    return this.waitForEvents(
+      programId,
+      events.map((event) => event.eventId),
+    );
   }
 
   async execute(programId: string, command: ProtocolCommand): Promise<CommandResult> {
@@ -705,10 +716,21 @@ export class ProtocolApplicationService {
     programId: string,
     eventId: string,
   ): Promise<ProtocolProjection> {
+    return this.waitForEvents(programId, eventId ? [eventId] : []);
+  }
+
+  private async waitForEvents(
+    programId: string,
+    eventIds: string[],
+  ): Promise<ProtocolProjection> {
     const started = Date.now();
     while (Date.now() - started <= this.pollTimeoutMs) {
       const projection = await this.projection(programId);
-      if (!eventId || projection.processedEventIds.includes(eventId)) {
+      if (
+        eventIds.every((eventId) =>
+          projection.processedEventIds.includes(eventId),
+        )
+      ) {
         return projection;
       }
       await wait(this.pollIntervalMs);

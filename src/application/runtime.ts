@@ -131,7 +131,7 @@ export async function createUniversityRun(
   );
   const service = serviceFor(mode, fixture.program);
   const events = initialEvents(fixture, runId, creatorActorId);
-  const projection = await service.appendInitialEvents(events);
+  const projection = await service.appendInitialEvents(events, true);
   const selectedOfferId = fixture.selectedOfferId;
   const metadata: RunMetadata = {
     mode,
