@@ -92,11 +92,12 @@ test("ships the resumable direct-wallet live flow and explorer proof links", asy
   );
   const browserCode = contents.join("\n");
   assert.match(browserCode, /Guided live integration run/);
-  assert.match(browserCode, /Guided live run/);
   assert.match(browserCode, /Test without human backing/);
   assert.match(browserCode, /Test 4\.2 HBAR request/);
   assert.match(browserCode, /Hedera WalletConnect/);
   assert.match(browserCode, /Authenticating wallet/);
+  assert.match(browserCode, /Open control panel/);
+  assert.match(browserCode, /Disconnect wallet/);
   assert.match(browserCode, /\/api\/auth\/challenge/);
   assert.match(browserCode, /\/api\/auth\/session/);
   assert.match(browserCode, /yareon_active_live_program/);

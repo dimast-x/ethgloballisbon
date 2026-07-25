@@ -307,7 +307,7 @@ export function YareonApp() {
     }
   }
 
-  async function loadPrograms() {
+  async function loadPrograms(): Promise<ProgramListItem[]> {
     setProgramsLoading(true);
     try {
       const response = await fetch("/api/programs", { cache: "no-store" });
@@ -318,11 +318,14 @@ export function YareonApp() {
       if (!response.ok) {
         throw new Error(body.error ?? "Programs could not load.");
       }
-      setPrograms(body.programs ?? []);
+      const nextPrograms = body.programs ?? [];
+      setPrograms(nextPrograms);
+      return nextPrograms;
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "Programs could not load.",
       );
+      return [];
     } finally {
       setProgramsLoading(false);
     }
@@ -376,7 +379,9 @@ export function YareonApp() {
     }
   }
 
-  async function authenticateAdministrator() {
+  async function authenticateAdministrator(
+    destination: "create" | "control-panel",
+  ) {
     authenticationAttemptStarted.current = true;
     setAdministratorAuthenticated(false);
     setAdministratorSigningIn(true);
@@ -433,12 +438,18 @@ export function YareonApp() {
 
       const next = await refreshReadiness();
       if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
-        await loadPrograms();
-        const programId = window.localStorage.getItem(activeLiveRunKey);
-        if (programId) {
-          await resumeRun(programId);
+        const availablePrograms = await loadPrograms();
+        if (destination === "control-panel") {
+          const programId =
+            window.localStorage.getItem(activeLiveRunKey) ??
+            availablePrograms[0]?.programId;
+          if (programId) {
+            await resumeRun(programId);
+          } else {
+            beginNewProgram();
+          }
         } else {
-          setOperationState("idle");
+          beginNewProgram();
         }
       }
     } catch (error) {
@@ -622,7 +633,10 @@ export function YareonApp() {
           showcaseLoading={!publicShowcaseLoaded}
           creating={administratorSigningIn}
           createError={administratorSignInError}
-          onCreate={() => void authenticateAdministrator()}
+          onCreate={() => void authenticateAdministrator("create")}
+          onControlPanel={() =>
+            void authenticateAdministrator("control-panel")
+          }
           onShowcase={
             publicShowcase?.available
               ? () => setShowPublicProgram(true)
@@ -1204,13 +1218,6 @@ export function YareonApp() {
             <small>
               Program state is reconstructed from the public consensus log.
             </small>
-            <button
-              className="cabinet-disconnect"
-              type="button"
-              onClick={() => void disconnectAdministrator()}
-            >
-              Disconnect wallet
-            </button>
           </span>
         </div>
       </aside>
@@ -1227,12 +1234,12 @@ export function YareonApp() {
             </span>
           </div>
           <button
-            className="reset-button"
-            onClick={beginNewProgram}
+            className="cabinet-disconnect"
+            type="button"
+            onClick={() => void disconnectAdministrator()}
             disabled={operationState === "pending"}
           >
-            <RefreshCw size={15} />
-            New program
+            Disconnect wallet
           </button>
         </header>
 

@@ -15,6 +15,7 @@ export function LandingPage({
   creating = false,
   createError,
   onCreate,
+  onControlPanel,
   onShowcase,
 }: {
   showcaseAvailable?: boolean;
@@ -22,6 +23,7 @@ export function LandingPage({
   creating?: boolean;
   createError?: string | null;
   onCreate?: () => void;
+  onControlPanel?: () => void;
   onShowcase?: () => void;
 }) {
   return (
@@ -57,8 +59,23 @@ export function LandingPage({
             {creating ? "Authenticating wallet…" : "Create a live program"}
             {!creating && <ArrowRight size={15} />}
           </button>
+          {onControlPanel && (
+            <button
+              className="op-secondary"
+              type="button"
+              disabled={creating}
+              onClick={onControlPanel}
+            >
+              Open control panel
+            </button>
+          )}
           {showcaseAvailable && onShowcase && (
-            <button className="op-secondary" onClick={onShowcase}>
+            <button
+              className="op-secondary"
+              type="button"
+              disabled={creating}
+              onClick={onShowcase}
+            >
               View live proof
             </button>
           )}

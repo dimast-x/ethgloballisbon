@@ -746,19 +746,28 @@ button.live-brand {
 }
 
 .cabinet-disconnect {
-  margin-top: 7px;
-  padding: 0;
-  justify-self: start;
-  border: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-dark);
+  border-radius: 3px;
   background: transparent;
   color: var(--ink-soft);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   cursor: pointer;
 }
 
 .cabinet-disconnect:hover {
   color: #9d2d24;
+  border-color: #c98f89;
+  background: #fff7f5;
+}
+
+.cabinet-disconnect:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .program-cabinet .op-program-main {
