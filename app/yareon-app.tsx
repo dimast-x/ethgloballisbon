@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowLeft,
   ArrowRight,
   Check,
   CircleDollarSign,
@@ -530,7 +529,6 @@ export function YareonApp() {
   }
 
   function beginNewProgram() {
-    window.localStorage.removeItem(activeLiveRunKey);
     setSession(null);
     setProgramUpfundAmount("");
     setAllocationAmounts({});
@@ -545,6 +543,12 @@ export function YareonApp() {
     setSettlementError(null);
     setOperationState("idle");
     setNotice("Name your new program to begin.");
+  }
+
+  function returnToWorkspace() {
+    const programId =
+      window.localStorage.getItem(activeLiveRunKey) ?? programs[0]?.programId;
+    if (programId) void resumeRun(programId);
   }
 
   async function disconnectAdministrator() {
@@ -614,12 +618,9 @@ export function YareonApp() {
           name={programName}
           creating={operationState === "pending"}
           error={operationState === "failed" ? notice : null}
-          programs={programs}
-          programsLoading={programsLoading}
           onNameChange={setProgramName}
           onCreate={() => void startRun("testnet", programName)}
-          onOpenProgram={(programId) => void resumeRun(programId)}
-          onDisconnect={() => void disconnectAdministrator()}
+          onBack={programs.length ? returnToWorkspace : undefined}
         />
       );
     }
@@ -1036,10 +1037,6 @@ export function YareonApp() {
   return (
     <main className="program-cabinet">
       <aside className="op-program-sidebar">
-        <button className="op-back-link" onClick={beginNewProgram}>
-          <ArrowLeft size={16} />
-          All programs
-        </button>
         <div className="cabinet-brand" aria-label="Yareon">
           <span className="brand-mark">CH</span>
           <span>
@@ -1057,6 +1054,29 @@ export function YareonApp() {
             <small>{program.hedera ? "Active program" : "Program draft"}</small>
           </div>
         </div>
+
+        <section className="cabinet-programs" aria-label="Existing programs">
+          <div className="cabinet-programs-heading">
+            <strong>Existing programs</strong>
+            <span>{programsLoading ? "…" : programs.length}</span>
+          </div>
+          <div className="cabinet-program-list">
+            {programs.map((item) => (
+              <button
+                type="button"
+                className={item.programId === program.id ? "active" : ""}
+                key={item.programId}
+                onClick={() => void resumeRun(item.programId)}
+                disabled={operationState === "pending"}
+                title={item.name}
+              >
+                <span>{item.name.slice(0, 2).toUpperCase()}</span>
+                <strong>{item.name}</strong>
+                <small>{item.status === "ACTIVE" ? "Active" : "Draft"}</small>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <nav aria-label="Program workspace">
           {tabs.map((tab) => (

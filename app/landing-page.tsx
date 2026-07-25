@@ -1,16 +1,13 @@
 "use client";
 
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   ChevronDown,
-  FolderOpen,
-  LogOut,
   Settings2,
   ShieldCheck,
 } from "lucide-react";
-import { toDisplay } from "@/src/protocol/money";
-import type { ProgramListItem } from "@/src/application/runtime";
 
 export function LandingPage({
   showcaseAvailable = false,
@@ -89,22 +86,16 @@ export function ProgramCreatePage({
   name,
   creating,
   error,
-  programs,
-  programsLoading,
   onNameChange,
   onCreate,
-  onOpenProgram,
-  onDisconnect,
+  onBack,
 }: {
   name: string;
   creating: boolean;
   error?: string | null;
-  programs: ProgramListItem[];
-  programsLoading: boolean;
   onNameChange: (value: string) => void;
   onCreate: () => void;
-  onOpenProgram: (programId: string) => void;
-  onDisconnect: () => void;
+  onBack?: () => void;
 }) {
   return (
     <main className="shell op-app landing-center-shell">
@@ -114,17 +105,20 @@ export function ProgramCreatePage({
             <span className="op-brand-mark">YA</span>
             <span>
               <strong>Yareon</strong>
-              <small>Programs</small>
+              <small>New program</small>
             </span>
           </div>
-          <button
-            className="program-disconnect"
-            type="button"
-            onClick={onDisconnect}
-          >
-            <LogOut size={14} />
-            Disconnect wallet
-          </button>
+          {onBack && (
+            <button
+              className="program-back-to-workspace"
+              type="button"
+              onClick={onBack}
+              disabled={creating}
+            >
+              <ArrowLeft size={14} />
+              Back to workspace
+            </button>
+          )}
         </div>
         <div className="program-create-layout">
           <div className="program-setup-heading">
@@ -173,49 +167,6 @@ export function ProgramCreatePage({
             )}
           </div>
         </div>
-
-        <section className="program-directory" aria-labelledby="existing-programs">
-          <div className="program-directory-heading">
-            <span>
-              <FolderOpen size={15} />
-              <strong id="existing-programs">Existing programs</strong>
-            </span>
-            <small>
-              {programsLoading
-                ? "Reading Hedera…"
-                : `${programs.length} ${programs.length === 1 ? "program" : "programs"}`}
-            </small>
-          </div>
-          {!programsLoading && programs.length === 0 ? (
-            <p>Your wallet has not created any programs yet.</p>
-          ) : (
-            <div className="program-directory-list">
-              {programs.map((program) => (
-                <button
-                  type="button"
-                  key={program.programId}
-                  onClick={() => onOpenProgram(program.programId)}
-                  disabled={creating}
-                >
-                  <span className="program-directory-avatar">
-                    {program.name.slice(0, 2).toUpperCase()}
-                  </span>
-                  <span>
-                    <strong>{program.name}</strong>
-                    <small>
-                      {toDisplay(program.budget)} {program.budget.asset} ·{" "}
-                      {new Date(program.createdAt).toLocaleDateString()}
-                    </small>
-                  </span>
-                  <span className={`program-directory-status ${program.status.toLowerCase()}`}>
-                    {program.status === "ACTIVE" ? "Active" : "Draft"}
-                  </span>
-                  <ArrowRight size={15} />
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
       </section>
     </main>
   );
