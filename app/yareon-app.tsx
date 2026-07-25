@@ -29,7 +29,7 @@ import {
   type RpContext,
 } from "@worldcoin/idkit";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fromDisplay, subtract, toDisplay } from "@/src/protocol/money";
 import type { EvidenceReference } from "@/src/protocol/types";
 import type { Offer, Order } from "@/src/protocol/types";
@@ -165,6 +165,9 @@ export function YareonApp() {
   const [publicShowcaseLoaded, setPublicShowcaseLoaded] = useState(false);
   const [showPublicProgram, setShowPublicProgram] = useState(false);
   const [administratorSigningIn, setAdministratorSigningIn] = useState(false);
+  const [administratorAuthenticated, setAdministratorAuthenticated] =
+    useState(false);
+  const authenticationAttemptStarted = useRef(false);
   const [administratorSignInError, setAdministratorSignInError] = useState<
     string | null
   >(null);
@@ -179,6 +182,9 @@ export function YareonApp() {
 
   useEffect(() => {
     void refreshReadiness().then((next) => {
+      if (!authenticationAttemptStarted.current) {
+        setAdministratorAuthenticated(Boolean(next.hedera.authorized));
+      }
       if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
         const programId = window.localStorage.getItem(activeLiveRunKey);
         if (programId) {
@@ -258,6 +264,8 @@ export function YareonApp() {
   }
 
   async function authenticateAdministrator() {
+    authenticationAttemptStarted.current = true;
+    setAdministratorAuthenticated(false);
     setAdministratorSigningIn(true);
     setAdministratorSignInError(null);
     try {
@@ -308,6 +316,7 @@ export function YareonApp() {
           authenticated.error ?? "Wallet authentication failed.",
         );
       }
+      setAdministratorAuthenticated(true);
 
       const next = await refreshReadiness();
       if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
@@ -325,6 +334,7 @@ export function YareonApp() {
           : "Hedera wallet authentication failed.",
       );
     } finally {
+      authenticationAttemptStarted.current = false;
       setAdministratorSigningIn(false);
     }
   }
@@ -443,7 +453,7 @@ export function YareonApp() {
       ...(readiness?.issues ?? []),
       ...(identityReadiness?.issues ?? []),
     ];
-    if (!readiness?.authorized) {
+    if (!administratorAuthenticated || administratorSigningIn) {
       return (
         <LandingPage
           showcaseAvailable={Boolean(publicShowcase?.available)}
@@ -459,7 +469,7 @@ export function YareonApp() {
         />
       );
     }
-    if (readiness.ready && identityReadiness?.ready) {
+    if (readiness?.ready && identityReadiness?.ready) {
       return (
         <ProgramCreatePage
           name={programName}

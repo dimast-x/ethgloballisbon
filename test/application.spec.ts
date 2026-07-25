@@ -304,6 +304,10 @@ describe("Hedera Mirror event store", () => {
     const pages = [
       {
         messages: [
+          mirrorTextMessage(
+            "Charter administrator authentication\nversion=1",
+            1,
+          ),
           mirrorMessage(first, 2),
           mirrorMessage(ignored, 3),
         ],
@@ -418,6 +422,15 @@ function event(programId: string, eventId: string) {
 function mirrorMessage(value: unknown, sequence: number) {
   return {
     message: Buffer.from(JSON.stringify(value)).toString("base64"),
+    sequence_number: sequence,
+    consensus_timestamp: `${sequence}.00000000${sequence}`,
+    topic_id: "0.0.123",
+  };
+}
+
+function mirrorTextMessage(value: string, sequence: number) {
+  return {
+    message: Buffer.from(value).toString("base64"),
     sequence_number: sequence,
     consensus_timestamp: `${sequence}.00000000${sequence}`,
     topic_id: "0.0.123",

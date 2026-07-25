@@ -95,7 +95,14 @@ export class HederaEventStore implements EventStore {
       };
       for (const message of body.messages) {
         const decoded = Buffer.from(message.message, "base64").toString("utf8");
-        const event = parseProtocolEvent(JSON.parse(decoded));
+        let event: ProtocolEvent;
+        try {
+          event = parseProtocolEvent(JSON.parse(decoded));
+        } catch {
+          // The shared topic also contains plain-text wallet authentication
+          // challenges. Only valid protocol envelopes belong in projections.
+          continue;
+        }
         if (event.programId !== programId) continue;
         events.push({
           ...event,
