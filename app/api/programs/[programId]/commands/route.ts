@@ -9,7 +9,10 @@ import {
   authenticateApprovalCommand,
   type HederaWalletApprovalReceipt,
 } from "@/src/application/approval-auth";
-import { requireLiveMutationAdmin } from "@/src/application/admin-access";
+import {
+  requireLiveMutationAdmin,
+  requireProgramAdministrator,
+} from "@/src/application/admin-access";
 
 export async function POST(
   request: Request,
@@ -36,6 +39,11 @@ export async function POST(
     if (!session) {
       return Response.json({ error: "Program not found" }, { status: 404 });
     }
+    const ownershipDenied = requireProgramAdministrator(
+      request,
+      session.projection,
+    );
+    if (ownershipDenied) return ownershipDenied;
     const command = await authenticateApprovalCommand({
       command: body.command,
       projection: session.projection,

@@ -8,7 +8,7 @@ approvals, scheduled HBAR settlement, and public explorer evidence.
 There is no guest sandbox, simulated workspace, or D1-backed product mode.
 Public visitors can inspect a completed verified program when
 `CHARTER_SHOWCASE_PROGRAM_ID` is configured. Mutating a live program is limited
-to authenticated administrators listed in `CHARTER_ADMIN_EMAILS`.
+to its authenticated creator.
 
 ## Real product flow
 
@@ -60,7 +60,6 @@ WORLD_APP_ID
 WORLD_RP_ID
 WORLD_RP_SIGNING_KEY
 WORLD_ACTION
-CHARTER_ADMIN_EMAILS
 CHARTER_SHOWCASE_PROGRAM_ID
 ```
 

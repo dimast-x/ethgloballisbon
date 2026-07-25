@@ -320,9 +320,14 @@ export function CharterApp() {
             {waitingForPublicProof
               ? "Reconstructing public state from Hedera Mirror Node…"
               : unavailableForPublic
-                ? "Charter does not substitute simulated data. An administrator can publish a completed Hedera testnet program after its ledger evidence passes verification."
+                ? "Sign in to create a real Hedera testnet program. The account that creates it becomes its administrator."
                 : issues.join(" ") || notice}
           </span>
+          {unavailableForPublic && (
+            <a className="signin-action" href="/signin-with-chatgpt?return_to=%2F">
+              Sign in and create a program <ArrowRight size={15} />
+            </a>
+          )}
         </div>
       </main>
     );

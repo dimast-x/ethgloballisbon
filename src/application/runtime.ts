@@ -83,6 +83,7 @@ function runtime(): Runtime {
 
 export async function createUniversityRun(
   mode: ExecutionMode = "testnet",
+  creatorActorId = "charter",
 ): Promise<ProgramSession> {
   if (mode === "testnet") {
     const readiness = await getTestnetReadiness(true);
@@ -101,7 +102,7 @@ export async function createUniversityRun(
     simulatedIdentity,
   );
   const service = serviceFor(mode);
-  const events = initialEvents(fixture, runId);
+  const events = initialEvents(fixture, runId, creatorActorId);
   const projection = await service.appendInitialEvents(events);
   const selectedOfferId = fixture.selectedOfferId;
   const metadata: RunMetadata = {
@@ -546,20 +547,24 @@ function materializeFixture(
   };
 }
 
-function initialEvents(fixture: DemoFixture, runId: string): ProtocolEvent[] {
+function initialEvents(
+  fixture: DemoFixture,
+  runId: string,
+  creatorActorId = "charter",
+): ProtocolEvent[] {
   const base = {
     runId,
     organizationId: fixture.organizationId,
     programId: fixture.program.id,
-    actor: {
-      actorId: "charter",
-      role: "SYSTEM",
-      actorType: "SYSTEM" as const,
-    },
   };
   return [
     createEvent({
       ...base,
+      actor: {
+        actorId: creatorActorId,
+        role: "ADMIN",
+        actorType: "HUMAN",
+      },
       eventId: `${runId}:PROGRAM_CREATED`,
       eventType: "PROGRAM_CREATED",
       correlationId: `${runId}:program`,
@@ -567,6 +572,11 @@ function initialEvents(fixture: DemoFixture, runId: string): ProtocolEvent[] {
     }),
     createEvent({
       ...base,
+      actor: {
+        actorId: creatorActorId,
+        role: "ADMIN",
+        actorType: "HUMAN",
+      },
       eventId: `${runId}:BUYER_ALLOCATED`,
       eventType: "BUYER_ALLOCATED",
       correlationId: `${runId}:allocation`,
@@ -575,6 +585,11 @@ function initialEvents(fixture: DemoFixture, runId: string): ProtocolEvent[] {
     ...fixture.vendors.map((vendor) =>
       createEvent({
         ...base,
+        actor: {
+          actorId: creatorActorId,
+          role: "ADMIN",
+          actorType: "HUMAN",
+        },
         eventId: `${runId}:VENDOR_APPROVED:${vendor.id}`,
         eventType: "VENDOR_APPROVED" as const,
         correlationId: `${runId}:vendor:${vendor.id}`,
@@ -584,6 +599,11 @@ function initialEvents(fixture: DemoFixture, runId: string): ProtocolEvent[] {
     ...fixture.offers.map((offer) =>
       createEvent({
         ...base,
+        actor: {
+          actorId: creatorActorId,
+          role: "ADMIN",
+          actorType: "HUMAN",
+        },
         eventId: `${runId}:OFFER_REGISTERED:${offer.id}`,
         eventType: "OFFER_REGISTERED" as const,
         correlationId: `${runId}:offer:${offer.id}`,
@@ -592,6 +612,11 @@ function initialEvents(fixture: DemoFixture, runId: string): ProtocolEvent[] {
     ),
     createEvent({
       ...base,
+      actor: {
+        actorId: creatorActorId,
+        role: "ADMIN",
+        actorType: "HUMAN",
+      },
       eventId: `${runId}:AGENT_DELEGATION_GRANTED:${fixture.agent.agentId}`,
       eventType: "AGENT_DELEGATION_GRANTED",
       correlationId: `${runId}:agent-delegation:${fixture.agent.agentId}`,

@@ -2,7 +2,11 @@ import {
   createUniversityRun,
   getProgramSession,
 } from "@/src/application/runtime";
-import { requireLiveMutationAdmin } from "@/src/application/admin-access";
+import {
+  authenticatedAdministratorId,
+  requireLiveMutationAdmin,
+  requireProgramAdministrator,
+} from "@/src/application/admin-access";
 
 export async function GET(request: Request) {
   const denied = requireLiveMutationAdmin(request);
@@ -15,6 +19,11 @@ export async function GET(request: Request) {
   if (!session) {
     return Response.json({ error: "Program not found." }, { status: 404 });
   }
+  const ownershipDenied = requireProgramAdministrator(
+    request,
+    session.projection,
+  );
+  if (ownershipDenied) return ownershipDenied;
   return Response.json(session);
 }
 
@@ -22,7 +31,9 @@ export async function POST(request: Request) {
   try {
     const denied = requireLiveMutationAdmin(request);
     if (denied) return denied;
-    const session = await createUniversityRun("testnet");
+    const creatorId = authenticatedAdministratorId(request);
+    if (!creatorId) return requireLiveMutationAdmin(request)!;
+    const session = await createUniversityRun("testnet", creatorId);
     return Response.json(session, { status: 201 });
   } catch (error) {
     return Response.json(

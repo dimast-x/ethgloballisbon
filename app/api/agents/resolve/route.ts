@@ -1,5 +1,11 @@
-import { runProgramCommand } from "@/src/application/runtime";
-import { requireLiveMutationAdmin } from "@/src/application/admin-access";
+import {
+  getProgramSession,
+  runProgramCommand,
+} from "@/src/application/runtime";
+import {
+  requireLiveMutationAdmin,
+  requireProgramAdministrator,
+} from "@/src/application/admin-access";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as {
@@ -21,6 +27,15 @@ export async function POST(request: Request) {
   }
   const denied = requireLiveMutationAdmin(request);
   if (denied) return denied;
+  const session = await getProgramSession(body.programId, "testnet");
+  if (!session) {
+    return Response.json({ error: "Program not found." }, { status: 404 });
+  }
+  const ownershipDenied = requireProgramAdministrator(
+    request,
+    session.projection,
+  );
+  if (ownershipDenied) return ownershipDenied;
   const result = await runProgramCommand(
     body.programId,
     "testnet",

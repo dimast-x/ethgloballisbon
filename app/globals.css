@@ -712,6 +712,20 @@ button.live-brand {
   margin: 14px auto 0;
 }
 
+.signin-action {
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 2px;
+  background: var(--green);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .marketplace {
   min-width: 0;
 }
