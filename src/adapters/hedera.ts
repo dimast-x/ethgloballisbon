@@ -1,10 +1,10 @@
 import {
+  AccountInfoQuery,
   Client,
   Hbar,
   PrivateKey,
   ScheduleCreateTransaction,
   ScheduleInfoQuery,
-  ScheduleSignTransaction,
   TopicMessageSubmitTransaction,
   TransferTransaction,
 } from "@hashgraph/sdk";
@@ -25,8 +25,8 @@ export type HederaConfig = {
   treasuryAccountId: string;
   vendorAccountId: string;
   mirrorNodeUrl?: string;
-  verifierRelayPrivateKey?: string;
-  financeRelayPrivateKey?: string;
+  verifierAccountId?: string;
+  financeAccountId?: string;
 };
 
 export function createHederaClient(config: HederaConfig): Client {
@@ -118,20 +118,57 @@ export class HederaEventStore implements EventStore {
 
 export class HederaPaymentScheduler implements PaymentScheduler {
   private client: Client;
-  private relayKeys: Record<string, string | undefined>;
+  private roleAccounts: Record<string, string | undefined>;
   private createdByMemo = new Map<string, ScheduledPayment>();
   private mirrorNodeUrl: string;
+  private approvalQueries: {
+    accountKey(accountId: string): Promise<string>;
+    scheduleSignerKeys(scheduleId: string): Promise<string[]>;
+    walletTransaction(transactionId: string): Promise<{
+      payerAccountId: string;
+      scheduleId: string;
+      name: string;
+      result: string;
+    }>;
+  };
 
   constructor(
     private config: HederaConfig,
     private mirrorFetch: typeof fetch = fetch,
+    approvalQueries?: {
+      accountKey(accountId: string): Promise<string>;
+      scheduleSignerKeys(scheduleId: string): Promise<string[]>;
+      walletTransaction(transactionId: string): Promise<{
+        payerAccountId: string;
+        scheduleId: string;
+        name: string;
+        result: string;
+      }>;
+    },
   ) {
     this.client = createHederaClient(config);
     this.mirrorNodeUrl =
       config.mirrorNodeUrl ?? "https://testnet.mirrornode.hedera.com";
-    this.relayKeys = {
-      DELIVERY_VERIFIER: config.verifierRelayPrivateKey,
-      FINANCE: config.financeRelayPrivateKey,
+    this.roleAccounts = {
+      DELIVERY_VERIFIER: config.verifierAccountId,
+      FINANCE: config.financeAccountId,
+    };
+    this.approvalQueries = approvalQueries ?? {
+      accountKey: async (accountId) => {
+        const info = await new AccountInfoQuery()
+          .setAccountId(accountId)
+          .execute(this.client);
+        if (!info.key) throw new Error(`Hedera account ${accountId} has no key.`);
+        return info.key.toString();
+      },
+      scheduleSignerKeys: async (scheduleId) => {
+        const info = await new ScheduleInfoQuery()
+          .setScheduleId(scheduleId)
+          .execute(this.client);
+        return info.signers?.toArray().map((key) => key.toString()) ?? [];
+      },
+      walletTransaction: async (transactionId) =>
+        this.findWalletApprovalTransaction(transactionId),
     };
   }
 
@@ -172,28 +209,84 @@ export class HederaPaymentScheduler implements PaymentScheduler {
     return payment;
   }
 
-  async approve(scheduleId: string, approval: Approval): Promise<void> {
-    const relayKey = this.relayKeys[approval.role];
-    if (!relayKey) throw new Error(`No relay key configured for ${approval.role}`);
-    const privateKey = PrivateKey.fromString(relayKey);
-    try {
-      const transaction = await new ScheduleSignTransaction()
-        .setScheduleId(scheduleId)
-        .freezeWith(this.client)
-        .sign(privateKey);
-      const response = await transaction.execute(this.client);
-      await response.getReceipt(this.client);
-    } catch (error) {
-      const info = await new ScheduleInfoQuery()
-        .setScheduleId(scheduleId)
-        .execute(this.client);
-      const alreadySigned =
-        info.signers
-          ?.toArray()
-          .some((key) => key.toString() === privateKey.publicKey.toString()) ??
-        false;
-      if (!alreadySigned) throw error;
+  async confirmApproval(scheduleId: string, approval: Approval): Promise<void> {
+    const expectedAccountId = this.roleAccounts[approval.role];
+    if (!expectedAccountId) {
+      throw new Error(`No Hedera account is configured for ${approval.role}.`);
     }
+    if (approval.hederaAccountId !== expectedAccountId) {
+      throw new Error(
+        `${approval.role} approval must come from Hedera account ${expectedAccountId}.`,
+      );
+    }
+    if (
+      !approval.transactionId ||
+      !/^\d+\.\d+\.\d+@\d+\.\d+$/.test(approval.transactionId)
+    ) {
+      throw new Error("A valid Hedera wallet transaction ID is required.");
+    }
+    const [accountKey, signerKeys, walletTransaction] = await Promise.all([
+      this.approvalQueries.accountKey(expectedAccountId),
+      this.approvalQueries.scheduleSignerKeys(scheduleId),
+      this.approvalQueries.walletTransaction(approval.transactionId),
+    ]);
+    if (
+      walletTransaction.result !== "SUCCESS" ||
+      walletTransaction.name !== "SCHEDULESIGN" ||
+      walletTransaction.payerAccountId !== expectedAccountId ||
+      walletTransaction.scheduleId !== scheduleId
+    ) {
+      throw new Error(
+        "The Hedera wallet transaction does not confirm this account's signature on this schedule.",
+      );
+    }
+    if (!signerKeys.includes(accountKey)) {
+      throw new Error(
+        `Hedera has not recorded the ${approval.role} wallet signature for this schedule.`,
+      );
+    }
+  }
+
+  private async findWalletApprovalTransaction(transactionId: string): Promise<{
+    payerAccountId: string;
+    scheduleId: string;
+    name: string;
+    result: string;
+  }> {
+    const url = new URL(
+      `/api/v1/transactions/${encodeURIComponent(transactionId)}`,
+      this.mirrorNodeUrl,
+    );
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await this.mirrorFetch(url);
+      if (response.ok) {
+        const body = (await response.json()) as {
+          transactions?: Array<{
+            payer_account_id?: string;
+            entity_id?: string;
+            name?: string;
+            result?: string;
+          }>;
+        };
+        const transaction = body.transactions?.find(
+          (candidate) =>
+            candidate.name === "SCHEDULESIGN" &&
+            candidate.result === "SUCCESS",
+        );
+        if (transaction) {
+          return {
+            payerAccountId: transaction.payer_account_id ?? "",
+            scheduleId: transaction.entity_id ?? "",
+            name: transaction.name ?? "",
+            result: transaction.result ?? "",
+          };
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+    throw new Error(
+      "Mirror Node has not confirmed the Hedera wallet schedule-sign transaction yet.",
+    );
   }
 
   async getStatus(scheduleId: string): Promise<PaymentStatus> {
@@ -275,8 +368,8 @@ export function hederaConfigFromEnv(): HederaConfig {
     topicId: required("HEDERA_TOPIC_ID"),
     treasuryAccountId: required("HEDERA_TREASURY_ACCOUNT_ID"),
     vendorAccountId: required("HEDERA_VENDOR_ACCOUNT_ID"),
-    verifierRelayPrivateKey: process.env.HEDERA_VERIFIER_RELAY_KEY,
-    financeRelayPrivateKey: process.env.HEDERA_FINANCE_RELAY_KEY,
+    verifierAccountId: process.env.HEDERA_VERIFIER_ACCOUNT_ID,
+    financeAccountId: process.env.HEDERA_FINANCE_ACCOUNT_ID,
     mirrorNodeUrl: process.env.HEDERA_MIRROR_NODE_URL,
   };
 }

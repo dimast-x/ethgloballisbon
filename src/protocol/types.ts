@@ -49,9 +49,13 @@ export type Offer = {
   programId: string;
   vendorId: string;
   category: string;
+  title?: string;
   description: string;
   amount: Money;
-  deliveryDays: number;
+  deliveryDays?: number;
+  imageUrl?: string;
+  location?: string;
+  attributes?: Record<string, string>;
 };
 
 export type OrderStatus =
@@ -76,13 +80,15 @@ export type Order = {
   programId: string;
   buyerId: string;
   vendorId: string;
+  supplierName?: string;
+  supplierSettlementAccountId?: string;
   offerId?: string;
   category: string;
   amount: Money;
   status: OrderStatus;
   scheduleId?: string;
   evidence?: EvidenceReference;
-  approvals: Array<{ role: string; actorId: string; reference: string }>;
+  approvals: Approval[];
   paymentTransactionId?: string;
 };
 
@@ -190,4 +196,6 @@ export type Approval = {
   actorId: string;
   role: string;
   reference: string;
+  hederaAccountId?: string;
+  transactionId?: string;
 };

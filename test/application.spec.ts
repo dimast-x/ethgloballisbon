@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { HederaEventStore } from "../src/adapters/hedera";
 import {
+  agentAuthorizationBinding,
+  agentAuthorizationSignal,
   createUniversityRun,
   runProgramCommand,
   verifyAgentHumanBacking,
@@ -16,6 +18,103 @@ import {
 } from "../src/wallet/approval";
 
 describe("mode-aware application service", () => {
+  it("binds World authority to the exact run, program, agent, principal, and delegation", async () => {
+    const session = await createUniversityRun("simulation");
+    const agentId = Object.keys(session.projection.agentDelegations)[0];
+    const delegation = session.projection.agentDelegations[agentId];
+    expect(agentAuthorizationBinding(session, agentId)).toEqual({
+      protocolVersion: "0.2",
+      runId: session.runId,
+      organizationId: session.projection.program?.organizationId,
+      programId: session.programId,
+      agentId,
+      principalId: delegation.principalId,
+      delegationHash: delegation.integrityHash,
+    });
+    expect(agentAuthorizationSignal(session, agentId)).toMatch(
+      /^sha256:[a-f0-9]{64}$/,
+    );
+    expect(
+      agentAuthorizationSignal(
+        {
+          ...session,
+          runId: `${session.runId}:different`,
+        },
+        agentId,
+      ),
+    ).not.toBe(agentAuthorizationSignal(session, agentId));
+  });
+
+  it("appends allocations and upfunds one specific buyer without replacing prior funds", async () => {
+    let session = await createUniversityRun("simulation");
+    const original = session.projection.allocations[session.buyerId];
+    const secondBuyer = "buyer_materials_lab";
+    const zero = { ...original.totalLimit, atomicAmount: "0" };
+    const added = await runProgramCommand(session.programId, "simulation", {
+      type: "ALLOCATE_BUYER",
+      idempotencyKey: `${session.runId}:allocate-second-buyer`,
+      actor: human("program-admin", "ADMIN"),
+      allocation: {
+        id: "allocation_materials",
+        programId: session.programId,
+        buyerId: secondBuyer,
+        totalLimit: { ...original.totalLimit, atomicAmount: "200000000" },
+        committed: zero,
+        paid: zero,
+        allowedCategories: [...original.allowedCategories],
+      },
+    });
+    expect(added.status).toBe("CONFIRMED");
+    expect(added.projection?.allocations[session.buyerId].totalLimit).toEqual(
+      original.totalLimit,
+    );
+    expect(
+      added.projection?.allocations[secondBuyer].totalLimit.atomicAmount,
+    ).toBe("200000000");
+
+    session = { ...session, projection: added.projection! };
+    const upfunded = await runProgramCommand(session.programId, "simulation", {
+      type: "UPFUND_BUYER_ALLOCATION",
+      idempotencyKey: `${session.runId}:upfund-second-buyer`,
+      actor: human("program-admin", "ADMIN"),
+      buyerId: secondBuyer,
+      amount: { ...original.totalLimit, atomicAmount: "150000000" },
+    });
+    expect(
+      upfunded.projection?.allocations[secondBuyer].totalLimit.atomicAmount,
+    ).toBe("350000000");
+    expect(
+      upfunded.projection?.timeline.filter(
+        (event) => event.eventType === "BUYER_ALLOCATION_UPFUNDED",
+      ),
+    ).toHaveLength(1);
+
+    const duplicate = await runProgramCommand(
+      session.programId,
+      "simulation",
+      {
+        type: "UPFUND_BUYER_ALLOCATION",
+        idempotencyKey: `${session.runId}:upfund-second-buyer`,
+        actor: human("program-admin", "ADMIN"),
+        buyerId: secondBuyer,
+        amount: { ...original.totalLimit, atomicAmount: "150000000" },
+      },
+    );
+    expect(
+      duplicate.projection?.allocations[secondBuyer].totalLimit.atomicAmount,
+    ).toBe("350000000");
+
+    const overBudget = await runProgramCommand(session.programId, "simulation", {
+      type: "UPFUND_BUYER_ALLOCATION",
+      idempotencyKey: `${session.runId}:upfund-over-budget`,
+      actor: human("program-admin", "ADMIN"),
+      buyerId: secondBuyer,
+      amount: { ...original.totalLimit, atomicAmount: "2000000000" },
+    });
+    expect(overBudget.status).toBe("FAILED");
+    expect(overBudget.error?.code).toBe("PROGRAM_BUDGET_EXCEEDED");
+  });
+
   it("runs the complete lifecycle and deduplicates commands", async () => {
     let session = await createUniversityRun("simulation");
     const offer = session.projection.offers[session.selectedOfferId];

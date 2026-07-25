@@ -76,6 +76,20 @@ export function applyProtocolEvent(
       next.allocations[allocation.buyerId] = allocation;
       break;
     }
+    case "BUYER_ALLOCATION_UPFUNDED": {
+      const { buyerId, amount } = event.data as {
+        buyerId: string;
+        amount: BuyerAllocation["totalLimit"];
+      };
+      const allocation = next.allocations[buyerId];
+      if (allocation) {
+        next.allocations[buyerId] = {
+          ...allocation,
+          totalLimit: add(allocation.totalLimit, amount),
+        };
+      }
+      break;
+    }
     case "VENDOR_APPROVED": {
       const vendor = (event.data as { vendor: Vendor }).vendor;
       next.vendors[vendor.id] = vendor;
@@ -84,6 +98,20 @@ export function applyProtocolEvent(
     case "OFFER_REGISTERED": {
       const offer = (event.data as { offer: Offer }).offer;
       next.offers[offer.id] = offer;
+      break;
+    }
+    case "SUPPLIER_UPDATED": {
+      const { vendor, offer } = event.data as { vendor: Vendor; offer: Offer };
+      next.vendors[vendor.id] = vendor;
+      next.offers[offer.id] = offer;
+      break;
+    }
+    case "SUPPLIER_REMOVED": {
+      const { vendorId } = event.data as { vendorId: string };
+      const vendor = next.vendors[vendorId];
+      if (vendor) {
+        next.vendors[vendorId] = { ...vendor, status: "SUSPENDED" };
+      }
       break;
     }
     case "ORDER_REJECTED_BY_POLICY":
@@ -124,9 +152,7 @@ export function applyProtocolEvent(
     case "PAYMENT_SIGNATURE_ADDED": {
       const order = event.orderId ? next.orders[event.orderId] : undefined;
       if (order) {
-        const approval = (
-          event.data as { role: string; actorId: string; reference: string }
-        );
+        const approval = event.data as Order["approvals"][number];
         next.orders[order.id] = {
           ...order,
           approvals: [...order.approvals, approval],

@@ -102,6 +102,52 @@ describe("agent authorization policy", () => {
       code: "AGENT_AUTHORIZED",
     });
   });
+
+  it("enforces World backing and delegation when external identity is deferred", () => {
+    const fixture = medicalSupplyFixture;
+    const delegation = {
+      ...fixture.agent.delegation,
+      integrityHash: "sha256:medical",
+    };
+    const base = {
+      agentId: fixture.agent.agentId,
+      action: "CREATE_ORDER",
+      program: fixture.program,
+      requireResolvedIdentity: false,
+      delegation,
+      executionAccountId: fixture.agent.executionAccountId,
+      category: fixture.offers[0].category,
+      amount: fixture.offers[0].amount,
+      now: "2026-07-25T12:00:00.000Z",
+    };
+    expect(validateAgentAuthorization(base)).toMatchObject({
+      allowed: false,
+      code: "HUMAN_BACKING_REQUIRED",
+    });
+    expect(
+      validateAgentAuthorization({
+        ...base,
+        attestation: {
+          scheme: "world-id",
+          verificationReference: `sha256:${"a".repeat(64)}`,
+          subjectReference: fixture.agent.agentId,
+          verifiedAt: "2026-07-25T11:00:00.000Z",
+        },
+      }),
+    ).toMatchObject({ allowed: true, code: "AGENT_AUTHORIZED" });
+    expect(
+      validateAgentAuthorization({
+        ...base,
+        attestation: {
+          scheme: "world-id",
+          verificationReference: `sha256:${"b".repeat(64)}`,
+          subjectReference: fixture.agent.agentId,
+          verifiedAt: "2026-07-25T10:00:00.000Z",
+          expiresAt: "2026-07-25T11:00:00.000Z",
+        },
+      }),
+    ).toMatchObject({ allowed: false, code: "HUMAN_BACKING_EXPIRED" });
+  });
 });
 
 describe("events and reducer", () => {

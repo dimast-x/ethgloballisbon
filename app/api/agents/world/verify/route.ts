@@ -1,5 +1,5 @@
-import { parseExecutionMode } from "@/src/application/http";
 import { verifyAgentHumanBacking } from "@/src/application/runtime";
+import { requireLiveMutationAdmin } from "@/src/application/admin-access";
 
 export async function POST(request: Request) {
   try {
@@ -16,11 +16,13 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    const denied = requireLiveMutationAdmin(request);
+    if (denied) return denied;
     const result = await verifyAgentHumanBacking({
       programId: body.programId,
       agentId: body.agentId,
       idempotencyKey: body.idempotencyKey,
-      mode: parseExecutionMode(body.mode),
+      mode: "testnet",
       proof: body.proof,
     });
     return Response.json(result, {

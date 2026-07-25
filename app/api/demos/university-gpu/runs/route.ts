@@ -1,10 +1,28 @@
-import { createUniversityRun } from "@/src/application/runtime";
-import { parseExecutionMode } from "@/src/application/http";
+import {
+  createUniversityRun,
+  getProgramSession,
+} from "@/src/application/runtime";
+import { requireLiveMutationAdmin } from "@/src/application/admin-access";
+
+export async function GET(request: Request) {
+  const denied = requireLiveMutationAdmin(request);
+  if (denied) return denied;
+  const programId = new URL(request.url).searchParams.get("programId");
+  if (!programId) {
+    return Response.json({ error: "Program is required." }, { status: 400 });
+  }
+  const session = await getProgramSession(programId, "testnet");
+  if (!session) {
+    return Response.json({ error: "Program not found." }, { status: 404 });
+  }
+  return Response.json(session);
+}
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as { mode?: unknown };
-    const session = await createUniversityRun(parseExecutionMode(body.mode));
+    const denied = requireLiveMutationAdmin(request);
+    if (denied) return denied;
+    const session = await createUniversityRun("testnet");
     return Response.json(session, { status: 201 });
   } catch (error) {
     return Response.json(

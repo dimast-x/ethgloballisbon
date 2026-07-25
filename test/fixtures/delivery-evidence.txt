@@ -1,4 +1,4 @@
-OpenProcure demo delivery evidence
+Charter demo delivery evidence
 Vendor: Horizon Cloud
 Order: GPU compute access provisioned
 Environment: Hedera testnet reference workflow

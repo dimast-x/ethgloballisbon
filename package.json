@@ -1,5 +1,5 @@
 {
-  "name": "openprocure",
+  "name": "charter",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -14,8 +14,8 @@
     "test:site": "npm run build && node --test tests/rendered-html.test.mjs",
     "typecheck": "tsc --noEmit",
     "demo:cli": "tsx scripts/demo-cli.ts",
-    "demo:live": "tsx scripts/demo-cli.ts run testnet",
     "testnet:validate": "tsx scripts/demo-cli.ts validate",
+    "verify:live": "tsx scripts/verify-live-run.ts",
     "audit:cli": "tsx scripts/demo-cli.ts audit",
     "identity:validate": "tsx scripts/demo-cli.ts identity:validate",
     "identity:resolve": "tsx scripts/demo-cli.ts identity:resolve",

@@ -84,6 +84,7 @@ export type AgentAuthorizationContext = {
   action: string;
   program: Program;
   identity?: ResolvedAgentIdentity;
+  requireResolvedIdentity?: boolean;
   identityCurrent?: boolean;
   attestation?: HumanBackingAttestation;
   delegation?: AgentDelegation;
@@ -102,43 +103,45 @@ export function validateAgentAuthorization(
   const now = new Date(context.now ?? new Date().toISOString()).getTime();
   const delegation = context.delegation;
 
-  rules.push("IDENTITY_RESOLVED");
-  if (!context.identity || context.identity.agentId !== context.agentId) {
-    failures.push({
-      code: "AGENT_IDENTITY_REQUIRED",
-      reason: "The agent identity has not been resolved.",
-    });
-  }
+  if (context.requireResolvedIdentity !== false || context.identity) {
+    rules.push("IDENTITY_RESOLVED");
+    if (!context.identity || context.identity.agentId !== context.agentId) {
+      failures.push({
+        code: "AGENT_IDENTITY_REQUIRED",
+        reason: "The agent identity has not been resolved.",
+      });
+    }
 
-  rules.push("ORGANIZATION_MATCH");
-  if (
-    context.identity &&
-    context.identity.organizationReference !== context.program.organizationId
-  ) {
-    failures.push({
-      code: "AGENT_ORGANIZATION_MISMATCH",
-      reason: "The resolved agent organization does not match the program.",
-    });
-  }
+    rules.push("ORGANIZATION_MATCH");
+    if (
+      context.identity &&
+      context.identity.organizationReference !== context.program.organizationId
+    ) {
+      failures.push({
+        code: "AGENT_ORGANIZATION_MISMATCH",
+        reason: "The resolved agent organization does not match the program.",
+      });
+    }
 
-  rules.push("IDENTITY_CURRENT");
-  if (context.identity && context.identityCurrent === false) {
-    failures.push({
-      code: "AGENT_IDENTITY_CHANGED",
-      reason: "The public agent identity changed after it was authorized.",
-    });
-  }
+    rules.push("IDENTITY_CURRENT");
+    if (context.identity && context.identityCurrent === false) {
+      failures.push({
+        code: "AGENT_IDENTITY_CHANGED",
+        reason: "The public agent identity changed after it was authorized.",
+      });
+    }
 
-  rules.push("EXECUTION_ACCOUNT_MATCH");
-  if (
-    context.identity &&
-    (!context.executionAccountId ||
-      context.identity.executionAccountId !== context.executionAccountId)
-  ) {
-    failures.push({
-      code: "AGENT_ACCOUNT_MISMATCH",
-      reason: "The agent execution account does not match its public identity.",
-    });
+    rules.push("EXECUTION_ACCOUNT_MATCH");
+    if (
+      context.identity &&
+      (!context.executionAccountId ||
+        context.identity.executionAccountId !== context.executionAccountId)
+    ) {
+      failures.push({
+        code: "AGENT_ACCOUNT_MISMATCH",
+        reason: "The agent execution account does not match its public identity.",
+      });
+    }
   }
 
   rules.push("HUMAN_BACKING");
@@ -176,16 +179,17 @@ export function validateAgentAuthorization(
     });
   }
 
-  rules.push("DELEGATION_INTEGRITY");
-  if (
-    context.identity &&
-    delegation &&
-    context.identity.delegationHash !== delegation.integrityHash
-  ) {
-    failures.push({
-      code: "AGENT_DELEGATION_MISMATCH",
-      reason: "The public delegation reference does not match the active delegation.",
-    });
+  if (context.identity) {
+    rules.push("DELEGATION_INTEGRITY");
+    if (
+      delegation &&
+      context.identity.delegationHash !== delegation.integrityHash
+    ) {
+      failures.push({
+        code: "AGENT_DELEGATION_MISMATCH",
+        reason: "The public delegation reference does not match the active delegation.",
+      });
+    }
   }
 
   rules.push("PROGRAM_DELEGATED");

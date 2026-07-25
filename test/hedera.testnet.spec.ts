@@ -1,6 +1,8 @@
-import { AccountBalanceQuery } from "@hashgraph/sdk";
+import {
+  AccountInfoQuery,
+  ScheduleInfoQuery,
+} from "@hashgraph/sdk";
 import { describe, expect, it } from "vitest";
-import type { ProtocolCommand } from "../src/application/commands";
 
 try {
   process.loadEnvFile?.(".env.local");
@@ -10,134 +12,104 @@ try {
 
 const enabled = process.env.RUN_HEDERA_TESTNET === "1";
 
-describe.skipIf(!enabled)("Hedera testnet lifecycle", () => {
+describe.skipIf(!enabled)("completed Hedera testnet lifecycle", () => {
   it(
-    "publishes, reconstructs, threshold-signs, settles once, and resumes",
+    "detects both wallet signers, execution, idempotency, reconstruction, and exact HBAR movement",
     async () => {
+      const programId = process.env.CHARTER_SHOWCASE_PROGRAM_ID;
+      if (!programId) {
+        throw new Error(
+          "CHARTER_SHOWCASE_PROGRAM_ID must identify a completed golden run.",
+        );
+      }
       const runtime = await import("../src/application/runtime");
       const adapter = await import("../src/adapters/hedera");
       const { reduceProtocolEvents } = await import("../src/protocol/reducer");
       const config = adapter.hederaConfigFromEnv();
-      const client = adapter.createHederaClient(config);
-      const before = await new AccountBalanceQuery()
-        .setAccountId(config.vendorAccountId)
-        .execute(client);
-
-      let session = await runtime.createUniversityRun("testnet");
-      const offer = session.projection.offers[session.selectedOfferId];
-      const commands: ProtocolCommand[] = [
-        {
-          type: "TEST_PURCHASE_POLICY",
-          idempotencyKey: `${session.runId}:testnet-reject`,
-          actor: human(session.buyerId, "BUYER"),
-          buyerId: session.buyerId,
-          vendorId: offer.vendorId,
-          category: offer.category,
-          amount: { ...offer.amount, atomicAmount: "550000000" },
-        },
-        {
-          type: "CREATE_ORDER",
-          idempotencyKey: `${session.runId}:testnet-create`,
-          actor: human(session.buyerId, "BUYER"),
-          orderId: session.orderId,
-          buyerId: session.buyerId,
-          vendorId: offer.vendorId,
-          offerId: offer.id,
-          category: offer.category,
-          amount: offer.amount,
-        },
-        {
-          type: "ACCEPT_ORDER",
-          idempotencyKey: `${session.runId}:testnet-accept`,
-          actor: human(offer.vendorId, "VENDOR"),
-          orderId: session.orderId,
-        },
-        {
-          type: "SUBMIT_DELIVERY",
-          idempotencyKey: `${session.runId}:testnet-evidence`,
-          actor: human(offer.vendorId, "VENDOR"),
-          orderId: session.orderId,
-          evidence: {
-            hash: `sha256:${"e".repeat(64)}`,
-            mimeType: "application/pdf",
-            size: 512,
-            submittedBy: offer.vendorId,
-            submittedAt: new Date().toISOString(),
-          },
-        },
-        {
-          type: "APPROVE_DELIVERY",
-          idempotencyKey: `${session.runId}:testnet-verifier`,
-          actor: human("testnet_verifier", "DELIVERY_VERIFIER"),
-          orderId: session.orderId,
-          approvalReference: "opt-in-test:verifier-relay",
-        },
-      ];
-
-      for (const command of commands) {
-        const result = await runtime.runProgramCommand(
-          session.programId,
-          "testnet",
-          command,
-        );
-        expect(result.status).toBe("CONFIRMED");
-        session = {
-          ...session,
-          projection: result.projection ?? session.projection,
-        };
-      }
-
-      expect(session.projection.rejectedDecisions).toHaveLength(1);
-      const pendingOrder = session.projection.orders[session.orderId];
-      expect(pendingOrder.scheduleId).toBeTruthy();
-      const scheduler = new adapter.HederaPaymentScheduler(config);
-      await expect(
-        scheduler.getStatus(pendingOrder.scheduleId!),
-      ).resolves.toMatchObject({ state: "PENDING" });
-
-      const finance: ProtocolCommand = {
-        type: "APPROVE_FINANCE",
-        idempotencyKey: `${session.runId}:testnet-finance`,
-        actor: human("testnet_finance", "FINANCE"),
-        orderId: session.orderId,
-        approvalReference: "opt-in-test:finance-relay",
-      };
-      const paid = await runtime.runProgramCommand(
-        session.programId,
-        "testnet",
-        finance,
+      const eventStore = new adapter.HederaEventStore(config);
+      const events = await eventStore.read(programId);
+      const rebuilt = reduceProtocolEvents(events);
+      const order = Object.values(rebuilt.orders).find(
+        (candidate) => candidate.status === "PAYMENT_EXECUTED",
       );
-      expect(paid.status).toBe("CONFIRMED");
-      const duplicate = await runtime.runProgramCommand(
-        session.programId,
-        "testnet",
-        finance,
-      );
+
+      expect(order?.scheduleId).toBeTruthy();
       expect(
-        duplicate.projection?.timeline.filter(
+        events.some((event) => event.eventType === "PAYMENT_SCHEDULE_CREATED"),
+      ).toBe(true);
+      expect(
+        events.filter((event) => event.eventType === "PAYMENT_EXECUTED"),
+      ).toHaveLength(1);
+
+      const client = adapter.createHederaClient(config);
+      const [schedule, verifier, finance] = await Promise.all([
+        new ScheduleInfoQuery().setScheduleId(order!.scheduleId!).execute(client),
+        new AccountInfoQuery()
+          .setAccountId(config.verifierAccountId!)
+          .execute(client),
+        new AccountInfoQuery()
+          .setAccountId(config.financeAccountId!)
+          .execute(client),
+      ]);
+      expect(schedule.executed).toBeTruthy();
+      const signerKeys =
+        schedule.signers?.toArray().map((key) => key.toString()) ?? [];
+      expect(signerKeys).toContain(verifier.key?.toString());
+      expect(signerKeys).toContain(finance.key?.toString());
+
+      const financeApproval = order!.approvals.find(
+        (approval) => approval.role === "FINANCE",
+      );
+      expect(financeApproval?.transactionId).toBeTruthy();
+      await runtime.runProgramCommand(programId, "testnet", {
+        type: "APPROVE_FINANCE",
+        idempotencyKey: `${rebuilt.runId}:golden-finance-idempotency`,
+        actor: {
+          actorId: financeApproval!.actorId,
+          role: "FINANCE",
+          actorType: "HUMAN",
+          hederaAccountId: financeApproval!.hederaAccountId,
+        },
+        orderId: order!.id,
+        approvalReference: financeApproval!.reference,
+        approvalTransactionId: financeApproval!.transactionId,
+      });
+      const afterDuplicate = await eventStore.read(programId);
+      expect(
+        afterDuplicate.filter(
           (event) => event.eventType === "PAYMENT_EXECUTED",
         ),
       ).toHaveLength(1);
 
-      const events = await new adapter.HederaEventStore(config).read(
-        session.programId,
+      const mirrorNodeUrl =
+        config.mirrorNodeUrl ?? "https://testnet.mirrornode.hedera.com";
+      const response = await fetch(
+        `${mirrorNodeUrl}/api/v1/transactions/${encodeURIComponent(order!.paymentTransactionId!)}`,
       );
-      const rebuilt = reduceProtocolEvents(events);
-      expect(rebuilt.orders[session.orderId].status).toBe("PAYMENT_EXECUTED");
-
-      const after = await new AccountBalanceQuery()
-        .setAccountId(config.vendorAccountId)
-        .execute(client);
-      expect(
-        after.hbars.toTinybars().subtract(before.hbars.toTinybars()).toString(),
-      ).toBe("350000000");
+      expect(response.ok).toBe(true);
+      const body = (await response.json()) as {
+        transactions?: Array<{
+          result?: string;
+          transfers?: Array<{ account: string; amount: number }>;
+        }>;
+      };
+      const payment = body.transactions?.find(
+        (transaction) => transaction.result === "SUCCESS",
+      );
+      expect(payment?.transfers).toEqual(
+        expect.arrayContaining([
+          {
+            account: config.treasuryAccountId,
+            amount: -Number(order!.amount.atomicAmount),
+          },
+          {
+            account: config.vendorAccountId,
+            amount: Number(order!.amount.atomicAmount),
+          },
+        ]),
+      );
       client.close();
     },
     240_000,
   );
 });
-
-function human(actorId: string, role: string) {
-  return { actorId, role, actorType: "HUMAN" as const };
-}
-

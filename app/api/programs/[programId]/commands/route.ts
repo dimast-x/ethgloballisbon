@@ -4,12 +4,12 @@ import {
 } from "@/src/application/runtime";
 import {
   isProtocolCommand,
-  parseExecutionMode,
 } from "@/src/application/http";
 import {
   authenticateApprovalCommand,
-  type WalletApprovalProof,
+  type HederaWalletApprovalReceipt,
 } from "@/src/application/approval-auth";
+import { requireLiveMutationAdmin } from "@/src/application/admin-access";
 
 export async function POST(
   request: Request,
@@ -19,7 +19,7 @@ export async function POST(
   const body = (await request.json()) as {
     mode?: unknown;
     command?: unknown;
-    walletApproval?: WalletApprovalProof;
+    walletApproval?: HederaWalletApprovalReceipt;
   };
   if (!isProtocolCommand(body.command)) {
     return Response.json(
@@ -28,7 +28,10 @@ export async function POST(
     );
   }
   try {
-    const mode = parseExecutionMode(body.mode);
+    const mode = "testnet" as const;
+    const denied = requireLiveMutationAdmin(request);
+    if (denied) return denied;
+
     const session = await getProgramSession(programId, mode);
     if (!session) {
       return Response.json({ error: "Program not found" }, { status: 404 });

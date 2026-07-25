@@ -1,22 +1,17 @@
 import type { ProtocolCommand } from "./commands";
 import type { ProtocolProjection } from "../protocol/reducer";
-import {
-  verifyWalletApproval,
-  type WalletApprovalPayload,
-} from "../wallet/approval";
-import { getAddress, isAddress, type Address, type Hex } from "viem";
 import type { ExecutionMode } from "./commands";
 
-export type WalletApprovalProof = {
-  payload: WalletApprovalPayload;
-  signatureHex: Hex;
+export type HederaWalletApprovalReceipt = {
+  accountId: string;
+  transactionId: string;
 };
 
 export async function authenticateApprovalCommand(input: {
   command: ProtocolCommand;
   projection: ProtocolProjection;
   mode: ExecutionMode;
-  proof?: WalletApprovalProof;
+  proof?: HederaWalletApprovalReceipt;
 }): Promise<ProtocolCommand> {
   const { command, projection, proof, mode } = input;
   if (
@@ -26,7 +21,7 @@ export async function authenticateApprovalCommand(input: {
     return command;
   }
   if (mode === "simulation" && !proof) return command;
-  if (!proof) throw new Error("A MetaMask approval signature is required.");
+  if (!proof) throw new Error("A Hedera wallet approval receipt is required.");
   const order = projection.orders[command.orderId];
   const program = projection.program;
   if (!program || !order || !order.scheduleId) {
@@ -35,59 +30,40 @@ export async function authenticateApprovalCommand(input: {
 
   const isDelivery = command.type === "APPROVE_DELIVERY";
   const expectedRole = isDelivery ? "DELIVERY_VERIFIER" : "FINANCE";
-  const expectedAction = isDelivery ? "APPROVE_DELIVERY" : "APPROVE_PAYMENT";
-  const configuredAddress = isDelivery
-    ? process.env.NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS
-    : process.env.NEXT_PUBLIC_METAMASK_FINANCE_ADDRESS;
-  const claimedAddress = proof.payload.walletAccountId;
-  if (!isAddress(claimedAddress)) {
-    throw new Error("The signed approval contains an invalid wallet address.");
+  const configuredAccountId = isDelivery
+    ? process.env.HEDERA_VERIFIER_ACCOUNT_ID
+    : process.env.HEDERA_FINANCE_ACCOUNT_ID;
+  if (!configuredAccountId) {
+    throw new Error(`The ${expectedRole} Hedera account is not configured.`);
   }
-  if (mode === "testnet" && !configuredAddress) {
-    throw new Error(`The ${expectedRole} MetaMask address is not configured.`);
+  if (!/^\d+\.\d+\.\d+$/.test(proof.accountId)) {
+    throw new Error("The wallet receipt contains an invalid Hedera account ID.");
   }
-  const expectedAddress = getAddress(
-    mode === "testnet" ? configuredAddress! : claimedAddress,
-  ) as Address;
-
-  const payload = proof.payload;
-  const exactMatch =
-    payload.protocolVersion === "0.1" &&
-    payload.action === expectedAction &&
-    payload.role === expectedRole &&
-    payload.organizationId === program.organizationId &&
-    payload.programId === program.id &&
-    payload.orderId === order.id &&
-    payload.scheduleId === order.scheduleId &&
-    payload.asset === order.amount.asset &&
-    payload.atomicAmount === order.amount.atomicAmount &&
-    payload.walletAccountId.toLowerCase() === expectedAddress.toLowerCase() &&
-    payload.chainId === 296 &&
-    payload.idempotencyKey === command.idempotencyKey;
-  if (!exactMatch) {
-    throw new Error("The signed approval does not match the current order.");
+  if (proof.accountId !== configuredAccountId) {
+    throw new Error(
+      `${expectedRole} approval requires Hedera account ${configuredAccountId}.`,
+    );
   }
-  const verified = await verifyWalletApproval({
-    payload,
-    signatureHex: proof.signatureHex,
-    expectedAddress,
-  });
-  if (!verified) throw new Error("MetaMask approval signature is invalid.");
+  if (!/^\d+\.\d+\.\d+@\d+\.\d+$/.test(proof.transactionId)) {
+    throw new Error("The wallet receipt contains an invalid transaction ID.");
+  }
   const priorSigner = order.approvals[0]?.actorId;
   if (
     !isDelivery &&
-    priorSigner?.toLowerCase() === `wallet:${expectedAddress}`.toLowerCase()
+    priorSigner === `hedera:${proof.accountId}`
   ) {
-    throw new Error("Verifier and Finance approvals require different wallets.");
+    throw new Error("Verifier and Finance approvals require different Hedera accounts.");
   }
 
   return {
     ...command,
     actor: {
-      actorId: `wallet:${expectedAddress}`,
+      actorId: `hedera:${proof.accountId}`,
       role: expectedRole,
       actorType: "HUMAN",
+      hederaAccountId: proof.accountId,
     },
-    approvalReference: `metamask-authenticated:${expectedAddress}:${command.idempotencyKey}`,
+    approvalReference: `hedera-walletconnect:${proof.accountId}:${proof.transactionId}`,
+    approvalTransactionId: proof.transactionId,
   };
 }

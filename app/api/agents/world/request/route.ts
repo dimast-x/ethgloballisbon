@@ -1,5 +1,5 @@
-import { parseExecutionMode } from "@/src/application/http";
 import { createAgentWorldRequest } from "@/src/application/runtime";
+import { requireLiveMutationAdmin } from "@/src/application/admin-access";
 
 export async function POST(request: Request) {
   try {
@@ -14,10 +14,12 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    const denied = requireLiveMutationAdmin(request);
+    if (denied) return denied;
     return Response.json(
       await createAgentWorldRequest(
         body.programId,
-        parseExecutionMode(body.mode),
+        "testnet",
         body.agentId,
       ),
     );

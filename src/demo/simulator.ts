@@ -5,7 +5,7 @@ import type { DemoFixture } from "./fixtures";
 import type { EvidenceReference, Order } from "../protocol/types";
 
 const systemActor = {
-  actorId: "openprocure_demo",
+  actorId: "charter_demo",
   role: "SYSTEM",
   actorType: "SYSTEM" as const,
 };
@@ -243,7 +243,7 @@ export function advanceDemo(
         data: {
           role: "DELIVERY_VERIFIER",
           actorId: "verifier_university",
-          reference: "wallet-authenticated:demo-relay",
+          reference: "sandbox-approval:verifier",
         },
       }),
     ];
@@ -263,7 +263,7 @@ export function advanceDemo(
       data: {
         role: "FINANCE",
         actorId: "finance_university",
-        reference: "wallet-authenticated:demo-relay",
+        reference: "sandbox-approval:finance",
       },
     });
     const executed = createEvent({

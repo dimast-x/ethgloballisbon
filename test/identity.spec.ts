@@ -9,15 +9,15 @@ import {
 describe("ENS public identity adapter", () => {
   it("normalizes and validates the required agent and organization records", async () => {
     const records: Record<string, string> = {
-      "com.openprocure.agent-id": "agent_1",
-      "com.openprocure.role": "PROCUREMENT_AGENT",
-      "com.openprocure.organization": "lisbon-university.eth",
-      "com.openprocure.hedera-account": "0.0.4859221",
-      "com.openprocure.delegation": "sha256:delegation",
-      "com.openprocure.world-reference": "world:proof-of-human",
-      "com.openprocure.protocol-version": "0.2",
+      "com.charter.agent-id": "agent_1",
+      "com.charter.role": "PROCUREMENT_AGENT",
+      "com.charter.organization": "lisbon-university.eth",
+      "com.charter.hedera-account": "0.0.4859221",
+      "com.charter.delegation": "sha256:delegation",
+      "com.charter.world-reference": "world:proof-of-human",
+      "com.charter.protocol-version": "0.2",
       url: "https://example.test/agents/1",
-      "com.openprocure.organization-id": "org_lisbon_university",
+      "com.charter.organization-id": "org_lisbon_university",
     };
     const client = {
       getEnsText: vi.fn(async ({ key }: { key: string }) => records[key] ?? null),
@@ -57,13 +57,19 @@ describe("World human-backing adapter", () => {
     appId: "app_test",
     rpId: "rp_test",
     signingKey: "0x01",
-    action: "authorize-openprocure-agent",
+    action: "authorize-charter-agent",
     environment: "staging" as const,
   };
 
   it("binds the proof to action, environment, and signal", async () => {
     const signal = "sha256:program-agent-delegation";
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn(
+      async () =>
+        Response.json({
+          success: true,
+          results: [{ identifier: "proof_of_human", success: true }],
+        }),
+    );
     const verifier = new WorldHumanBackingVerifier(config, fetchMock);
     const attestation = await verifier.verify({
       subjectReference: "agent_1",
@@ -79,6 +85,7 @@ describe("World human-backing adapter", () => {
             identifier: "proof_of_human",
             nullifier: "0x1234",
             signal_hash: hashSignal(signal),
+            expires_at_min: Math.floor(Date.now() / 1000) + 300,
           },
         ],
       },
@@ -100,6 +107,7 @@ describe("World human-backing adapter", () => {
         environment: config.environment,
         signal: "signal",
         proof: {
+          protocol_version: "4.0",
           action: "different-action",
           environment: config.environment,
           responses: [{ nullifier: "0x1234" }],
@@ -107,5 +115,78 @@ describe("World human-backing adapter", () => {
       }),
     ).rejects.toThrow("action");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects environment and signal mismatches before contacting World", async () => {
+    const fetchMock = vi.fn();
+    const verifier = new WorldHumanBackingVerifier(config, fetchMock);
+    await expect(
+      verifier.verify({
+        subjectReference: "agent_1",
+        action: config.action,
+        environment: config.environment,
+        signal: "expected",
+        proof: {
+          protocol_version: "4.0",
+          action: config.action,
+          environment: "production",
+          responses: [
+            {
+              identifier: "proof_of_human",
+              nullifier: "0x1234",
+              signal_hash: hashSignal("expected"),
+              expires_at_min: Math.floor(Date.now() / 1000) + 300,
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow("environment");
+    await expect(
+      verifier.verify({
+        subjectReference: "agent_1",
+        action: config.action,
+        environment: config.environment,
+        signal: "expected",
+        proof: {
+          protocol_version: "4.0",
+          action: config.action,
+          environment: config.environment,
+          responses: [
+            {
+              identifier: "proof_of_human",
+              nullifier: "0x1234",
+              signal_hash: hashSignal("changed"),
+              expires_at_min: Math.floor(Date.now() / 1000) + 300,
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow("signal");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects expired proofOfHuman responses", async () => {
+    const verifier = new WorldHumanBackingVerifier(config, vi.fn());
+    await expect(
+      verifier.verify({
+        subjectReference: "agent_1",
+        action: config.action,
+        environment: config.environment,
+        signal: "expected",
+        proof: {
+          protocol_version: "4.0",
+          action: config.action,
+          environment: config.environment,
+          responses: [
+            {
+              identifier: "proof_of_human",
+              nullifier: "0x1234",
+              signal_hash: hashSignal("expected"),
+              expires_at_min: Math.floor(Date.now() / 1000) - 1,
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow("expired");
   });
 });

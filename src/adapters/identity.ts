@@ -20,13 +20,13 @@ import type {
 } from "../protocol/types";
 
 const agentRecordKeys = {
-  agentId: "com.openprocure.agent-id",
-  role: "com.openprocure.role",
-  organization: "com.openprocure.organization",
-  account: "com.openprocure.hedera-account",
-  delegation: "com.openprocure.delegation",
-  worldReference: "com.openprocure.world-reference",
-  version: "com.openprocure.protocol-version",
+  agentId: "com.charter.agent-id",
+  role: "com.charter.role",
+  organization: "com.charter.organization",
+  account: "com.charter.hedera-account",
+  delegation: "com.charter.delegation",
+  worldReference: "com.charter.world-reference",
+  version: "com.charter.protocol-version",
   endpoint: "url",
 } as const;
 
@@ -86,11 +86,11 @@ export class EnsPublicIdentityResolver implements PublicIdentityResolver {
     }
     const organizationId = await this.client.getEnsText({
       name: normalize(records.organization),
-      key: "com.openprocure.organization-id",
+      key: "com.charter.organization-id",
     });
     if (!organizationId) {
       throw new Error(
-        "ENS record com.openprocure.organization-id is required on the organization name.",
+        "ENS record com.charter.organization-id is required on the organization name.",
       );
     }
     const snapshot = {
@@ -188,6 +188,9 @@ export class WorldHumanBackingVerifier implements HumanBackingVerifier {
     request: HumanBackingRequest,
   ): Promise<HumanBackingAttestation> {
     const proof = requireWorldProof(request.proof);
+    if (proof.protocol_version !== "4.0") {
+      throw new Error("The live World proof must use protocol version 4.0.");
+    }
     if (request.action !== this.config.action || proof.action !== request.action) {
       throw new Error("The World proof action does not match the request.");
     }
@@ -198,15 +201,26 @@ export class WorldHumanBackingVerifier implements HumanBackingVerifier {
       throw new Error("The World proof environment does not match the request.");
     }
     const responseItem = proof.responses[0];
-    if (!responseItem?.nullifier) {
-      throw new Error("The World proof does not contain a nullifier.");
+    if (
+      responseItem?.identifier !== "proof_of_human" ||
+      !responseItem.nullifier
+    ) {
+      throw new Error("The World proof does not contain proofOfHuman.");
+    }
+    if (!responseItem.signal_hash) {
+      throw new Error("The World proof does not contain the authorization signal.");
     }
     if (
-      responseItem.signal_hash &&
       responseItem.signal_hash.toLowerCase() !==
         hashSignal(request.signal).toLowerCase()
     ) {
       throw new Error("The World proof signal does not match the authorization.");
+    }
+    if (
+      typeof responseItem.expires_at_min !== "number" ||
+      responseItem.expires_at_min * 1000 <= Date.now()
+    ) {
+      throw new Error("The World proof has expired.");
     }
     const response = await this.fetchImpl(
       `https://developer.world.org/api/v4/verify/${this.config.rpId}`,
@@ -218,6 +232,19 @@ export class WorldHumanBackingVerifier implements HumanBackingVerifier {
     );
     if (!response.ok) {
       throw new Error(`World verification failed with status ${response.status}.`);
+    }
+    const verification = (await response.json()) as {
+      success?: boolean;
+      results?: Array<{ identifier?: string; success?: boolean }>;
+    };
+    if (
+      verification.success !== true ||
+      !verification.results?.some(
+        (result) =>
+          result.identifier === "proof_of_human" && result.success === true,
+      )
+    ) {
+      throw new Error("World did not verify the proofOfHuman response.");
     }
     return {
       scheme: "world-id",
@@ -238,7 +265,7 @@ export function worldConfigFromEnv(): WorldIdentityConfig {
     appId: process.env.WORLD_APP_ID ?? process.env.NEXT_PUBLIC_WORLD_APP_ID,
     rpId: process.env.WORLD_RP_ID,
     signingKey: process.env.WORLD_RP_SIGNING_KEY,
-    action: process.env.WORLD_ACTION ?? "authorize-openprocure-agent",
+    action: process.env.WORLD_ACTION ?? "authorize-charter-agent",
     environment:
       process.env.WORLD_ENVIRONMENT === "staging"
         ? ("staging" as const)
@@ -259,9 +286,11 @@ function identityKey(identity: PublicIdentity): string {
 }
 
 function requireWorldProof(value: unknown): {
+  protocol_version: string;
   action: string;
   environment: string;
   responses: Array<{
+    identifier?: string;
     nullifier?: string;
     signal_hash?: string;
     expires_at_min?: number;
@@ -271,11 +300,13 @@ function requireWorldProof(value: unknown): {
     throw new Error("A World proof payload is required.");
   }
   const proof = value as {
+    protocol_version?: unknown;
     action?: unknown;
     environment?: unknown;
     responses?: unknown;
   };
   if (
+    proof.protocol_version !== "4.0" ||
     typeof proof.action !== "string" ||
     typeof proof.environment !== "string" ||
     !Array.isArray(proof.responses)
@@ -283,9 +314,11 @@ function requireWorldProof(value: unknown): {
     throw new Error("The World proof payload is malformed.");
   }
   return proof as {
+    protocol_version: string;
     action: string;
     environment: string;
     responses: Array<{
+      identifier?: string;
       nullifier?: string;
       signal_hash?: string;
       expires_at_min?: number;

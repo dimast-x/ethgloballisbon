@@ -11,9 +11,11 @@ import {
 } from "../protocol/policy";
 import { reduceProtocolEvents, type ProtocolProjection } from "../protocol/reducer";
 import type {
+  Offer,
   Order,
   PaymentStatus,
   Program,
+  Vendor,
 } from "../protocol/types";
 import type { CommandResult, ProtocolCommand } from "./commands";
 
@@ -28,6 +30,7 @@ type ServiceOptions = {
   settlement: SettlementConfig;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
+  requireResolvedAgentIdentity?: boolean;
 };
 
 export class ProtocolApplicationService {
@@ -161,11 +164,18 @@ export class ProtocolApplicationService {
           ),
         ];
       case "AUTHORIZE_AGENT_ACTION": {
-        const decision = agentDecision(projection, command.actor, {
-          action: command.action,
-          category: command.category,
-          amount: command.amount,
-        });
+        const decision = agentDecision(
+          projection,
+          command.actor,
+          {
+            action: command.action,
+            category: command.category,
+            amount: command.amount,
+          },
+          undefined,
+          true,
+          this.options.requireResolvedAgentIdentity !== false,
+        );
         return [
           await this.appendOnce(
             createEvent({
@@ -185,6 +195,7 @@ export class ProtocolApplicationService {
         ];
       }
       case "ALLOCATE_BUYER":
+        validateNewBuyerAllocation(projection, program, command.allocation);
         return [
           await this.appendOnce(
             createEvent({
@@ -192,6 +203,26 @@ export class ProtocolApplicationService {
               eventId: eventId(command.idempotencyKey, "BUYER_ALLOCATED"),
               eventType: "BUYER_ALLOCATED",
               data: { allocation: command.allocation },
+            }),
+          ),
+        ];
+      case "UPFUND_BUYER_ALLOCATION":
+        validateBuyerUpfund(
+          projection,
+          program,
+          command.buyerId,
+          command.amount,
+        );
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "BUYER_ALLOCATION_UPFUNDED",
+              ),
+              eventType: "BUYER_ALLOCATION_UPFUNDED",
+              data: { buyerId: command.buyerId, amount: command.amount },
             }),
           ),
         ];
@@ -217,6 +248,48 @@ export class ProtocolApplicationService {
             }),
           ),
         ];
+      case "UPSERT_SUPPLIER": {
+        validateSupplierUpdate(projection, program, command.vendor, command.offer);
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(command.idempotencyKey, "SUPPLIER_UPDATED"),
+              eventType: "SUPPLIER_UPDATED",
+              data: { vendor: command.vendor, offer: command.offer },
+            }),
+          ),
+        ];
+      }
+      case "REMOVE_SUPPLIER": {
+        const vendor = projection.vendors[command.vendorId];
+        if (!vendor) {
+          throw new CommandError("SUPPLIER_NOT_FOUND", "Supplier was not found.");
+        }
+        if (vendor.status === "SUSPENDED") return [];
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(command.idempotencyKey, "SUPPLIER_REMOVED"),
+              eventType: "SUPPLIER_REMOVED",
+              data: {
+                vendorId: command.vendorId,
+                continuingOrderIds: Object.values(projection.orders)
+                  .filter(
+                    (order) =>
+                      order.vendorId === command.vendorId &&
+                      order.status !== "PAYMENT_EXECUTED" &&
+                      order.status !== "CANCELLED",
+                  )
+                  .map((order) => order.id),
+                effect:
+                  "Future purchases are blocked. Existing orders continue with their locked supplier, amount, and settlement destination.",
+              },
+            }),
+          ),
+        ];
+      }
       case "TEST_PURCHASE_POLICY": {
         const decision = validatePurchase({
           program,
@@ -269,6 +342,7 @@ export class ProtocolApplicationService {
             !storedIdentity ||
               !currentIdentity ||
               storedIdentity.resolutionHash === currentIdentity.resolutionHash,
+            this.options.requireResolvedAgentIdentity !== false,
           );
           appended.push(
             await this.appendOnce(
@@ -306,6 +380,9 @@ export class ProtocolApplicationService {
           programId: program.id,
           buyerId: command.buyerId,
           vendorId: command.vendorId,
+          supplierName: projection.vendors[command.vendorId].name,
+          supplierSettlementAccountId:
+            projection.vendors[command.vendorId].settlementAccountId,
           offerId: command.offerId,
           category: command.category,
           amount: command.amount,
@@ -323,6 +400,60 @@ export class ProtocolApplicationService {
             }),
           ),
         );
+        if (
+          !program.policy.requireDeliveryEvidence &&
+          program.policy.approvalRequirements.length === 0
+        ) {
+          const payment = await this.options.paymentScheduler.create({
+            programId: program.id,
+            orderId: order.id,
+            payerAccountId: this.options.settlement.payerAccountId,
+            payeeAccountId: order.supplierSettlementAccountId!,
+            amount: order.amount,
+            memo: `charter:${program.id}:${order.id}`,
+          });
+          appended.push(
+            await this.appendOnce(
+              createEvent({
+                ...base,
+                orderId: order.id,
+                actor: systemActor,
+                eventId: eventId(
+                  command.idempotencyKey,
+                  "PAYMENT_SCHEDULE_CREATED",
+                ),
+                eventType: "PAYMENT_SCHEDULE_CREATED",
+                data: {
+                  scheduleId: payment.scheduleId,
+                  scheduledTransactionId: payment.scheduledTransactionId,
+                },
+              }),
+            ),
+          );
+          const status = await this.waitForPayment(payment.scheduleId);
+          if (status.state !== "EXECUTED" || !status.paymentTransactionId) {
+            throw new CommandError(
+              "PAYMENT_NOT_EXECUTED",
+              `Policy-authorized payment is ${status.state.toLowerCase()}.`,
+              status.state === "PENDING",
+            );
+          }
+          appended.push(
+            await this.appendOnce(
+              createEvent({
+                ...base,
+                orderId: order.id,
+                actor: systemActor,
+                eventId: eventId(command.idempotencyKey, "PAYMENT_EXECUTED"),
+                eventType: "PAYMENT_EXECUTED",
+                data: {
+                  paymentTransactionId: status.paymentTransactionId,
+                  scheduledTransactionId: status.scheduledTransactionId,
+                },
+              }),
+            ),
+          );
+        }
         return appended;
       }
       case "ACCEPT_ORDER": {
@@ -352,14 +483,19 @@ export class ProtocolApplicationService {
         const acceptedOrder = requireOrder(current, command.orderId);
         if (!acceptedOrder.scheduleId) {
           const vendor = current.vendors[acceptedOrder.vendorId];
-          if (!vendor) throw new CommandError("VENDOR_NOT_FOUND", "Vendor not found");
+          const settlementAccountId =
+            acceptedOrder.supplierSettlementAccountId ??
+            vendor?.settlementAccountId;
+          if (!settlementAccountId) {
+            throw new CommandError("VENDOR_NOT_FOUND", "Vendor not found");
+          }
           const payment = await this.options.paymentScheduler.create({
             programId: program.id,
             orderId: acceptedOrder.id,
             payerAccountId: this.options.settlement.payerAccountId,
-            payeeAccountId: vendor.settlementAccountId,
+            payeeAccountId: settlementAccountId,
             amount: acceptedOrder.amount,
-            memo: `openprocure:${program.id}:${acceptedOrder.id}`,
+            memo: `charter:${program.id}:${acceptedOrder.id}`,
           });
           appended.push(
             await this.appendOnce(
@@ -421,10 +557,12 @@ export class ProtocolApplicationService {
       throw invalidState(order, "DELIVERY_SUBMITTED");
     }
     requireApprovalRole(program, command.actor.role);
-    await this.options.paymentScheduler.approve(order.scheduleId, {
+    await this.options.paymentScheduler.confirmApproval(order.scheduleId, {
       actorId: command.actor.actorId,
       role: command.actor.role,
       reference: command.approvalReference,
+      hederaAccountId: command.actor.hederaAccountId,
+      transactionId: command.approvalTransactionId,
     });
     const base = {
       runId: projection.runId!,
@@ -451,10 +589,40 @@ export class ProtocolApplicationService {
           role: command.actor.role,
           actorId: command.actor.actorId,
           reference: command.approvalReference,
+          hederaAccountId: command.actor.hederaAccountId,
+          transactionId: command.approvalTransactionId,
         },
       }),
     );
-    return [approved, signature];
+    const appended = [approved, signature];
+    const financeRequired = program.policy.approvalRequirements.some(
+      (requirement) => requirement.role === "FINANCE",
+    );
+    if (!financeRequired) {
+      const status = await this.waitForPayment(order.scheduleId);
+      if (status.state !== "EXECUTED" || !status.paymentTransactionId) {
+        throw new CommandError(
+          "PAYMENT_NOT_EXECUTED",
+          `Scheduled payment is ${status.state.toLowerCase()}.`,
+          status.state === "PENDING",
+        );
+      }
+      appended.push(
+        await this.appendOnce(
+          createEvent({
+            ...base,
+            actor: systemActor,
+            eventId: eventId(command.idempotencyKey, "PAYMENT_EXECUTED"),
+            eventType: "PAYMENT_EXECUTED",
+            data: {
+              paymentTransactionId: status.paymentTransactionId,
+              scheduledTransactionId: status.scheduledTransactionId,
+            },
+          }),
+        ),
+      );
+    }
+    return appended;
   }
 
   private async approveFinance(
@@ -472,10 +640,12 @@ export class ProtocolApplicationService {
       throw invalidState(order, "DELIVERY_APPROVED");
     }
     requireApprovalRole(program, command.actor.role);
-    await this.options.paymentScheduler.approve(order.scheduleId, {
+    await this.options.paymentScheduler.confirmApproval(order.scheduleId, {
       actorId: command.actor.actorId,
       role: command.actor.role,
       reference: command.approvalReference,
+      hederaAccountId: command.actor.hederaAccountId,
+      transactionId: command.approvalTransactionId,
     });
     const status = await this.waitForPayment(order.scheduleId);
     const base = {
@@ -495,6 +665,8 @@ export class ProtocolApplicationService {
           role: command.actor.role,
           actorId: command.actor.actorId,
           reference: command.approvalReference,
+          hederaAccountId: command.actor.hederaAccountId,
+          transactionId: command.approvalTransactionId,
         },
       }),
     );
@@ -563,7 +735,7 @@ export class ProtocolApplicationService {
 }
 
 const systemActor = {
-  actorId: "openprocure",
+  actorId: "charter",
   role: "SYSTEM",
   actorType: "SYSTEM" as const,
 };
@@ -625,6 +797,131 @@ function validateEvidence(
     throw new CommandError(
       "INVALID_EVIDENCE",
       "Evidence requires a SHA-256 digest, MIME type, positive size, and submitter.",
+    );
+  }
+}
+
+function validateSupplierUpdate(
+  projection: ProtocolProjection,
+  program: Program,
+  vendor: Vendor,
+  offer: Offer,
+): void {
+  if (
+    !vendor.id ||
+    !vendor.name.trim() ||
+    !vendor.settlementAccountId ||
+    vendor.status !== "APPROVED"
+  ) {
+    throw new CommandError(
+      "INVALID_SUPPLIER",
+      "An active supplier requires an ID, name, and settlement account.",
+    );
+  }
+  if (
+    !offer.id ||
+    offer.programId !== program.id ||
+    offer.vendorId !== vendor.id ||
+    !offer.title?.trim() ||
+    !/^-?\d+$/.test(offer.amount.atomicAmount) ||
+    BigInt(offer.amount.atomicAmount) <= 0n ||
+    offer.amount.asset !== program.budget.asset ||
+    offer.amount.decimals !== program.budget.decimals
+  ) {
+    throw new CommandError(
+      "INVALID_SUPPLIER_OFFER",
+      "The supplier offer must belong to this program and include a title and positive amount in the program asset.",
+    );
+  }
+  if (
+    !program.policy.allowedCategories.includes(offer.category) ||
+    !vendor.approvedCategories.includes(offer.category)
+  ) {
+    throw new CommandError(
+      "SUPPLIER_CATEGORY_NOT_ALLOWED",
+      "The supplier must be approved for an allowed program category.",
+    );
+  }
+  const existingOffer = projection.offers[offer.id];
+  if (existingOffer && existingOffer.vendorId !== vendor.id) {
+    throw new CommandError(
+      "OFFER_SUPPLIER_MISMATCH",
+      "An existing offer cannot be moved to another supplier.",
+    );
+  }
+}
+
+function validateNewBuyerAllocation(
+  projection: ProtocolProjection,
+  program: Program,
+  allocation: import("../protocol/types").BuyerAllocation,
+): void {
+  if (projection.allocations[allocation.buyerId]) {
+    throw new CommandError(
+      "BUYER_ALREADY_ALLOCATED",
+      "This buyer already has an allocation. Upfund the existing allocation instead.",
+    );
+  }
+  if (
+    !allocation.id ||
+    !allocation.buyerId.trim() ||
+    allocation.programId !== program.id ||
+    !isPositiveProgramMoney(allocation.totalLimit, program)
+  ) {
+    throw new CommandError(
+      "INVALID_BUYER_ALLOCATION",
+      "A new buyer allocation requires a buyer, this program, and a positive amount in the program asset.",
+    );
+  }
+  assertAllocationBudget(projection, program, allocation.totalLimit);
+}
+
+function validateBuyerUpfund(
+  projection: ProtocolProjection,
+  program: Program,
+  buyerId: string,
+  amount: import("../protocol/types").Money,
+): void {
+  if (!projection.allocations[buyerId]) {
+    throw new CommandError(
+      "BUYER_ALLOCATION_NOT_FOUND",
+      "The selected buyer does not have an allocation in this program.",
+    );
+  }
+  if (!isPositiveProgramMoney(amount, program)) {
+    throw new CommandError(
+      "INVALID_UPFUND_AMOUNT",
+      "The upfund amount must be positive and use the program asset.",
+    );
+  }
+  assertAllocationBudget(projection, program, amount);
+}
+
+function isPositiveProgramMoney(
+  amount: import("../protocol/types").Money,
+  program: Program,
+): boolean {
+  return (
+    /^-?\d+$/.test(amount.atomicAmount) &&
+    BigInt(amount.atomicAmount) > 0n &&
+    amount.asset === program.budget.asset &&
+    amount.decimals === program.budget.decimals
+  );
+}
+
+function assertAllocationBudget(
+  projection: ProtocolProjection,
+  program: Program,
+  increase: import("../protocol/types").Money,
+): void {
+  const allocated = Object.values(projection.allocations).reduce(
+    (total, allocation) => total + BigInt(allocation.totalLimit.atomicAmount),
+    0n,
+  );
+  if (allocated + BigInt(increase.atomicAmount) > BigInt(program.budget.atomicAmount)) {
+    throw new CommandError(
+      "PROGRAM_BUDGET_EXCEEDED",
+      "Buyer allocations cannot exceed the program budget.",
     );
   }
 }
@@ -694,6 +991,7 @@ function agentDecision(
   request: { action: string; category: string; amount: import("../protocol/types").Money },
   identityOverride?: import("../protocol/types").ResolvedAgentIdentity,
   identityCurrent = true,
+  requireResolvedIdentity = true,
 ) {
   const program = requireProgram(projection);
   const identity =
@@ -716,6 +1014,7 @@ function agentDecision(
     action: request.action,
     program,
     identity,
+    requireResolvedIdentity,
     identityCurrent,
     attestation,
     delegation,

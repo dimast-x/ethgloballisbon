@@ -157,6 +157,11 @@ if (operation === "validate") {
   printSession(session);
 } else {
   const mode = parseMode(argument);
+  if (mode === "testnet") {
+    throw new Error(
+      "Live testnet runs require the guided browser flow so World and both Hedera wallets sign directly.",
+    );
+  }
   let session = await createUniversityRun(mode);
   const selectedOffer = session.projection.offers[session.selectedOfferId];
   const commands: ProtocolCommand[] = [
@@ -204,14 +209,14 @@ if (operation === "validate") {
       idempotencyKey: `${session.runId}:approve-delivery`,
       actor: human("cli_verifier", "DELIVERY_VERIFIER"),
       orderId: session.orderId,
-      approvalReference: "trusted-cli:demo-relay",
+      approvalReference: "trusted-cli:simulation",
     },
     {
       type: "APPROVE_FINANCE",
       idempotencyKey: `${session.runId}:approve-finance`,
       actor: human("cli_finance", "FINANCE"),
       orderId: session.orderId,
-      approvalReference: "trusted-cli:demo-relay",
+      approvalReference: "trusted-cli:simulation",
     },
   ];
 
@@ -242,7 +247,7 @@ function human(actorId: string, role: string) {
 }
 
 function system() {
-  return { actorId: "openprocure", role: "SYSTEM", actorType: "SYSTEM" as const };
+  return { actorId: "charter", role: "SYSTEM", actorType: "SYSTEM" as const };
 }
 
 function printSession(

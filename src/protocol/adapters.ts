@@ -18,7 +18,7 @@ export interface EventStore {
 
 export interface PaymentScheduler {
   create(request: ScheduledPaymentRequest): Promise<ScheduledPayment>;
-  approve(scheduleId: string, approval: Approval): Promise<void>;
+  confirmApproval(scheduleId: string, approval: Approval): Promise<void>;
   getStatus(scheduleId: string): Promise<PaymentStatus>;
 }
 

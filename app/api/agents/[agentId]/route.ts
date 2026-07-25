@@ -1,4 +1,3 @@
-import { parseExecutionMode } from "@/src/application/http";
 import { getProgramSession } from "@/src/application/runtime";
 
 export async function GET(
@@ -11,10 +10,7 @@ export async function GET(
   if (!programId) {
     return Response.json({ error: "programId is required." }, { status: 400 });
   }
-  const session = await getProgramSession(
-    programId,
-    parseExecutionMode(url.searchParams.get("mode")),
-  );
+  const session = await getProgramSession(programId, "testnet");
   if (!session) return Response.json({ error: "Program not found." }, { status: 404 });
   return Response.json({
     agentId,

@@ -1,5 +1,5 @@
-import { OpenProcureApp } from "./openprocure-app";
+import { CharterEntry } from "./charter-entry";
 
 export default function Home() {
-  return <OpenProcureApp />;
+  return <CharterEntry />;
 }

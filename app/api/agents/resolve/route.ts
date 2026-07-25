@@ -1,5 +1,5 @@
-import { parseExecutionMode } from "@/src/application/http";
 import { runProgramCommand } from "@/src/application/runtime";
+import { requireLiveMutationAdmin } from "@/src/application/admin-access";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as {
@@ -19,14 +19,16 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const denied = requireLiveMutationAdmin(request);
+  if (denied) return denied;
   const result = await runProgramCommand(
     body.programId,
-    parseExecutionMode(body.mode),
+    "testnet",
     {
       type: "RESOLVE_AGENT_IDENTITY",
       idempotencyKey: body.idempotencyKey,
       actor: {
-        actorId: "openprocure",
+        actorId: "charter",
         role: "SYSTEM",
         actorType: "SYSTEM",
       },

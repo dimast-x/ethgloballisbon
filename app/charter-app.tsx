@@ -30,7 +30,7 @@ import {
 } from "@worldcoin/idkit";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { subtract, toDisplay } from "@/src/protocol/money";
+import { fromDisplay, subtract, toDisplay } from "@/src/protocol/money";
 import type { EvidenceReference } from "@/src/protocol/types";
 import type { Offer, Order } from "@/src/protocol/types";
 import type {
@@ -43,25 +43,25 @@ import type {
   ProgramSession,
   TestnetReadiness,
 } from "@/src/application/runtime";
+import type { ProtocolProjection } from "@/src/protocol/reducer";
 import {
-  canonicalApprovalMessage,
-  type WalletApprovalPayload,
-} from "@/src/wallet/approval-message";
-import {
-  connectMetaMask,
-  shortAddress,
-  signMetaMaskMessage,
-} from "@/src/wallet/metamask-client";
-import type { Address, Hex } from "viem";
+  connectHederaWallet,
+  shortHederaAccount,
+  signHederaSchedule,
+} from "@/src/wallet/hedera-wallet-client";
 
 const tabs = ["Agent", "Buyer", "Vendor", "Verifier", "Finance", "Audit"] as const;
 type Tab = (typeof tabs)[number];
+const activeLiveRunKey = "charter_active_live_program";
 
 const eventLabels: Record<string, string> = {
   PROGRAM_CREATED: "Program activated",
   BUYER_ALLOCATED: "Buyer allocation granted",
+  BUYER_ALLOCATION_UPFUNDED: "Buyer allocation upfunded",
   VENDOR_APPROVED: "Vendor approved",
   OFFER_REGISTERED: "Offer registered",
+  SUPPLIER_UPDATED: "Supplier updated",
+  SUPPLIER_REMOVED: "Supplier removed",
   ORDER_REJECTED_BY_POLICY: "Purchase rejected",
   ORDER_CREATED: "Order created",
   ORDER_ACCEPTED_BY_VENDOR: "Order accepted",
@@ -84,9 +84,52 @@ type WorldRequest = {
   rpContext: RpContext;
 };
 
-export function OpenProcureApp() {
+type PublicShowcase =
+  | {
+      available: false;
+      network: string;
+      integrations?: {
+        hedera?: boolean;
+        world?: boolean;
+        directWallets?: boolean;
+      };
+    }
+  | {
+      available: true;
+      network: string;
+      topicId: string;
+      projection: ProtocolProjection & {
+        program: NonNullable<ProtocolProjection["program"]>;
+      };
+      integrations: {
+        hedera: true;
+        world: true;
+        directWallets: true;
+      };
+      proof: {
+        world: {
+          scheme: string;
+          verificationReference: string;
+          verifiedAt: string;
+        };
+        rejections: {
+          missingBacking: boolean;
+          delegationLimit: boolean;
+        };
+        order: {
+          id: string;
+          status: Order["status"];
+          scheduleId?: string;
+          paymentTransactionId?: string;
+          approvals: Order["approvals"];
+        };
+        accounts: Record<string, string | undefined>;
+      };
+    };
+
+export function CharterApp() {
   const [session, setSession] = useState<ProgramSession | null>(null);
-  const [mode, setMode] = useState<ExecutionMode>("simulation");
+  const mode: ExecutionMode = "testnet";
   const [activeTab, setActiveTab] = useState<Tab>("Agent");
   const [notice, setNotice] = useState(
     "Starting a fresh protocol run…",
@@ -100,16 +143,50 @@ export function OpenProcureApp() {
   const [worldRequest, setWorldRequest] = useState<WorldRequest | null>(null);
   const [worldOpen, setWorldOpen] = useState(false);
   const [roleWallets, setRoleWallets] = useState<
-    Partial<Record<"VERIFIER" | "FINANCE", Address>>
+    Partial<Record<"VERIFIER" | "FINANCE", string>>
   >({});
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [retryCommand, setRetryCommand] = useState<ProtocolCommand | null>(null);
   const [chosenOfferId, setChosenOfferId] = useState<string | null>(null);
+  const [allocationAmounts, setAllocationAmounts] = useState<Record<string, string>>({});
+  const [newBuyerId, setNewBuyerId] = useState("");
+  const [newBuyerAmount, setNewBuyerAmount] = useState("");
+  const [publicShowcase, setPublicShowcase] = useState<PublicShowcase | null>(
+    null,
+  );
+  const [publicShowcaseLoaded, setPublicShowcaseLoaded] = useState(false);
 
   useEffect(() => {
-    void refreshReadiness();
-    void startRun("simulation");
+    void refreshReadiness().then((next) => {
+      if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
+        const programId = window.localStorage.getItem(activeLiveRunKey);
+        if (programId) {
+          void resumeRun(programId);
+        } else {
+          void startRun("testnet");
+        }
+      } else {
+        void loadPublicShowcase();
+      }
+    });
+    // Initialization intentionally runs once; subsequent state comes from Mirror.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadPublicShowcase() {
+    try {
+      const response = await fetch("/api/showcase", { cache: "no-store" });
+      const body = (await response.json()) as PublicShowcase;
+      setPublicShowcase(body);
+    } catch {
+      setPublicShowcase({
+        available: false,
+        network: "Hedera testnet",
+      });
+    } finally {
+      setPublicShowcaseLoaded(true);
+    }
+  }
 
   async function refreshReadiness() {
     try {
@@ -117,40 +194,51 @@ export function OpenProcureApp() {
         fetch("/api/config/testnet", { cache: "no-store" }),
         fetch("/api/config/identity", { cache: "no-store" }),
       ]);
-      setReadiness((await hederaResponse.json()) as TestnetReadiness);
-      setIdentityReadiness(
-        (await identityResponse.json()) as IdentityReadiness,
-      );
+      const nextReadiness = (await hederaResponse.json()) as TestnetReadiness;
+      const nextIdentity = (await identityResponse.json()) as IdentityReadiness;
+      setReadiness(nextReadiness);
+      setIdentityReadiness(nextIdentity);
+      return { hedera: nextReadiness, identity: nextIdentity };
     } catch {
-      setReadiness({
+      const unavailable: TestnetReadiness = {
         ready: false,
         network: "testnet",
         issues: ["Configuration status could not be loaded."],
         publicConfig: {
           mirrorNodeUrl: "",
-          metaMaskRoleAddressesConfigured: false,
+          walletConnectConfigured: false,
         },
-      });
+      };
+      setReadiness(unavailable);
       setIdentityReadiness({
         ready: false,
         issues: ["Identity configuration status could not be loaded."],
         publicConfig: {
-          worldAction: "authorize-openprocure-agent",
+          worldAction: "authorize-charter-agent",
           worldEnvironment: "production",
           ensRpcConfigured: false,
           expectedDelegationHash: "",
         },
       });
+      return {
+        hedera: unavailable,
+        identity: {
+          ready: false,
+          issues: ["Identity configuration status could not be loaded."],
+          publicConfig: {
+            worldAction: "authorize-charter-agent",
+            worldEnvironment: "production" as const,
+            ensRpcConfigured: false,
+            expectedDelegationHash: "",
+          },
+        },
+      };
     }
   }
 
   async function startRun(nextMode: ExecutionMode) {
     setOperationState("pending");
-    setNotice(
-      nextMode === "testnet"
-        ? "Creating a fresh run and confirming its initialization through Mirror Node…"
-        : "Creating a fresh simulation run…",
-    );
+    setNotice("Creating a fresh run and confirming its initialization through Mirror Node…");
     try {
       const response = await fetch("/api/demos/university-gpu/runs", {
         method: "POST",
@@ -159,7 +247,40 @@ export function OpenProcureApp() {
       });
       const body = (await response.json()) as ProgramSession & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
-      setMode(nextMode);
+      hydrateSession(body);
+      window.localStorage.setItem(activeLiveRunKey, body.programId);
+      setOperationState("confirmed");
+      setNotice("Live run confirmed by Hedera Mirror Node.");
+    } catch (error) {
+      setOperationState("failed");
+      setNotice(error instanceof Error ? error.message : "Run creation failed.");
+    }
+  }
+
+  async function resumeRun(programId: string) {
+    setOperationState("pending");
+    setNotice("Reconstructing the active run through Mirror Node…");
+    try {
+      const response = await fetch(
+        `/api/demos/university-gpu/runs?programId=${encodeURIComponent(programId)}`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as ProgramSession & { error?: string };
+      if (!response.ok) {
+        window.localStorage.removeItem(activeLiveRunKey);
+        await startRun("testnet");
+        return;
+      }
+      hydrateSession(body);
+      setOperationState("confirmed");
+      setNotice("Active live run reconstructed from Hedera Mirror Node.");
+    } catch (error) {
+      setOperationState("failed");
+      setNotice(error instanceof Error ? error.message : "Run recovery failed.");
+    }
+  }
+
+  function hydrateSession(body: ProgramSession) {
       setSession(body);
       setRoleWallets({});
       setEvidenceFile(null);
@@ -168,25 +289,40 @@ export function OpenProcureApp() {
       setWorldRequest(null);
       setWorldOpen(false);
       setActiveTab("Agent");
-      setOperationState("confirmed");
-      setNotice(
-        nextMode === "testnet"
-          ? "Live run confirmed by Hedera Mirror Node."
-          : "Simulation run ready. Every action still uses the protocol command API.",
-      );
-    } catch (error) {
-      setOperationState("failed");
-      setNotice(error instanceof Error ? error.message : "Run creation failed.");
-    }
   }
 
   if (!session?.projection.program) {
+    if (publicShowcase?.available) {
+      return <VerifiedPublicProgram data={publicShowcase} />;
+    }
+    const issues = [
+      ...(readiness?.issues ?? []),
+      ...(identityReadiness?.issues ?? []),
+    ];
+    const waitingForPublicProof =
+      readiness && !readiness.authorized && !publicShowcaseLoaded;
+    const unavailableForPublic =
+      readiness && !readiness.authorized && publicShowcaseLoaded;
     return (
       <main className="shell loading-shell">
         <div className="loading-card">
-          <RefreshCw className="spin" size={24} />
-          <strong>Preparing OpenProcure</strong>
-          <span>{notice}</span>
+          {waitingForPublicProof ? <RefreshCw className="spin" size={24} /> : <ShieldCheck size={24} />}
+          <strong>
+            {waitingForPublicProof
+              ? "Loading verified public program"
+              : unavailableForPublic
+                ? "No verified live program is published"
+                : issues.length
+                  ? "Live system is not ready"
+                  : "Preparing live Charter"}
+          </strong>
+          <span>
+            {waitingForPublicProof
+              ? "Reconstructing public state from Hedera Mirror Node…"
+              : unavailableForPublic
+                ? "Charter does not substitute simulated data. An administrator can publish a completed Hedera testnet program after its ledger evidence passes verification."
+                : issues.join(" ") || notice}
+          </span>
         </div>
       </main>
     );
@@ -298,7 +434,7 @@ export function OpenProcureApp() {
         delivery ? "verifier" : "finance",
       ),
       orderId: activeSession.orderId,
-      approvalReference: "metamask-authenticated:pending",
+      approvalReference: "hedera-walletconnect:pending",
     } as ProtocolCommand;
   }
 
@@ -324,18 +460,11 @@ export function OpenProcureApp() {
   async function submitCommand(
     command: ProtocolCommand,
     successMessage: string,
-    walletApproval?: {
-      payload: WalletApprovalPayload;
-      signatureHex: Hex;
-    },
+    walletApproval?: { accountId: string; transactionId: string },
   ) {
     setOperationState("pending");
     setRetryCommand(command);
-    setNotice(
-      mode === "testnet"
-        ? "Submitted to Hedera; waiting for Mirror Node confirmation…"
-        : "Applying protocol command…",
-    );
+    setNotice("Submitted to Hedera; waiting for Mirror Node confirmation…");
     const response = await fetch(
       `/api/programs/${encodeURIComponent(program.id)}/commands`,
       {
@@ -364,39 +493,31 @@ export function OpenProcureApp() {
   }
 
   async function connectRoleWallet(role: "VERIFIER" | "FINANCE") {
-    if (mode === "simulation") {
-      setOperationState("confirmed");
-      setNotice(`${role} approval identity is ready in simulation mode.`);
-      return;
-    }
     setOperationState("pending");
-    setNotice("Open MetaMask and connect your Hedera Testnet account.");
+    setNotice("Open a Hedera wallet and connect the configured testnet account.");
     try {
-      const address = await connectMetaMask();
-      const expected =
+      const expectedAccountId =
         role === "VERIFIER"
-          ? readiness?.publicConfig.verifierWalletAddress
-          : readiness?.publicConfig.financeWalletAddress;
-      if (
-        mode === "testnet" &&
-        (!expected || expected.toLowerCase() !== address.toLowerCase())
-      ) {
-        throw new Error(
-          `MetaMask must use the configured ${role} address ${expected ?? "(missing)"}.`,
-        );
+          ? readiness?.publicConfig.verifierAccountId
+          : readiness?.publicConfig.financeAccountId;
+      if (!expectedAccountId) {
+        throw new Error(`The ${role} Hedera account is not configured.`);
       }
+      const accountId = await connectHederaWallet(expectedAccountId);
       const otherRole = role === "VERIFIER" ? "FINANCE" : "VERIFIER";
-      if (
-        roleWallets[otherRole]?.toLowerCase() === address.toLowerCase()
-      ) {
-        throw new Error("Verifier and Finance require different MetaMask accounts.");
+      if (roleWallets[otherRole] === accountId) {
+        throw new Error("Verifier and Finance require different Hedera accounts.");
       }
-      setRoleWallets((current) => ({ ...current, [role]: address }));
+      setRoleWallets((current) => ({ ...current, [role]: accountId }));
       setOperationState("confirmed");
-      setNotice(`${role} MetaMask account ${shortAddress(address)} connected.`);
+      setNotice(
+        `${role} Hedera account ${shortHederaAccount(accountId)} connected.`,
+      );
     } catch (error) {
       setOperationState("failed");
-      setNotice(error instanceof Error ? error.message : "MetaMask connection failed.");
+      setNotice(
+        error instanceof Error ? error.message : "Hedera wallet connection failed.",
+      );
     }
   }
 
@@ -404,61 +525,28 @@ export function OpenProcureApp() {
     const action =
       role === "VERIFIER" ? "APPROVE_DELIVERY" : "APPROVE_FINANCE";
     const command = commandFor(action);
-    if (mode === "simulation") {
-      try {
-        await submitCommand(
-          command,
-          role === "VERIFIER"
-            ? "Delivery verified. The first simulated signature is recorded."
-            : "Threshold satisfied. The simulated payment was released.",
-        );
-      } catch (error) {
-        setOperationState("failed");
-        setNotice(error instanceof Error ? error.message : "Approval failed.");
-      }
-      return;
-    }
     if (!order?.scheduleId) {
       setNotice("The payment schedule is not ready.");
       return;
     }
     const walletAccountId = roleWallets[role];
     if (!walletAccountId) {
-      setNotice(`Connect the ${role} MetaMask account first.`);
+      setNotice(`Connect the ${role} Hedera account first.`);
       return;
     }
-    const issuedAt = new Date();
-    const payload: WalletApprovalPayload = {
-      protocolVersion: "0.1",
-      action: role === "VERIFIER" ? "APPROVE_DELIVERY" : "APPROVE_PAYMENT",
-      role: role === "VERIFIER" ? "DELIVERY_VERIFIER" : "FINANCE",
-      organizationId: program.organizationId,
-      programId: program.id,
-      orderId: order.id,
-      scheduleId: order.scheduleId,
-      asset: order.amount.asset,
-      atomicAmount: order.amount.atomicAmount,
-      walletAccountId,
-      chainId: 296,
-      idempotencyKey: command.idempotencyKey,
-      issuedAt: issuedAt.toISOString(),
-      expiresAt: new Date(issuedAt.valueOf() + 5 * 60_000).toISOString(),
-    };
     try {
       setOperationState("pending");
-      setNotice("Review and sign the exact approval message in MetaMask.");
-      const signatureHex = await signMetaMaskMessage(
-        walletAccountId,
-        canonicalApprovalMessage(payload),
-      );
+      setNotice("Review and execute the schedule signature in your Hedera wallet.");
+      const receipt = await signHederaSchedule({
+        accountId: walletAccountId,
+        scheduleId: order.scheduleId,
+      });
       await submitCommand(
         command,
         role === "VERIFIER"
-          ? "MetaMask signature verified. Delivery approval recorded."
-          : mode === "testnet"
-            ? "MetaMask signature verified. Hedera settlement released."
-            : "MetaMask signature verified. Simulated settlement completed.",
-        { payload, signatureHex },
+          ? "Hedera confirmed the verifier wallet signature."
+          : "Hedera confirmed the finance signature and released settlement.",
+        receipt,
       );
     } catch (error) {
       setOperationState("failed");
@@ -491,32 +579,58 @@ export function OpenProcureApp() {
     );
   }
 
-  async function resolveAgent() {
-    setOperationState("pending");
-    setNotice(
-      mode === "testnet"
-        ? "Resolving the configured ENS identity and public records..."
-        : "Resolving the simulated public identity through the adapter...",
-    );
-    const response = await fetch("/api/agents/resolve", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        mode,
-        programId: program.id,
-        identity: activeSession.agentIdentity,
-        idempotencyKey: `${activeSession.runId}:resolve-agent`,
-      }),
-    });
-    const result = (await response.json()) as CommandResult & { error?: string };
-    if (!response.ok || !result.projection) {
+  async function upfundBuyer(buyerId: string) {
+    const value = allocationAmounts[buyerId]?.trim();
+    if (!value || Number(value) <= 0) {
       setOperationState("failed");
-      setNotice(result.error?.toString() ?? result.error ?? "Identity resolution failed.");
+      setNotice("Enter a positive amount to append to this buyer.");
       return;
     }
-    setSession({ ...activeSession, projection: result.projection });
-    setOperationState("confirmed");
-    setNotice("Agent identity resolved and bound to this program.");
+    await submitCommand(
+      {
+        type: "UPFUND_BUYER_ALLOCATION",
+        idempotencyKey: `${activeSession.runId}:upfund:${buyerId}:${crypto.randomUUID()}`,
+        actor: actor("ADMIN", "program-admin"),
+        buyerId,
+        amount: fromDisplay(value, program.budget.asset, program.budget.decimals),
+      },
+      `${buyerId}'s allocation increased by ${value} ${program.budget.asset}.`,
+    );
+    setAllocationAmounts((current) => ({ ...current, [buyerId]: "" }));
+  }
+
+  async function addBuyerAllocation() {
+    const buyerId = newBuyerId.trim();
+    const value = newBuyerAmount.trim();
+    if (!buyerId || !value || Number(value) <= 0) {
+      setOperationState("failed");
+      setNotice("Enter a buyer ID and a positive initial allocation.");
+      return;
+    }
+    const zero = fromDisplay("0", program.budget.asset, program.budget.decimals);
+    await submitCommand(
+      {
+        type: "ALLOCATE_BUYER",
+        idempotencyKey: `${activeSession.runId}:allocate:${buyerId}:${crypto.randomUUID()}`,
+        actor: actor("ADMIN", "program-admin"),
+        allocation: {
+          id: `allocation_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+          programId: program.id,
+          buyerId,
+          totalLimit: fromDisplay(
+            value,
+            program.budget.asset,
+            program.budget.decimals,
+          ),
+          committed: zero,
+          paid: zero,
+          allowedCategories: [...program.policy.allowedCategories],
+        },
+      },
+      `${buyerId} now has a live ${value} ${program.budget.asset} allocation.`,
+    );
+    setNewBuyerId("");
+    setNewBuyerAmount("");
   }
 
   async function runAgentOrder(kind: "UNVERIFIED" | "OVER_LIMIT" | "VALID") {
@@ -566,21 +680,13 @@ export function OpenProcureApp() {
       setNotice(request.error ?? "World verification request failed.");
       return;
     }
-    if (mode === "simulation") {
-      await recordWorldVerification(undefined);
-      return;
-    }
     setWorldRequest(request);
     setWorldOpen(true);
   }
 
   async function recordWorldVerification(proof: IDKitResult | undefined) {
     setOperationState("pending");
-    setNotice(
-      mode === "testnet"
-        ? "Verifying the World proof on the server..."
-        : "Recording simulated World human backing...",
-    );
+    setNotice("Verifying the World proof on the server...");
     const response = await fetch("/api/agents/world/verify", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -605,27 +711,14 @@ export function OpenProcureApp() {
   return (
     <main className="shell">
       <header className="topbar">
-        <a className="brand" href="#" aria-label="OpenProcure home">
-          <span className="brand-mark">OP</span>
-          <span>OpenProcure</span>
-          <small>Protocol v0.2</small>
-        </a>
-        <div className="mode-switch" aria-label="Execution mode">
-          <button
-            className={mode === "simulation" ? "active" : ""}
-            onClick={() => void startRun("simulation")}
-            disabled={operationState === "pending"}
-          >
-            Simulation
-          </button>
-          <button
-            className={mode === "testnet" ? "active" : ""}
-            onClick={() => void startRun("testnet")}
-            disabled={!readiness?.ready || operationState === "pending"}
-            title={readiness?.issues.join(" ")}
-          >
-            Hedera Testnet
-          </button>
+        <div className="brand live-brand" aria-label="Charter">
+          <span className="brand-mark">CH</span>
+          <span>Charter</span>
+          <small>Guided live run</small>
+        </div>
+        <div className="network-state">
+          <span className="network-dot" />
+          Hedera Testnet · World production
         </div>
         <button
           className="reset-button"
@@ -689,9 +782,7 @@ export function OpenProcureApp() {
             ? "Pending confirmation"
             : operationState === "failed"
               ? "Action needs attention"
-              : mode === "testnet"
-                ? "Mirror projection current"
-                : "Simulation projection current"}
+              : "Mirror projection current"}
         </span>
         {operationState === "failed" && retryCommand && (
           <button
@@ -714,6 +805,12 @@ export function OpenProcureApp() {
         )}
       </div>
 
+      <LiveRunGuide
+        projection={projection}
+        order={order}
+        onNavigate={setActiveTab}
+      />
+
       <section className="workspace">
         <nav className="tabs" aria-label="Protocol roles">
           {tabs.map((tab) => (
@@ -734,7 +831,6 @@ export function OpenProcureApp() {
           {activeTab === "Agent" && (
             <AgentPanel
               session={activeSession}
-              identity={projection.agentIdentities[activeSession.agentId]}
               attestation={projection.humanBacking[activeSession.agentId]}
               delegation={projection.agentDelegations[activeSession.agentId]}
               decisions={projection.agentAuthorizationDecisions.filter(
@@ -743,7 +839,6 @@ export function OpenProcureApp() {
               orderExists={Boolean(order)}
               liveReady={Boolean(identityReadiness?.ready)}
               liveIssues={identityReadiness?.issues ?? []}
-              onResolve={() => void resolveAgent()}
               onUnverified={() => void runAgentOrder("UNVERIFIED")}
               onVerify={() => void beginWorldVerification()}
               onOverLimit={() => void runAgentOrder("OVER_LIMIT")}
@@ -754,12 +849,45 @@ export function OpenProcureApp() {
             <BuyerPanel
               offers={offers}
               vendors={projection.vendors}
+              allocations={projection.allocations}
+              asset={program.budget.asset}
+              allocationAmounts={allocationAmounts}
+              newBuyerId={newBuyerId}
+              newBuyerAmount={newBuyerAmount}
               selectedOfferId={selectedOffer.id}
               orderExists={Boolean(order)}
               rejected={projection.timeline.some(
                 (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
               )}
               onSelect={setChosenOfferId}
+              onAllocationAmount={(buyerId, value) =>
+                setAllocationAmounts((current) => ({
+                  ...current,
+                  [buyerId]: value,
+                }))
+              }
+              onNewBuyerId={setNewBuyerId}
+              onNewBuyerAmount={setNewBuyerAmount}
+              onUpfund={(buyerId) =>
+                void upfundBuyer(buyerId).catch((error) => {
+                  setOperationState("failed");
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "The allocation could not be updated.",
+                  );
+                })
+              }
+              onAddBuyer={() =>
+                void addBuyerAllocation().catch((error) => {
+                  setOperationState("failed");
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "The buyer could not be added.",
+                  );
+                })
+              }
               onReject={() =>
                 run(
                   "REJECT_OVER_LIMIT",
@@ -792,11 +920,10 @@ export function OpenProcureApp() {
           {activeTab === "Verifier" && (
             <ApprovalPanel
               role="VERIFIER"
-              mode={mode}
               title="Independent delivery verification"
               description="Review the delivery digest, authenticate the role wallet, then add the first required approval."
               connected={
-                mode === "simulation" || Boolean(roleWallets.VERIFIER)
+                Boolean(roleWallets.VERIFIER)
               }
               accountId={roleWallets.VERIFIER}
               order={order}
@@ -807,11 +934,10 @@ export function OpenProcureApp() {
           {activeTab === "Finance" && (
             <ApprovalPanel
               role="FINANCE"
-              mode={mode}
               title="Treasury release"
               description="Confirm the approved evidence and add the second threshold signature to release settlement."
               connected={
-                mode === "simulation" || Boolean(roleWallets.FINANCE)
+                Boolean(roleWallets.FINANCE)
               }
               accountId={roleWallets.FINANCE}
               order={order}
@@ -822,7 +948,6 @@ export function OpenProcureApp() {
           {activeTab === "Audit" && (
             <AuditPanel
               events={projection.timeline}
-              mode={mode}
               topicId={readiness?.publicConfig.topicId}
               order={order}
               agentIdentity={projection.agentIdentities[activeSession.agentId]}
@@ -840,7 +965,7 @@ export function OpenProcureApp() {
           action={worldRequest.action}
           rp_context={worldRequest.rpContext}
           environment={worldRequest.environment}
-          allow_legacy_proofs={true}
+          allow_legacy_proofs={false}
           preset={proofOfHuman({ signal: worldRequest.signal })}
           handleVerify={recordWorldVerification}
           onSuccess={() => setWorldOpen(false)}
@@ -876,6 +1001,196 @@ export function OpenProcureApp() {
         )}
       </section>
     </main>
+  );
+}
+
+function VerifiedPublicProgram({
+  data,
+}: {
+  data: Extract<PublicShowcase, { available: true }>;
+}) {
+  const program = data.projection.program;
+  const order = Object.values(data.projection.orders).find(
+    (candidate) => candidate.id === data.proof.order.id,
+  );
+  const allocations = Object.values(data.projection.allocations);
+  const allocated = allocations.reduce(
+    (total, item) => total + BigInt(item.totalLimit.atomicAmount),
+    0n,
+  );
+  const allocatedMoney = {
+    ...program.budget,
+    atomicAmount: allocated.toString(),
+  };
+
+  return (
+    <main className="shell">
+      <header className="topbar">
+        <div className="brand live-brand" aria-label="Charter">
+          <span className="brand-mark">CH</span>
+          <span>Charter</span>
+          <small>Verified public program</small>
+        </div>
+        <div className="network-state">
+          <span className="network-dot" />
+          Hedera Testnet · read only
+        </div>
+        <a
+          className="reset-button"
+          href={`https://hashscan.io/testnet/topic/${data.topicId}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Inspect on HashScan <ArrowRight size={15} />
+        </a>
+      </header>
+
+      <section className="hero">
+        <div className="hero-copy">
+          <div className="eyebrow"><ShieldCheck size={15} /> Public ledger proof</div>
+          <h1>Real procurement state.<br /><span>Independently verifiable.</span></h1>
+          <p>
+            This completed program is reconstructed from Hedera Mirror Node.
+            Every displayed event, approval, and settlement reference belongs
+            to the published testnet run.
+          </p>
+        </div>
+        <div className="protocol-flow" aria-label="Verified integration status">
+          <FlowNode icon={<Fingerprint size={18} />} label="World proof" index="01" />
+          <FlowNode icon={<FileCheck2 size={18} />} label="HCS events" index="02" />
+          <FlowNode icon={<WalletCards size={18} />} label="Wallets" index="03" />
+          <FlowNode icon={<Landmark size={18} />} label="Settlement" index="04" />
+        </div>
+      </section>
+
+      <section className="program-strip">
+        <div className="program-title">
+          <span>Published program</span>
+          <h2>{program.name}</h2>
+          <p>{program.description}</p>
+        </div>
+        <Metric label="Program budget" value={`${toDisplay(program.budget)} ${program.budget.asset}`} />
+        <Metric label="Buyer allocations" value={`${toDisplay(allocatedMoney)} ${program.budget.asset}`} />
+        <Metric label="Settlement" value={order ? `${toDisplay(order.amount)} ${order.amount.asset}` : "Verified"} accent />
+        <div className="run-id"><span>Status</span><code>{data.proof.order.status}</code></div>
+      </section>
+
+      <div className="notice" role="status">
+        <span>Mirror Node confirms the published program and settlement evidence.</span>
+        <span className="mirror-status"><Check size={14} /> Public projection current</span>
+      </div>
+
+      <div className="audit-links public-account-links">
+        <span>Verified Hedera accounts</span>
+        {Object.entries(data.proof.accounts).map(([role, accountId]) =>
+          accountId ? (
+            <a
+              href={`https://hashscan.io/testnet/account/${accountId}`}
+              target="_blank"
+              rel="noreferrer"
+              key={role}
+            >
+              {role} ↗
+            </a>
+          ) : null,
+        )}
+      </div>
+
+      <section className="workspace">
+        <nav className="tabs" aria-label="Public proof sections">
+          <button className="active">Audit <span className="tab-count">{data.projection.timeline.length}</span></button>
+        </nav>
+        <div className="workspace-body">
+          <AuditPanel
+            events={data.projection.timeline}
+            topicId={data.topicId}
+            order={order}
+            agentIdentity={Object.values(data.projection.agentIdentities)[0]}
+            agentAttestation={Object.values(data.projection.humanBacking)[0]}
+            delegation={Object.values(data.projection.agentDelegations)[0]}
+          />
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function LiveRunGuide({
+  projection,
+  order,
+  onNavigate,
+}: {
+  projection: import("@/src/protocol/reducer").ProtocolProjection;
+  order?: Order;
+  onNavigate: (tab: Tab) => void;
+}) {
+  const complete = [
+    Boolean(
+      projection.program &&
+        projection.timeline.some(
+          (event) =>
+            event.eventType === "PROGRAM_CREATED" &&
+            typeof event.ledgerReference?.sequenceNumber === "number",
+        ),
+    ),
+    projection.agentAuthorizationDecisions.some(
+      (decision) => decision.code === "HUMAN_BACKING_REQUIRED",
+    ),
+    Object.keys(projection.humanBacking).length > 0,
+    projection.agentAuthorizationDecisions.some(
+      (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
+    ),
+    Boolean(order),
+    Boolean(order?.scheduleId),
+    Boolean(order?.evidence),
+    Boolean(
+      order?.approvals.some(
+        (approval) => approval.role === "DELIVERY_VERIFIER",
+      ),
+    ),
+    Boolean(order?.approvals.some((approval) => approval.role === "FINANCE")),
+    order?.status === "PAYMENT_EXECUTED",
+  ];
+  const steps: Array<{ label: string; tab: Tab }> = [
+    { label: "Program on HCS", tab: "Audit" },
+    { label: "Backing rejection", tab: "Agent" },
+    { label: "World proof", tab: "Agent" },
+    { label: "Limit rejection", tab: "Agent" },
+    { label: "Valid agent order", tab: "Agent" },
+    { label: "Schedule created", tab: "Vendor" },
+    { label: "Evidence hashed", tab: "Vendor" },
+    { label: "Verifier wallet", tab: "Verifier" },
+    { label: "Finance wallet", tab: "Finance" },
+    { label: "Mirror proof", tab: "Audit" },
+  ];
+  const current = complete.findIndex((value) => !value);
+
+  return (
+    <section className="live-run-guide" aria-label="Guided live integration run">
+      <div className="live-run-guide-heading">
+        <span>Resumable live sequence</span>
+        <strong>
+          {complete.filter(Boolean).length} / {steps.length} ledger-backed steps
+        </strong>
+      </div>
+      <ol>
+        {steps.map((step, index) => {
+          const state = complete[index]
+            ? "complete"
+            : index === current
+              ? "current"
+              : "locked";
+          return (
+            <li className={state} key={step.label}>
+              <button onClick={() => onNavigate(step.tab)}>
+                <span>{complete[index] ? <Check size={13} /> : index + 1}</span>
+                {step.label}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
@@ -917,28 +1232,24 @@ function Metric({
 
 function AgentPanel({
   session,
-  identity,
   attestation,
   delegation,
   decisions,
   orderExists,
   liveReady,
   liveIssues,
-  onResolve,
   onUnverified,
   onVerify,
   onOverLimit,
   onValid,
 }: {
   session: ProgramSession;
-  identity?: import("@/src/protocol/types").ResolvedAgentIdentity;
   attestation?: import("@/src/protocol/types").HumanBackingAttestation;
   delegation?: import("@/src/protocol/types").AgentDelegation;
   decisions: import("@/src/protocol/types").AgentAuthorizationDecision[];
   orderExists: boolean;
   liveReady: boolean;
   liveIssues: string[];
-  onResolve: () => void;
   onUnverified: () => void;
   onVerify: () => void;
   onOverLimit: () => void;
@@ -950,7 +1261,6 @@ function AgentPanel({
   const limitRejected = decisions.some(
     (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
   );
-  const resolved = Boolean(identity);
   const verified = Boolean(attestation);
 
   return (
@@ -958,44 +1268,39 @@ function AgentPanel({
       <div className="agent-intro">
         <PanelHeading
           kicker="Delegated agent authority"
-          title="Prove identity before execution"
-          description="Public identity, human backing, and organizational delegation are separate checks. Passing one never bypasses the others."
+          title="Prove human backing before execution"
+          description="World proof and organizational delegation are independent checks. ENS portability is intentionally deferred to the next iteration."
         />
         <div className="agent-identity-card">
           <div className="agent-name">
             <Fingerprint size={21} />
             <div>
-              <span>Public identity</span>
-              <strong>{session.agentIdentity.name}</strong>
+              <span>Organization-issued agent</span>
+              <strong>{session.agentId}</strong>
             </div>
           </div>
           <dl>
             <div>
               <dt>Agent ID</dt>
-              <dd>{identity?.agentId ?? "Not resolved"}</dd>
+              <dd>{session.agentId}</dd>
             </div>
             <div>
               <dt>Organization</dt>
-              <dd>{identity?.organizationReference ?? "Not resolved"}</dd>
+              <dd>{delegation?.organizationId ?? "Not available"}</dd>
             </div>
             <div>
-              <dt>Execution account</dt>
-              <dd>{identity?.executionAccountId ?? "Not resolved"}</dd>
+              <dt>Delegated principal</dt>
+              <dd>{delegation?.principalId ?? "Not available"}</dd>
             </div>
             <div>
-              <dt>Protocol</dt>
-              <dd>{identity?.protocolVersion ?? "Not resolved"}</dd>
+              <dt>Identity boundary</dt>
+              <dd>Organization record · ENS deferred</dd>
             </div>
           </dl>
-          <button className="secondary-action" onClick={onResolve} disabled={resolved}>
-            {resolved ? <Check size={16} /> : <Search size={16} />}
-            {resolved ? "Identity resolved" : "Resolve public identity"}
-          </button>
         </div>
         {!liveReady && (
           <p className="identity-readiness">
-            Live ENS and World configuration is incomplete. Simulation remains
-            available. {liveIssues[0] ?? ""}
+            World production configuration is incomplete. {liveIssues[0] ?? ""}
           </p>
         )}
       </div>
@@ -1005,12 +1310,12 @@ function AgentPanel({
           number="1"
           title="Reject unverified authority"
           description="Attempt the selected 3.5 HBAR order before World verification."
-          state={missingHumanRejected ? "complete" : resolved ? "ready" : "locked"}
+          state={missingHumanRejected ? "complete" : "ready"}
           actionLabel={
             missingHumanRejected ? "Rejection audited" : "Test without human backing"
           }
           onAction={onUnverified}
-          disabled={!resolved || missingHumanRejected}
+          disabled={missingHumanRejected}
           destructive
         />
         <AuthorityStep
@@ -1087,19 +1392,39 @@ function AuthorityStep({
 function BuyerPanel({
   offers,
   vendors,
+  allocations,
+  asset,
+  allocationAmounts,
+  newBuyerId,
+  newBuyerAmount,
   selectedOfferId,
   orderExists,
   rejected,
   onSelect,
+  onAllocationAmount,
+  onNewBuyerId,
+  onNewBuyerAmount,
+  onUpfund,
+  onAddBuyer,
   onReject,
   onCreate,
 }: {
   offers: Offer[];
   vendors: Record<string, import("@/src/protocol/types").Vendor>;
+  allocations: Record<string, import("@/src/protocol/types").BuyerAllocation>;
+  asset: string;
+  allocationAmounts: Record<string, string>;
+  newBuyerId: string;
+  newBuyerAmount: string;
   selectedOfferId: string;
   orderExists: boolean;
   rejected: boolean;
   onSelect: (offerId: string) => void;
+  onAllocationAmount: (buyerId: string, value: string) => void;
+  onNewBuyerId: (value: string) => void;
+  onNewBuyerAmount: (value: string) => void;
+  onUpfund: (buyerId: string) => void;
+  onAddBuyer: () => void;
   onReject: () => void;
   onCreate: () => void;
 }) {
@@ -1151,12 +1476,21 @@ function BuyerPanel({
         `${offer.description} ${vendors[offer.vendorId]?.name ?? ""}`.toLowerCase();
       return haystack.includes(query.trim().toLowerCase());
     })
-    .filter((offer) => deliveryFilter === "all" || offer.deliveryDays <= 2)
+    .filter(
+      (offer) =>
+        deliveryFilter === "all" ||
+        (offer.deliveryDays !== undefined && offer.deliveryDays <= 2),
+    )
     .sort((a, b) => {
       if (sort === "price") {
         return Number(a.amount.atomicAmount) - Number(b.amount.atomicAmount);
       }
-      if (sort === "delivery") return a.deliveryDays - b.deliveryDays;
+      if (sort === "delivery") {
+        return (
+          (a.deliveryDays ?? Number.MAX_SAFE_INTEGER) -
+          (b.deliveryDays ?? Number.MAX_SAFE_INTEGER)
+        );
+      }
       return a.id === "offer_horizon" ? -1 : b.id === "offer_horizon" ? 1 : 0;
     });
 
@@ -1177,6 +1511,43 @@ function BuyerPanel({
           <div><span>Maximum order</span><strong>5 HBAR</strong></div>
           <div><span>Evidence</span><strong>Required</strong></div>
           <div><span>Approvals</span><strong>Verifier + Finance</strong></div>
+        </div>
+        <div className="allocation-manager">
+          <div className="section-label">Live buyer allocations</div>
+          {Object.values(allocations).map((item) => (
+            <div className="allocation-manager-row" key={item.buyerId}>
+              <div>
+                <strong>{item.buyerId}</strong>
+                <span>{toDisplay(item.totalLimit)} {item.totalLimit.asset}</span>
+              </div>
+              <label>
+                <span className="sr-only">Amount to append for {item.buyerId}</span>
+                <input
+                  inputMode="decimal"
+                  placeholder={`Add ${asset}`}
+                  value={allocationAmounts[item.buyerId] ?? ""}
+                  onChange={(event) =>
+                    onAllocationAmount(item.buyerId, event.target.value)
+                  }
+                />
+              </label>
+              <button onClick={() => onUpfund(item.buyerId)}>Append</button>
+            </div>
+          ))}
+          <div className="allocation-manager-new">
+            <input
+              value={newBuyerId}
+              onChange={(event) => onNewBuyerId(event.target.value)}
+              placeholder="New buyer ID"
+            />
+            <input
+              inputMode="decimal"
+              value={newBuyerAmount}
+              onChange={(event) => onNewBuyerAmount(event.target.value)}
+              placeholder={`Initial ${asset}`}
+            />
+            <button onClick={onAddBuyer}>Add buyer</button>
+          </div>
         </div>
         <button className="danger-action" onClick={onReject} disabled={rejected}>
           {rejected ? <Check size={17} /> : <X size={17} />}
@@ -1265,7 +1636,9 @@ function BuyerPanel({
                   <h4>A100 research cluster</h4>
                   <p>{meta.configuration} with {meta.memory}</p>
                   <div className="product-facts">
-                    <span><Truck size={14} /> {offer.deliveryDays}-day delivery</span>
+                    {offer.deliveryDays !== undefined && (
+                      <span><Truck size={14} /> {offer.deliveryDays}-day delivery</span>
+                    )}
                     <span><MapPin size={14} /> {meta.location}</span>
                   </div>
                   <div className="product-price">
@@ -1323,7 +1696,9 @@ function BuyerPanel({
           <div>
             <span>Selected supplier</span>
             <strong>{selectedVendor}</strong>
-            <small>{selectedOffer.deliveryDays}-day delivery</small>
+            {selectedOffer.deliveryDays !== undefined && (
+              <small>{selectedOffer.deliveryDays}-day delivery</small>
+            )}
           </div>
           <div className="summary-price">
             <span>Order total</span>
@@ -1428,7 +1803,6 @@ function VendorPanel({
 
 function ApprovalPanel({
   role,
-  mode,
   title,
   description,
   connected,
@@ -1438,7 +1812,6 @@ function ApprovalPanel({
   onApprove,
 }: {
   role: "VERIFIER" | "FINANCE";
-  mode: ExecutionMode;
   title: string;
   description: string;
   connected: boolean;
@@ -1463,31 +1836,22 @@ function ApprovalPanel({
           <div className="wallet-icon"><WalletCards size={24} /></div>
           <div>
             <span>
-              {mode === "simulation"
-                ? "Simulated role identity"
-                : "MetaMask · Hedera testnet"}
+              Hedera WalletConnect · testnet
             </span>
             <strong>
-              {mode === "simulation"
-                ? "Ready without an external wallet"
-                : connected && accountId
-                ? shortAddress(accountId)
+              {connected && accountId
+                ? shortHederaAccount(accountId)
                 : "Role wallet not connected"}
             </strong>
           </div>
           <button onClick={onConnect} disabled={connected}>
-            {mode === "simulation"
-              ? "Simulation ready"
-              : connected
-                ? "Authenticated"
-                : "Connect"}
+            {connected ? "Connected" : "Connect"}
           </button>
         </div>
         <p className="relay-note">
           <LockKeyhole size={14} />
-          {mode === "simulation"
-            ? "Simulation exercises the same approval state transitions without requesting a wallet signature."
-            : "MetaMask signs the exact approval. The server verifies it before the Hedera relay can act."}
+          Your wallet signs the native Hedera schedule directly. Charter
+          records approval only after the signer appears on Hedera.
         </p>
       </div>
       <div className="approval-card">
@@ -1522,7 +1886,6 @@ function ApprovalPanel({
 
 function AuditPanel({
   events,
-  mode,
   topicId,
   order,
   agentIdentity,
@@ -1530,7 +1893,6 @@ function AuditPanel({
   delegation,
 }: {
   events: import("@/src/protocol/events").RecordedEvent[];
-  mode: ExecutionMode;
   topicId?: string;
   order?: Order;
   agentIdentity?: import("@/src/protocol/types").ResolvedAgentIdentity;
@@ -1540,17 +1902,13 @@ function AuditPanel({
   return (
     <div>
       <PanelHeading
-        kicker={
-          mode === "testnet"
-            ? "Mirror Node projection"
-            : "Simulation projection"
-        }
+        kicker="Mirror Node projection"
         title="One lifecycle, independently reconstructable"
         description="Application state is derived from the ordered protocol event stream. Rejections remain as visible as successful actions."
       />
       <div className="audit-links">
-        <span>Source: {mode === "testnet" ? "Hedera Mirror Node" : "simulation event store"}</span>
-        {mode === "testnet" && topicId && (
+        <span>Source: Hedera Mirror Node</span>
+        {topicId && (
           <a
             href={`https://hashscan.io/testnet/topic/${topicId}`}
             target="_blank"
@@ -1559,7 +1917,7 @@ function AuditPanel({
             Topic {topicId} ↗
           </a>
         )}
-        {mode === "testnet" && order?.scheduleId && (
+        {order?.scheduleId && (
           <a
             href={`https://hashscan.io/testnet/schedule/${order.scheduleId}`}
             target="_blank"
@@ -1568,7 +1926,7 @@ function AuditPanel({
             Schedule {order.scheduleId} ↗
           </a>
         )}
-        {mode === "testnet" && order?.paymentTransactionId && (
+        {order?.paymentTransactionId && (
           <a
             href={`https://hashscan.io/testnet/transaction/${encodeURIComponent(order.paymentTransactionId)}`}
             target="_blank"
@@ -1581,14 +1939,14 @@ function AuditPanel({
       {(agentIdentity || delegation) && (
         <div className="identity-audit-summary">
           <div>
-            <span>Public agent</span>
-            <strong>{agentIdentity?.publicIdentity.name ?? "Pending"}</strong>
+            <span>Agent authority</span>
+            <strong>{agentIdentity?.publicIdentity.name ?? "Organization-issued"}</strong>
             <code>{agentIdentity?.agentId ?? delegation?.agentId}</code>
           </div>
           <div>
-            <span>Resolution</span>
-            <strong>{agentIdentity ? "Bound" : "Pending"}</strong>
-            <code>{agentIdentity?.resolutionHash ?? "No resolution hash"}</code>
+            <span>External identity</span>
+            <strong>{agentIdentity ? "Bound" : "ENS deferred"}</strong>
+            <code>{agentIdentity?.resolutionHash ?? "Not required for this run"}</code>
           </div>
           <div>
             <span>Human backing</span>
@@ -1624,7 +1982,7 @@ function AuditPanel({
             <span>{event.actor.role.replaceAll("_", " ")}</span>
             <code>{formatTime(event.occurredAt)}</code>
             <code>{formatTime(event.ledgerReference?.consensusTimestamp)}</code>
-            {mode === "testnet" && event.ledgerReference?.topicId ? (
+            {event.ledgerReference?.topicId ? (
               <a
                 href={`https://hashscan.io/testnet/topic/${event.ledgerReference.topicId}`}
                 target="_blank"
@@ -1633,7 +1991,7 @@ function AuditPanel({
                 HashScan ↗
               </a>
             ) : (
-              <span>Local</span>
+              <span>Pending</span>
             )}
           </div>
         ))}

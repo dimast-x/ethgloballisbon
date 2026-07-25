@@ -1,8 +1,4 @@
-import type { ExecutionMode, ProtocolCommand } from "./commands";
-
-export function parseExecutionMode(value: unknown): ExecutionMode {
-  return value === "testnet" ? "testnet" : "simulation";
-}
+import type { ProtocolCommand } from "./commands";
 
 export function isProtocolCommand(value: unknown): value is ProtocolCommand {
   if (!value || typeof value !== "object") return false;
@@ -15,4 +11,3 @@ export function isProtocolCommand(value: unknown): value is ProtocolCommand {
     typeof command.actor === "object"
   );
 }
-

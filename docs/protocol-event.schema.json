@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openprocure.dev/schema/protocol-event-0.2.json",
-  "title": "OpenProcure Protocol Event",
+  "$id": "https://charter.dev/schema/protocol-event-0.2.json",
+  "title": "Charter Protocol Event",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -22,8 +22,11 @@
       "enum": [
         "PROGRAM_CREATED",
         "BUYER_ALLOCATED",
+        "BUYER_ALLOCATION_UPFUNDED",
         "VENDOR_APPROVED",
         "OFFER_REGISTERED",
+        "SUPPLIER_UPDATED",
+        "SUPPLIER_REMOVED",
         "ORDER_REJECTED_BY_POLICY",
         "ORDER_CREATED",
         "ORDER_ACCEPTED_BY_VENDOR",

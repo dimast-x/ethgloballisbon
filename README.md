@@ -1,15 +1,25 @@
-# OpenProcure
+# Charter
 
-OpenProcure is a reusable protocol for policy-controlled organizational
-spending. It separates deterministic authority, vendor choice, delivery
-evidence, independent approvals, settlement, and audit reconstruction.
+Charter is a policy-controlled procurement system running on Hedera testnet.
+The public product exposes only network-backed behavior: HCS program events,
+Mirror Node reconstruction, World human backing, native Hedera wallet
+approvals, scheduled HBAR settlement, and public explorer evidence.
 
-The included university GPU workflow is a reference implementation. The
-protocol core contains no university, GPU, vendor, currency, or fixed-role
-assumptions. A second NGO medical-supply fixture exercises the same policy and
-state modules. Protocol v0.2 also separates public identity, human backing,
-organizational delegation, and purchase authorization behind generic adapter
-contracts.
+There is no guest sandbox, simulated workspace, or D1-backed product mode.
+Public visitors can inspect a completed verified program when
+`CHARTER_SHOWCASE_PROGRAM_ID` is configured. Mutating a live program is limited
+to authenticated administrators listed in `CHARTER_ADMIN_EMAILS`.
+
+## Real product flow
+
+1. Create a funded procurement program on Hedera testnet.
+2. Grant one or more buyer allocations and append funds to a specific buyer.
+3. Register approved suppliers and offers.
+4. Enforce buyer, category, program, and delegated-agent limits.
+5. Record delivery evidence by SHA-256 reference.
+6. Collect distinct verifier and finance wallet signatures.
+7. Execute the scheduled HBAR payment.
+8. Reconstruct the program and audit trail from Hedera Mirror Node.
 
 ## Run locally
 
@@ -18,125 +28,79 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The browser starts in Simulation mode and exposes
-an explicit Hedera Testnet mode when the local configuration passes its
-readiness checks. Both modes call the same generic application commands.
+The real application requires the testnet and identity values from
+`.env.example`. Without them, the UI reports that live operation is unavailable;
+it does not substitute simulated data.
 
-Useful checks:
+Release checks:
 
 ```bash
 npm run typecheck
 npm test
-npm run demo:cli
+npm run lint
 npm run build
-```
-
-The CLI also exposes:
-
-```bash
-npm run testnet:validate
-npm run demo:live
-npm run audit:cli -- <programId> testnet
-npm run demo:agent
-npm run identity:validate
-npm run identity:resolve -- testnet
+npm run test:site
 ```
 
 ## Testnet configuration
 
-Copy `.env.example` to `.env.local`, then provide a funded Hedera testnet
-operator account:
-
-```bash
-npm run setup:testnet
-```
-
-The provisioning script creates the following once, or validates and reuses
-the identifiers already present in `.env.local`:
-
-- one reusable HCS topic;
-- a 25 HBAR treasury controlled by a verifier/finance 2-of-2 threshold key;
-- one vendor account;
-- separate verifier and finance relay keys.
-
-The script prints private setup material to the terminal only on first
-provisioning. Keep it private and copy the required values into `.env.local`.
-Never commit that file. Add the expected verifier and finance MetaMask EVM
-addresses before running validation. MetaMask connects to Hedera Testnet through
-the JSON-RPC relay using chain ID `296`.
-
-The testnet adapter supports:
-
-- HCS event publication;
-- Mirror Node event reconstruction;
-- scheduled HBAR transfers;
-- verifier and finance schedule signatures;
-- schedule execution status and scheduled payment transaction IDs;
-- Mirror Node pagination, consensus ordering, and restart-safe reconstruction;
-- memo-based schedule recovery when a command is retried.
-
-In live mode, accepting an order creates its approval-gated payment schedule.
-Delivery and finance approvals require MetaMask to sign a canonical,
-five-minute EIP-191 approval message. The server verifies the signer against the
-configured role address before using the corresponding testnet relay key.
-
-## Protocol boundaries
-
-- `src/protocol` — network-independent types, money, policy, events, reducer,
-  and adapter contracts.
-- `src/adapters` — Hedera implementation of the event store and payment
-  scheduler.
-- `src/demo` — replaceable reference fixtures and the browser-safe simulator.
-- `docs/protocol-v0.md` — protocol semantics and conformance requirements.
-- `docs/protocol-event.schema.json` — machine-readable event envelope.
-
-The public application API exposes generic program, command, order, and audit
-routes. Demo initialization is isolated under
-`/api/demos/university-gpu/runs`.
-
-## Approval security boundary
-
-Testnet approvals are **wallet-authenticated, demo-relayed Hedera approvals**.
-MetaMask authenticates the exact role, program, order, schedule, amount,
-address, chain, idempotency key, and expiry. Relay and operator private keys remain
-server-side and are never returned by the readiness API or written to HCS.
-
-MetaMask does not directly sign the native Hedera schedule in this iteration.
-The verified role approval authorizes the server-side Hedera relay to add the
-corresponding schedule signature. Hosted live credentials, production key
-custody, and AI recommendation logic remain intentionally deferred.
-
-## Agent identity and delegation
-
-The Agent tab demonstrates that identity alone does not authorize spending:
-
-1. Resolve the configured public agent identity.
-2. Audit a purchase rejected because human backing is missing.
-3. Verify the principal through World ID.
-4. Audit a 4.2 HBAR request rejected by a 4 HBAR delegation.
-5. Create the valid 3.5 HBAR order and continue through settlement.
-
-Simulation uses the same `PublicIdentityResolver` and `HumanBackingVerifier`
-boundaries as live mode. Live mode resolves ENSIP-5 records from Ethereum
-mainnet and uses World IDKit v4 with server-signed relying-party context.
-
-Required agent records:
+Configure a funded Hedera testnet operator, the existing topic and settlement
+accounts, two distinct role accounts, WalletConnect, and World:
 
 ```text
-com.openprocure.agent-id
-com.openprocure.role
-com.openprocure.organization
-com.openprocure.hedera-account
-com.openprocure.delegation
-com.openprocure.world-reference
-com.openprocure.protocol-version
-url
+HEDERA_OPERATOR_ID
+HEDERA_OPERATOR_KEY
+HEDERA_TOPIC_ID
+HEDERA_TREASURY_ACCOUNT_ID
+HEDERA_VENDOR_ACCOUNT_ID
+HEDERA_VERIFIER_ACCOUNT_ID
+HEDERA_FINANCE_ACCOUNT_ID
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+WORLD_APP_ID
+WORLD_RP_ID
+WORLD_RP_SIGNING_KEY
+WORLD_ACTION
+CHARTER_ADMIN_EMAILS
+CHARTER_SHOWCASE_PROGRAM_ID
 ```
 
-The linked organization name must expose
-`com.openprocure.organization-id`. Run `npm run identity:validate` after
-adding the ENS and World settings from `.env.example`.
+Run `npm run setup:testnet` to provision or validate the topic, treasury,
+vendor, and 2-of-2 verifier/finance threshold arrangement.
 
-World proof payloads and RP signing keys remain off ledger. HCS records only a
-hashed verification reference. New identity events use schema version `0.2`;
-the reducer remains compatible with existing `0.1` events.
+Private keys remain server-side. Verifier and finance role keys remain inside
+their WalletConnect-compatible wallets. The browser submits native
+`ScheduleSignTransaction` requests, and the server accepts an approval only
+after Hedera and Mirror Node confirm the configured signer and successful
+transaction.
+
+## Public proof
+
+The read-only showcase is served only when the configured program contains a
+complete, verifiable run:
+
+- all protocol events have HCS topic and sequence references;
+- World human backing is recorded;
+- missing-backing and delegation-limit rejections are present;
+- verifier and finance approvals come from distinct configured Hedera accounts;
+- the schedule executed; and
+- Mirror Node confirms the exact treasury-to-vendor transfer.
+
+Use:
+
+```bash
+npm run verify:live -- <programId>
+npm run audit:cli -- <programId> testnet
+```
+
+## Architecture
+
+- `src/protocol` — network-independent types, policy, events, and reducer.
+- `src/application` — commands, authorization, and live orchestration.
+- `src/adapters` — Hedera, Mirror Node, World, and ENS integration boundaries.
+- `app/charter-app.tsx` — authenticated live workflow.
+- `app/api/showcase` — verified public read model.
+- `docs/protocol-v0.md` — protocol semantics.
+- `docs/protocol-event.schema.json` — event envelope schema.
+
+In-memory simulation remains limited to automated protocol tests and local
+developer tooling. It is not reachable from the public application or API.

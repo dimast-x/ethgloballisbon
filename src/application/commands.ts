@@ -41,12 +41,26 @@ export type ProtocolCommand =
       allocation: BuyerAllocation;
     })
   | (CommandEnvelope & {
+      type: "UPFUND_BUYER_ALLOCATION";
+      buyerId: string;
+      amount: Money;
+    })
+  | (CommandEnvelope & {
       type: "APPROVE_VENDOR";
       vendor: Vendor;
     })
   | (CommandEnvelope & {
       type: "REGISTER_OFFER";
       offer: Offer;
+    })
+  | (CommandEnvelope & {
+      type: "UPSERT_SUPPLIER";
+      vendor: Vendor;
+      offer: Offer;
+    })
+  | (CommandEnvelope & {
+      type: "REMOVE_SUPPLIER";
+      vendorId: string;
     })
   | (CommandEnvelope & {
       type: "TEST_PURCHASE_POLICY";
@@ -77,11 +91,13 @@ export type ProtocolCommand =
       type: "APPROVE_DELIVERY";
       orderId: string;
       approvalReference: string;
+      approvalTransactionId?: string;
     })
   | (CommandEnvelope & {
       type: "APPROVE_FINANCE";
       orderId: string;
       approvalReference: string;
+      approvalTransactionId?: string;
     });
 
 export type CommandStatus = "PENDING" | "CONFIRMED" | "FAILED";

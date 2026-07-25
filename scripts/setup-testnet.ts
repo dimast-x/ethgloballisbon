@@ -24,18 +24,28 @@ function required(name: string): string {
 const operatorId = required("HEDERA_OPERATOR_ID");
 const operatorKey = PrivateKey.fromString(required("HEDERA_OPERATOR_KEY"));
 const client = Client.forTestnet().setOperator(operatorId, operatorKey);
+const verifierAccountId = required("HEDERA_VERIFIER_ACCOUNT_ID");
+const financeAccountId = required("HEDERA_FINANCE_ACCOUNT_ID");
+if (verifierAccountId === financeAccountId) {
+  throw new Error("Verifier and finance must use different Hedera accounts.");
+}
+const [verifierInfo, financeInfo] = await Promise.all([
+  new AccountInfoQuery().setAccountId(verifierAccountId).execute(client),
+  new AccountInfoQuery().setAccountId(financeAccountId).execute(client),
+]);
+if (!verifierInfo.key || !financeInfo.key) {
+  throw new Error("Verifier and finance account keys could not be read.");
+}
+const verifierKey = verifierInfo.key;
+const financeKey = financeInfo.key;
 
 const existing = {
   topicId: process.env.HEDERA_TOPIC_ID,
   treasuryAccountId: process.env.HEDERA_TREASURY_ACCOUNT_ID,
   vendorAccountId: process.env.HEDERA_VENDOR_ACCOUNT_ID,
-  verifierRelayPrivateKey: process.env.HEDERA_VERIFIER_RELAY_KEY,
-  financeRelayPrivateKey: process.env.HEDERA_FINANCE_RELAY_KEY,
 };
 
 if (Object.values(existing).every(Boolean)) {
-  const verifier = PrivateKey.fromString(existing.verifierRelayPrivateKey!);
-  const finance = PrivateKey.fromString(existing.financeRelayPrivateKey!);
   const [topic, treasury] = await Promise.all([
     new TopicInfoQuery().setTopicId(existing.topicId!).execute(client),
     new AccountInfoQuery()
@@ -46,8 +56,8 @@ if (Object.values(existing).every(Boolean)) {
   const validThreshold =
     key instanceof KeyList &&
     key.threshold === 2 &&
-    [verifier.publicKey, finance.publicKey].every((relay) =>
-      key.toArray().some((item) => item.toString() === relay.toString()),
+    [verifierKey, financeKey].every((roleKey) =>
+      key.toArray().some((item) => item.toString() === roleKey.toString()),
     );
   if (!topic.topicId || !validThreshold) {
     throw new Error(
@@ -62,6 +72,8 @@ if (Object.values(existing).every(Boolean)) {
         topicId: existing.topicId,
         treasuryAccountId: existing.treasuryAccountId,
         vendorAccountId: existing.vendorAccountId,
+        verifierAccountId,
+        financeAccountId,
       },
       null,
       2,
@@ -71,10 +83,8 @@ if (Object.values(existing).every(Boolean)) {
   process.exit(0);
 }
 
-const verifierRelay = PrivateKey.generateECDSA();
-const financeRelay = PrivateKey.generateECDSA();
 const treasuryKey = new KeyList(
-  [verifierRelay.publicKey, financeRelay.publicKey],
+  [verifierKey, financeKey],
   2,
 );
 const vendorKey = PrivateKey.generateECDSA();
@@ -92,7 +102,7 @@ async function createAccount(key: KeyList | PrivateKey, balance: Hbar) {
 const treasuryAccountId = await createAccount(treasuryKey, new Hbar(25));
 const vendorAccountId = await createAccount(vendorKey, new Hbar(1));
 const topicResponse = await new TopicCreateTransaction()
-  .setTopicMemo("openprocure:protocol-v0")
+  .setTopicMemo("charter:protocol-v0")
   .execute(client);
 const topicReceipt = await topicResponse.getReceipt(client);
 if (!topicReceipt.topicId) throw new Error("Topic creation returned no ID");
@@ -105,8 +115,8 @@ console.log(
       treasuryAccountId,
       vendorAccountId,
       vendorPrivateKey: vendorKey.toString(),
-      verifierRelayPrivateKey: verifierRelay.toString(),
-      financeRelayPrivateKey: financeRelay.toString(),
+      verifierAccountId,
+      financeAccountId,
     },
     null,
     2,

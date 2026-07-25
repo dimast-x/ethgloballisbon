@@ -82,7 +82,7 @@ function runtime(): Runtime {
 }
 
 export async function createUniversityRun(
-  mode: ExecutionMode = "simulation",
+  mode: ExecutionMode = "testnet",
 ): Promise<ProgramSession> {
   if (mode === "testnet") {
     const readiness = await getTestnetReadiness(true);
@@ -121,7 +121,7 @@ export async function createUniversityRun(
 
 export async function createProgram(
   program: Program,
-  mode: ExecutionMode = "simulation",
+  mode: ExecutionMode = "testnet",
 ): Promise<ProgramSession> {
   const runId = `run_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const event = createEvent({
@@ -152,7 +152,7 @@ export async function createProgram(
 
 export async function getProgramSession(
   programId: string,
-  mode: ExecutionMode = "simulation",
+  mode: ExecutionMode = "testnet",
 ): Promise<ProgramSession | undefined> {
   const projection = await serviceFor(mode).projection(programId);
   if (!projection.program) return undefined;
@@ -161,8 +161,15 @@ export async function getProgramSession(
     runId: projection.runId ?? "",
     programId,
     buyerId: Object.keys(projection.allocations)[0] ?? "",
-    selectedOfferId: Object.keys(projection.offers)[0] ?? "",
-    orderId: Object.keys(projection.orders)[0] ?? "",
+    selectedOfferId:
+      Object.keys(projection.offers).find((offerId) =>
+        offerId.includes("horizon"),
+      ) ??
+      Object.keys(projection.offers)[0] ??
+      "",
+    orderId:
+      Object.keys(projection.orders)[0] ??
+      (projection.runId ? `order_${projection.runId.slice(-12)}` : ""),
     agentId: Object.keys(projection.agentDelegations)[0] ?? "",
     agentIdentity:
       Object.values(projection.agentIdentities)[0]?.publicIdentity ?? {
@@ -201,16 +208,17 @@ export async function findOrder(
 
 export type TestnetReadiness = {
   ready: boolean;
+  authorized?: boolean;
   network: "testnet";
   issues: string[];
   publicConfig: {
     topicId?: string;
     treasuryAccountId?: string;
     vendorAccountId?: string;
-    verifierWalletAddress?: string;
-    financeWalletAddress?: string;
+    verifierAccountId?: string;
+    financeAccountId?: string;
     mirrorNodeUrl: string;
-    metaMaskRoleAddressesConfigured: boolean;
+    walletConnectConfigured: boolean;
   };
 };
 
@@ -224,10 +232,9 @@ export async function getTestnetReadiness(
     "HEDERA_TOPIC_ID",
     "HEDERA_TREASURY_ACCOUNT_ID",
     "HEDERA_VENDOR_ACCOUNT_ID",
-    "HEDERA_VERIFIER_RELAY_KEY",
-    "HEDERA_FINANCE_RELAY_KEY",
-    "NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS",
-    "NEXT_PUBLIC_METAMASK_FINANCE_ADDRESS",
+    "HEDERA_VERIFIER_ACCOUNT_ID",
+    "HEDERA_FINANCE_ACCOUNT_ID",
+    "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID",
   ] as const;
   for (const name of required) {
     if (!process.env[name]) issues.push(`Missing ${name}.`);
@@ -239,22 +246,20 @@ export async function getTestnetReadiness(
     issues.push("Iteration two supports HEDERA_NETWORK=testnet only.");
   }
   if (
-    process.env.NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS &&
-    process.env.NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS.toLowerCase() ===
-      process.env.NEXT_PUBLIC_METAMASK_FINANCE_ADDRESS?.toLowerCase()
+    process.env.HEDERA_VERIFIER_ACCOUNT_ID &&
+    process.env.HEDERA_VERIFIER_ACCOUNT_ID ===
+      process.env.HEDERA_FINANCE_ACCOUNT_ID
   ) {
-    issues.push("Verifier and finance MetaMask addresses must be different.");
+    issues.push("Verifier and finance Hedera accounts must be different.");
   }
 
   validateAccount("HEDERA_OPERATOR_ID", issues);
   validateAccount("HEDERA_TOPIC_ID", issues);
   validateAccount("HEDERA_TREASURY_ACCOUNT_ID", issues);
   validateAccount("HEDERA_VENDOR_ACCOUNT_ID", issues);
-  validateEvmAddress("NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS", issues);
-  validateEvmAddress("NEXT_PUBLIC_METAMASK_FINANCE_ADDRESS", issues);
+  validateAccount("HEDERA_VERIFIER_ACCOUNT_ID", issues);
+  validateAccount("HEDERA_FINANCE_ACCOUNT_ID", issues);
   validatePrivateKey("HEDERA_OPERATOR_KEY", issues);
-  validatePrivateKey("HEDERA_VERIFIER_RELAY_KEY", issues);
-  validatePrivateKey("HEDERA_FINANCE_RELAY_KEY", issues);
 
   const mirrorNodeUrl =
     process.env.HEDERA_MIRROR_NODE_URL ??
@@ -280,14 +285,13 @@ export async function getTestnetReadiness(
       topicId: process.env.HEDERA_TOPIC_ID,
       treasuryAccountId: process.env.HEDERA_TREASURY_ACCOUNT_ID,
       vendorAccountId: process.env.HEDERA_VENDOR_ACCOUNT_ID,
-      verifierWalletAddress:
-        process.env.NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS,
-      financeWalletAddress:
-        process.env.NEXT_PUBLIC_METAMASK_FINANCE_ADDRESS,
+      verifierAccountId: process.env.HEDERA_VERIFIER_ACCOUNT_ID,
+      financeAccountId: process.env.HEDERA_FINANCE_ACCOUNT_ID,
       mirrorNodeUrl,
-      metaMaskRoleAddressesConfigured: Boolean(
-        process.env.NEXT_PUBLIC_METAMASK_VERIFIER_ADDRESS &&
-          process.env.NEXT_PUBLIC_METAMASK_FINANCE_ADDRESS,
+      walletConnectConfigured: Boolean(
+        process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID &&
+          process.env.HEDERA_VERIFIER_ACCOUNT_ID &&
+          process.env.HEDERA_FINANCE_ACCOUNT_ID,
       ),
     },
   };
@@ -310,11 +314,9 @@ export type IdentityReadiness = {
 export async function getIdentityReadiness(
   probeNetwork = false,
 ): Promise<IdentityReadiness> {
+  void probeNetwork;
   const issues: string[] = [];
   const required = [
-    "ENS_RPC_URL",
-    "OPENPROCURE_AGENT_ENS_NAME",
-    "OPENPROCURE_ORGANIZATION_ENS_NAME",
     "WORLD_RP_ID",
     "WORLD_RP_SIGNING_KEY",
   ] as const;
@@ -326,48 +328,24 @@ export async function getIdentityReadiness(
   if (!worldAppId) issues.push("Missing WORLD_APP_ID or NEXT_PUBLIC_WORLD_APP_ID.");
   const environment =
     process.env.WORLD_ENVIRONMENT === "staging" ? "staging" : "production";
+  if (environment !== "production") {
+    issues.push("Live integration runs require WORLD_ENVIRONMENT=production.");
+  }
   if (
     process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT &&
     process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT !== environment
   ) {
     issues.push("World server and browser environments do not match.");
   }
-  if (probeNetwork && issues.length === 0) {
-    try {
-      const identity = await new EnsPublicIdentityResolver({
-        rpcUrl: process.env.ENS_RPC_URL,
-        expectedOrganizationName:
-          process.env.OPENPROCURE_ORGANIZATION_ENS_NAME,
-      }).resolve({
-        scheme: "ens",
-        name: process.env.OPENPROCURE_AGENT_ENS_NAME!,
-      });
-      const expectedDelegationHash = delegationIntegrityHash(
-        universityGpuFixture.agent.delegation,
-      );
-      if (identity.agentId !== universityGpuFixture.agent.agentId) {
-        issues.push("The ENS agent ID does not match the demo agent.");
-      }
-      if (identity.delegationHash !== expectedDelegationHash) {
-        issues.push("The ENS delegation hash does not match the demo delegation.");
-      }
-    } catch (error) {
-      issues.push(
-        error instanceof Error
-          ? `ENS readiness failed: ${error.message}`
-          : "ENS readiness failed.",
-      );
-    }
-  }
   return {
     ready: issues.length === 0,
     issues,
     publicConfig: {
-      agentEnsName: process.env.OPENPROCURE_AGENT_ENS_NAME,
-      organizationEnsName: process.env.OPENPROCURE_ORGANIZATION_ENS_NAME,
+      agentEnsName: process.env.CHARTER_AGENT_ENS_NAME,
+      organizationEnsName: process.env.CHARTER_ORGANIZATION_ENS_NAME,
       worldAppId,
       worldAction:
-        process.env.WORLD_ACTION ?? "authorize-openprocure-agent",
+        process.env.WORLD_ACTION ?? "authorize-charter-agent",
       worldEnvironment: environment,
       ensRpcConfigured: Boolean(process.env.ENS_RPC_URL),
       expectedDelegationHash: delegationIntegrityHash(
@@ -389,7 +367,7 @@ export async function createAgentWorldRequest(
     return {
       appId: "app_simulation",
       rpId: "rp_simulation",
-      action: "authorize-openprocure-agent",
+      action: "authorize-charter-agent",
       environment: "staging" as const,
       signal,
       rpContext: {
@@ -427,7 +405,7 @@ export async function verifyAgentHumanBacking(input: {
       : await new WorldHumanBackingVerifier(worldConfigFromEnv()).verify({
           subjectReference: input.agentId,
           action:
-            process.env.WORLD_ACTION ?? "authorize-openprocure-agent",
+            process.env.WORLD_ACTION ?? "authorize-charter-agent",
           environment:
             process.env.WORLD_ENVIRONMENT === "staging"
               ? "staging"
@@ -437,15 +415,14 @@ export async function verifyAgentHumanBacking(input: {
         });
   const duplicate = Object.values(session.projection.humanBacking).find(
     (candidate) =>
-      candidate.verificationReference === attestation.verificationReference &&
-      candidate.subjectReference !== input.agentId,
+      candidate.verificationReference === attestation.verificationReference,
   );
   if (duplicate) throw new Error("This World verification was already used.");
   return runProgramCommand(input.programId, input.mode, {
     type: "RECORD_HUMAN_BACKING",
     idempotencyKey: input.idempotencyKey,
     actor: {
-      actorId: "openprocure",
+      actorId: "charter",
       role: "SYSTEM",
       actorType: "SYSTEM",
     },
@@ -453,25 +430,28 @@ export async function verifyAgentHumanBacking(input: {
   });
 }
 
-function agentAuthorizationSignal(
+export function agentAuthorizationBinding(
+  session: ProgramSession,
+  agentId: string,
+) {
+  const delegation = session.projection.agentDelegations[agentId];
+  if (!delegation) throw new Error("The agent delegation was not found.");
+  return {
+    protocolVersion: "0.2",
+    runId: session.runId,
+    organizationId: session.projection.program?.organizationId,
+    programId: session.programId,
+    agentId,
+    principalId: delegation.principalId,
+    delegationHash: delegation.integrityHash,
+  };
+}
+
+export function agentAuthorizationSignal(
   session: ProgramSession,
   agentId: string,
 ): string {
-  const identity = session.projection.agentIdentities[agentId];
-  const delegation = session.projection.agentDelegations[agentId];
-  if (!identity) throw new Error("Resolve the agent identity first.");
-  if (!delegation) throw new Error("The agent delegation was not found.");
-  return sha256(
-    JSON.stringify({
-      protocolVersion: "0.2",
-      runId: session.runId,
-      organizationId: session.projection.program?.organizationId,
-      programId: session.programId,
-      agentId,
-      principalId: delegation.principalId,
-      delegationHash: identity.delegationHash,
-    }),
-  );
+  return sha256(JSON.stringify(agentAuthorizationBinding(session, agentId)));
 }
 
 function serviceFor(mode: ExecutionMode): ProtocolApplicationService {
@@ -491,8 +471,9 @@ function serviceFor(mode: ExecutionMode): ProtocolApplicationService {
     paymentScheduler: new HederaPaymentScheduler(config),
     identityResolver: new EnsPublicIdentityResolver({
       rpcUrl: process.env.ENS_RPC_URL,
-      expectedOrganizationName: process.env.OPENPROCURE_ORGANIZATION_ENS_NAME,
+      expectedOrganizationName: process.env.CHARTER_ORGANIZATION_ENS_NAME,
     }),
+    requireResolvedAgentIdentity: false,
     settlement: { payerAccountId: config.treasuryAccountId },
   });
   return runtime().testnetService!;
@@ -550,15 +531,15 @@ function materializeFixture(
     agent: {
       ...source.agent,
       publicIdentity:
-        mode === "testnet" && process.env.OPENPROCURE_AGENT_ENS_NAME
+        mode === "testnet" && process.env.CHARTER_AGENT_ENS_NAME
           ? {
               scheme: "ens",
-              name: process.env.OPENPROCURE_AGENT_ENS_NAME,
+              name: process.env.CHARTER_AGENT_ENS_NAME,
             }
           : source.agent.publicIdentity,
       organizationName:
-        mode === "testnet" && process.env.OPENPROCURE_ORGANIZATION_ENS_NAME
-          ? process.env.OPENPROCURE_ORGANIZATION_ENS_NAME
+        mode === "testnet" && process.env.CHARTER_ORGANIZATION_ENS_NAME
+          ? process.env.CHARTER_ORGANIZATION_ENS_NAME
           : source.agent.organizationName,
       delegation,
     },
@@ -571,7 +552,7 @@ function initialEvents(fixture: DemoFixture, runId: string): ProtocolEvent[] {
     organizationId: fixture.organizationId,
     programId: fixture.program.id,
     actor: {
-      actorId: "openprocure",
+      actorId: "charter",
       role: "SYSTEM",
       actorType: "SYSTEM" as const,
     },
@@ -655,7 +636,7 @@ function resolvedFixtureIdentity(fixture: DemoFixture): ResolvedAgentIdentity {
     role: fixture.agent.role,
     protocolVersion: "0.2",
     delegationHash: fixture.agent.delegation.integrityHash,
-    endpoint: "https://openprocure.example/agents/reference",
+    endpoint: "https://charter.example/agents/reference",
   };
   return {
     ...snapshot,
@@ -701,7 +682,7 @@ class InMemoryPaymentScheduler implements PaymentScheduler {
       return {
         scheduleId: existing[0],
         scheduledTransactionId: `simulated-payment@${request.orderId}`,
-        status: existing[1].roles.size >= 2 ? "EXECUTED" : "PENDING",
+        status: existing[1].roles.size >= 1 ? "EXECUTED" : "PENDING",
       };
     }
     const scheduleId = `0.0.${7_400_000 + this.payments.size}`;
@@ -713,7 +694,7 @@ class InMemoryPaymentScheduler implements PaymentScheduler {
     };
   }
 
-  async approve(scheduleId: string, approval: Approval): Promise<void> {
+  async confirmApproval(scheduleId: string, approval: Approval): Promise<void> {
     const payment = this.payments.get(scheduleId);
     if (!payment) throw new Error(`Schedule ${scheduleId} was not found`);
     payment.roles.add(approval.role);
@@ -723,7 +704,7 @@ class InMemoryPaymentScheduler implements PaymentScheduler {
     const payment = this.payments.get(scheduleId);
     if (!payment) return { state: "FAILED" };
     const scheduledTransactionId = `simulated-payment@${payment.request.orderId}`;
-    return payment.roles.size >= 2
+    return payment.roles.size >= 1
       ? {
           state: "EXECUTED",
           scheduledTransactionId,
@@ -740,13 +721,6 @@ function validateAccount(name: string, issues: string[]): void {
     AccountId.fromString(value);
   } catch {
     issues.push(`${name} is not a valid Hedera ID.`);
-  }
-}
-
-function validateEvmAddress(name: string, issues: string[]): void {
-  const value = process.env[name];
-  if (value && !/^0x[a-fA-F0-9]{40}$/.test(value)) {
-    issues.push(`${name} is not a valid EVM address.`);
   }
 }
 
@@ -794,16 +768,37 @@ async function probeHederaConfiguration(issues: string[]): Promise<void> {
   try {
     const config = hederaConfigFromEnv();
     client = createHederaClient(config);
-    const [topic, treasuryInfo, vendorBalance, operatorBalance] = await Promise.all([
+    const [
+      topic,
+      treasuryInfo,
+      verifierInfo,
+      financeInfo,
+      vendorBalance,
+      operatorBalance,
+      verifierBalance,
+      financeBalance,
+    ] = await Promise.all([
       new TopicInfoQuery().setTopicId(config.topicId).execute(client),
       new AccountInfoQuery()
         .setAccountId(config.treasuryAccountId)
+        .execute(client),
+      new AccountInfoQuery()
+        .setAccountId(config.verifierAccountId!)
+        .execute(client),
+      new AccountInfoQuery()
+        .setAccountId(config.financeAccountId!)
         .execute(client),
       new AccountBalanceQuery()
         .setAccountId(config.vendorAccountId)
         .execute(client),
       new AccountBalanceQuery()
         .setAccountId(config.operatorAccountId)
+        .execute(client),
+      new AccountBalanceQuery()
+        .setAccountId(config.verifierAccountId!)
+        .execute(client),
+      new AccountBalanceQuery()
+        .setAccountId(config.financeAccountId!)
         .execute(client),
     ]);
     if (!topic.topicId) issues.push("The configured topic could not be queried.");
@@ -813,16 +808,21 @@ async function probeHederaConfiguration(issues: string[]): Promise<void> {
     if (operatorBalance.hbars.toTinybars().isZero()) {
       issues.push("The operator account has no HBAR for network fees.");
     }
+    if (verifierBalance.hbars.toTinybars().isZero()) {
+      issues.push("The verifier wallet has no HBAR for schedule-signing fees.");
+    }
+    if (financeBalance.hbars.toTinybars().isZero()) {
+      issues.push("The finance wallet has no HBAR for schedule-signing fees.");
+    }
     const treasuryKey = treasuryInfo.key;
-    const relayPublicKeys = [
-      PrivateKey.fromString(config.verifierRelayPrivateKey!).publicKey.toString(),
-      PrivateKey.fromString(config.financeRelayPrivateKey!).publicKey.toString(),
-    ];
+    const rolePublicKeys = [verifierInfo.key, financeInfo.key]
+      .filter((key): key is NonNullable<typeof key> => Boolean(key))
+      .map((key) => key.toString());
     if (
       !(treasuryKey instanceof KeyList) ||
       treasuryKey.threshold !== 2 ||
-      !relayPublicKeys.every((relay) =>
-        treasuryKey.toArray().some((key) => key.toString() === relay),
+      !rolePublicKeys.every((roleKey) =>
+        treasuryKey.toArray().some((key) => key.toString() === roleKey),
       )
     ) {
       issues.push(

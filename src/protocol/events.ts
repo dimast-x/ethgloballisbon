@@ -4,8 +4,11 @@ import type { Actor, LedgerReference } from "./types";
 export const protocolEventTypes = [
   "PROGRAM_CREATED",
   "BUYER_ALLOCATED",
+  "BUYER_ALLOCATION_UPFUNDED",
   "VENDOR_APPROVED",
   "OFFER_REGISTERED",
+  "SUPPLIER_UPDATED",
+  "SUPPLIER_REMOVED",
   "ORDER_REJECTED_BY_POLICY",
   "ORDER_CREATED",
   "ORDER_ACCEPTED_BY_VENDOR",

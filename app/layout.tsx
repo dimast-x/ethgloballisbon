@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "OpenProcure | Policy-controlled organizational spending";
+const title = "Charter | Policy-controlled organizational spending";
 const description =
   "A reusable procurement protocol for bounded authority, verified delivery, approval-gated settlement, and independently reconstructable audit history.";
 
@@ -29,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: "website",
-      images: [{ url: image, width: 1732, height: 909, alt: "OpenProcure protocol trust chain" }],
+      images: [{ url: image, width: 1732, height: 909, alt: "Charter protocol trust chain" }],
     },
     twitter: {
       card: "summary_large_image",
