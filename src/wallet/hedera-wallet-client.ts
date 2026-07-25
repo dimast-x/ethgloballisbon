@@ -44,27 +44,50 @@ async function connector(): Promise<DAppConnector> {
 }
 
 export async function connectHederaWallet(
-  expectedAccountId: string,
+  expectedAccountId?: string,
 ): Promise<string> {
   const instance = await connector();
-  let signer = instance.signers.find(
-    (candidate) => candidate.getAccountId().toString() === expectedAccountId,
-  );
+  let signer = expectedAccountId
+    ? instance.signers.find(
+        (candidate) =>
+          candidate.getAccountId().toString() === expectedAccountId,
+      )
+    : instance.signers[0];
   if (!signer) {
     await instance.openModal(undefined, true);
-    signer = instance.signers.find(
-      (candidate) => candidate.getAccountId().toString() === expectedAccountId,
-    );
+    signer = expectedAccountId
+      ? instance.signers.find(
+          (candidate) =>
+            candidate.getAccountId().toString() === expectedAccountId,
+        )
+      : instance.signers[0];
   }
   if (!signer) {
     const connected = instance.signers
       .map((candidate) => candidate.getAccountId().toString())
       .join(", ");
     throw new Error(
-      `Connect Hedera account ${expectedAccountId}. Connected: ${connected || "none"}.`,
+      expectedAccountId
+        ? `Connect Hedera account ${expectedAccountId}. Connected: ${connected || "none"}.`
+        : "Connect a Hedera testnet account to continue.",
     );
   }
   return signer.getAccountId().toString();
+}
+
+export async function signHederaMessage(input: {
+  accountId: string;
+  message: string;
+}): Promise<string> {
+  const instance = await connector();
+  const result = await instance.signMessage({
+    signerAccountId: `hedera:testnet:${input.accountId}`,
+    message: input.message,
+  });
+  if (!result.result?.signatureMap) {
+    throw new Error("The Hedera wallet did not return a message signature.");
+  }
+  return result.result.signatureMap;
 }
 
 export async function signHederaSchedule(input: {

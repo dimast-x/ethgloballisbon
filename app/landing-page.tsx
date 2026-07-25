@@ -5,10 +5,16 @@ import { ArrowRight, ShieldCheck } from "lucide-react";
 export function LandingPage({
   showcaseAvailable = false,
   showcaseLoading = false,
+  creating = false,
+  createError,
+  onCreate,
   onShowcase,
 }: {
   showcaseAvailable?: boolean;
   showcaseLoading?: boolean;
+  creating?: boolean;
+  createError?: string | null;
+  onCreate?: () => void;
   onShowcase?: () => void;
 }) {
   return (
@@ -35,9 +41,15 @@ export function LandingPage({
           delivery, and release payment through one reconstructable workflow.
         </p>
         <div className="op-landing-actions">
-          <a className="op-primary" href="/signin-with-chatgpt?return_to=%2F">
-            Create a live program <ArrowRight size={15} />
-          </a>
+          <button
+            className="op-primary"
+            type="button"
+            disabled={creating || !onCreate}
+            onClick={onCreate}
+          >
+            {creating ? "Authenticating wallet…" : "Create a live program"}
+            {!creating && <ArrowRight size={15} />}
+          </button>
           {showcaseAvailable && onShowcase && (
             <button className="op-secondary" onClick={onShowcase}>
               View live proof
@@ -49,8 +61,10 @@ export function LandingPage({
           <span>Append-only buyer funding</span>
           <span>Independent wallet approvals</span>
         </div>
-        {!showcaseAvailable && (
-          <small>
+        {createError ? (
+          <small role="alert">{createError}</small>
+        ) : (
+          !showcaseAvailable && <small>
             {showcaseLoading
               ? "Checking public ledger proof…"
               : "No simulated data is shown publicly."}

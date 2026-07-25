@@ -3,24 +3,24 @@ import {
   authenticatedAdministratorId,
   isLiveMutationAdmin,
 } from "../src/application/admin-access";
+import { createAdministratorSessionCookie } from "../src/application/wallet-auth";
 
 describe("live mutation access", () => {
-  it("lets any authenticated user create a program they administer", () => {
+  const secret = "test-only-secret-with-at-least-32-characters";
+
+  it("lets an authenticated Hedera wallet create a program it administers", () => {
+    const request = new Request("https://charter.example/api");
+    const cookie = createAdministratorSessionCookie(
+      request,
+      "0.0.12345",
+      { secret },
+    );
+    process.env.CHARTER_AUTH_SECRET = secret;
+
     expect(
       isLiveMutationAdmin(
         new Request("https://charter.example/api", {
-          headers: {
-            "oai-authenticated-user-email": "OWNER@example.com",
-          },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      isLiveMutationAdmin(
-        new Request("https://charter.example/api", {
-          headers: {
-            "oai-authenticated-user-email": "visitor@example.com",
-          },
+          headers: { cookie },
         }),
       ),
     ).toBe(true);
@@ -29,19 +29,25 @@ describe("live mutation access", () => {
     ).toBe(false);
   });
 
-  it("derives a stable private creator identifier from the signed-in user", () => {
+  it("uses the authenticated Hedera account as the creator identifier", () => {
+    process.env.CHARTER_AUTH_SECRET = secret;
+    const request = new Request("https://charter.example/api");
+    const cookie = createAdministratorSessionCookie(
+      request,
+      "0.0.12345",
+      { secret },
+    );
     const first = authenticatedAdministratorId(
       new Request("https://charter.example/api", {
-        headers: { "oai-authenticated-user-email": "Owner@Example.com" },
+        headers: { cookie },
       }),
     );
     const second = authenticatedAdministratorId(
       new Request("https://charter.example/api", {
-        headers: { "oai-authenticated-user-email": "owner@example.com" },
+        headers: { cookie },
       }),
     );
     expect(first).toBe(second);
-    expect(first).toMatch(/^chatgpt:[a-f0-9]{64}$/);
-    expect(first).not.toContain("owner@example.com");
+    expect(first).toBe("hedera:0.0.12345");
   });
 });

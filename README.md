@@ -8,7 +8,7 @@ approvals, scheduled HBAR settlement, and public explorer evidence.
 There is no guest sandbox, simulated workspace, or D1-backed product mode.
 Public visitors can inspect a completed verified program when
 `CHARTER_SHOWCASE_PROGRAM_ID` is configured. Mutating a live program is limited
-to its authenticated creator.
+to the Hedera wallet that created it.
 
 ## Real product flow
 
@@ -32,9 +32,10 @@ The real application requires the testnet and identity values from
 `.env.example`. Without them, the UI reports that live operation is unavailable;
 it does not substitute simulated data.
 
-On localhost, “Create a live program” uses a local development identity because
-the hosted ChatGPT sign-in dispatcher is not present. Deployed Sites builds
-continue to use the real ChatGPT sign-in flow and authenticated-user headers.
+“Create a live program” connects a Hedera testnet wallet, asks it to sign a
+short-lived challenge, verifies the signature against the account key from
+Mirror Node, and stores an HTTP-only administrator session. Configure
+`CHARTER_AUTH_SECRET` with at least 32 random characters.
 
 Release checks:
 
@@ -45,6 +46,24 @@ npm run lint
 npm run build
 npm run test:site
 ```
+
+## Deploy to Vercel
+
+This is a native Next.js application and can be imported directly into Vercel.
+Use the default Next.js build settings and configure every value from
+`.env.example` in Project Settings → Environment Variables. Keep
+`HEDERA_OPERATOR_KEY`, `WORLD_RP_SIGNING_KEY`, `ENS_RPC_URL`, and
+`CHARTER_AUTH_SECRET` server-only.
+
+Deploy from the project directory with:
+
+```bash
+npx vercel
+npx vercel --prod
+```
+
+Alternatively, connect the Git repository in the Vercel dashboard. Commits to
+the production branch will deploy automatically.
 
 ## Testnet configuration
 
@@ -100,7 +119,7 @@ npm run audit:cli -- <programId> testnet
 - `src/protocol` — network-independent types, policy, events, and reducer.
 - `src/application` — commands, authorization, and live orchestration.
 - `src/adapters` — Hedera, Mirror Node, World, and ENS integration boundaries.
-- `app/charter-app.tsx` — authenticated live workflow.
+- `app/charter-app.tsx` — Hedera-wallet-authenticated live workflow.
 - `app/api/showcase` — verified public read model.
 - `docs/protocol-v0.md` — protocol semantics.
 - `docs/protocol-event.schema.json` — event envelope schema.

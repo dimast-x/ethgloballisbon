@@ -1,22 +1,12 @@
-const AUTHENTICATED_EMAIL_HEADER = "oai-authenticated-user-email";
-
-export function authenticatedUserEmail(request: Request): string | null {
-  return (
-    request.headers
-      .get(AUTHENTICATED_EMAIL_HEADER)
-      ?.trim()
-      .toLowerCase() || null
-  );
-}
+import { authenticatedAdministratorAccountId } from "./wallet-auth";
 
 export function authenticatedAdministratorId(request: Request): string | null {
-  const email = authenticatedUserEmail(request);
-  if (!email) return null;
-  return `chatgpt:${createHash("sha256").update(email).digest("hex")}`;
+  const accountId = authenticatedAdministratorAccountId(request);
+  return accountId ? `hedera:${accountId}` : null;
 }
 
 export function isLiveMutationAdmin(request: Request): boolean {
-  return Boolean(authenticatedUserEmail(request));
+  return Boolean(authenticatedAdministratorAccountId(request));
 }
 
 export function requireLiveMutationAdmin(request: Request): Response | null {
@@ -25,7 +15,7 @@ export function requireLiveMutationAdmin(request: Request): Response | null {
   return Response.json(
     {
       error:
-        "Sign in with ChatGPT to create or administer a live Charter program.",
+        "Connect and authenticate a Hedera wallet to create or administer a live Charter program.",
     },
     { status: 401 },
   );
@@ -46,5 +36,3 @@ export function requireProgramAdministrator(
     { status: 403 },
   );
 }
-
-import { createHash } from "node:crypto";

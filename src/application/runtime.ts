@@ -228,6 +228,7 @@ export async function getTestnetReadiness(
 ): Promise<TestnetReadiness> {
   const issues: string[] = [];
   const required = [
+    "CHARTER_AUTH_SECRET",
     "HEDERA_OPERATOR_ID",
     "HEDERA_OPERATOR_KEY",
     "HEDERA_TOPIC_ID",
@@ -239,6 +240,12 @@ export async function getTestnetReadiness(
   ] as const;
   for (const name of required) {
     if (!process.env[name]) issues.push(`Missing ${name}.`);
+  }
+  if (
+    process.env.CHARTER_AUTH_SECRET &&
+    process.env.CHARTER_AUTH_SECRET.length < 32
+  ) {
+    issues.push("CHARTER_AUTH_SECRET must contain at least 32 characters.");
   }
   if (
     process.env.HEDERA_NETWORK &&

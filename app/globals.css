@@ -881,7 +881,7 @@ button.live-brand {
   background: var(--op-line-dark);
 }
 
-.landing-center-content small {
+.landing-center-content > small {
   margin-top: 16px;
   color: #7f857f;
   font-size: 9px;

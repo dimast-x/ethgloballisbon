@@ -47,6 +47,7 @@ import type { ProtocolProjection } from "@/src/protocol/reducer";
 import {
   connectHederaWallet,
   shortHederaAccount,
+  signHederaMessage,
   signHederaSchedule,
 } from "@/src/wallet/hedera-wallet-client";
 import { LandingPage } from "./landing-page";
@@ -157,6 +158,10 @@ export function CharterApp() {
   );
   const [publicShowcaseLoaded, setPublicShowcaseLoaded] = useState(false);
   const [showPublicProgram, setShowPublicProgram] = useState(false);
+  const [administratorSigningIn, setAdministratorSigningIn] = useState(false);
+  const [administratorSignInError, setAdministratorSignInError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     void refreshReadiness().then((next) => {
@@ -238,6 +243,69 @@ export function CharterApp() {
     }
   }
 
+  async function authenticateAdministrator() {
+    setAdministratorSigningIn(true);
+    setAdministratorSignInError(null);
+    try {
+      const accountId = await connectHederaWallet();
+      const challengeResponse = await fetch("/api/auth/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId }),
+      });
+      const challenge = (await challengeResponse.json()) as {
+        message?: string;
+        token?: string;
+        error?: string;
+      };
+      if (!challengeResponse.ok || !challenge.message || !challenge.token) {
+        throw new Error(
+          challenge.error ?? "Wallet authentication challenge failed.",
+        );
+      }
+      const signatureMap = await signHederaMessage({
+        accountId,
+        message: challenge.message,
+      });
+      const sessionResponse = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accountId,
+          token: challenge.token,
+          signatureMap,
+        }),
+      });
+      const authenticated = (await sessionResponse.json()) as {
+        authenticated?: boolean;
+        error?: string;
+      };
+      if (!sessionResponse.ok || !authenticated.authenticated) {
+        throw new Error(
+          authenticated.error ?? "Wallet authentication failed.",
+        );
+      }
+
+      const next = await refreshReadiness();
+      if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
+        const programId = window.localStorage.getItem(activeLiveRunKey);
+        if (programId) {
+          await resumeRun(programId);
+        } else {
+          await startRun("testnet");
+        }
+      }
+    } catch (error) {
+      setAdministratorSignInError(
+        error instanceof Error
+          ? error.message
+          : "Hedera wallet authentication failed.",
+      );
+    } finally {
+      setAdministratorSigningIn(false);
+    }
+  }
+
   async function startRun(nextMode: ExecutionMode) {
     setOperationState("pending");
     setNotice("Creating a fresh run and confirming its initialization through Mirror Node…");
@@ -306,6 +374,9 @@ export function CharterApp() {
         <LandingPage
           showcaseAvailable={Boolean(publicShowcase?.available)}
           showcaseLoading={!publicShowcaseLoaded}
+          creating={administratorSigningIn}
+          createError={administratorSignInError}
+          onCreate={() => void authenticateAdministrator()}
           onShowcase={
             publicShowcase?.available
               ? () => setShowPublicProgram(true)

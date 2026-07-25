@@ -1,29 +1,45 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
-import { register } from "node:module";
-import test from "node:test";
+import { createServer } from "node:net";
+import test, { after, before } from "node:test";
 
-register("./cloudflare-workers-loader.mjs", import.meta.url);
+let server;
+let origin;
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
+before(async () => {
+  const port = await availablePort();
+  origin = `http://127.0.0.1:${port}`;
+  server = spawn(
+    process.execPath,
+    [
+      new URL("../node_modules/next/dist/bin/next", import.meta.url).pathname,
+      "start",
+      "--hostname",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
     {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
+      cwd: new URL("..", import.meta.url),
+      env: {
+        ...process.env,
+        CHARTER_AUTH_SECRET:
+          "render-test-secret-with-at-least-32-characters",
       },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
+
+  await waitForServer(origin, server);
+});
+
+after(() => {
+  server?.kill("SIGTERM");
+});
+
+async function render() {
+  return fetch(origin, { headers: { accept: "text/html" } });
 }
 
 test("server-renders the Charter landing page and metadata", async () => {
@@ -38,7 +54,10 @@ test("server-renders the Charter landing page and metadata", async () => {
   );
   assert.match(html, /Choice at the edge/);
   assert.match(html, /Create a live program/);
-  assert.doesNotMatch(html, /sandbox|guest workspace|Connect MetaMask/i);
+  assert.doesNotMatch(
+    html,
+    /sandbox|guest workspace|Connect MetaMask|signin-with-chatgpt|chatgpt\.site/i,
+  );
   assert.match(html, /\/og\.png/);
   assert.doesNotMatch(
     html,
@@ -47,11 +66,12 @@ test("server-renders the Charter landing page and metadata", async () => {
 });
 
 test("keeps private Hedera and identity configuration out of browser assets", async () => {
-  const assetRoot = new URL("../dist/client/assets/", import.meta.url);
-  const files = await readdir(assetRoot);
-  const javascriptAssets = files.filter((file) => file.endsWith(".js"));
+  const assetRoot = new URL("../.next/static/", import.meta.url);
+  const javascriptAssets = (await filesRecursively(assetRoot)).filter((file) =>
+    file.pathname.endsWith(".js"),
+  );
   const contents = await Promise.all(
-    javascriptAssets.map((file) => readFile(new URL(file, assetRoot), "utf8")),
+    javascriptAssets.map((file) => readFile(file, "utf8")),
   );
   const browserCode = contents.join("\n");
   assert.doesNotMatch(browserCode, /HEDERA_OPERATOR_KEY/);
@@ -59,14 +79,16 @@ test("keeps private Hedera and identity configuration out of browser assets", as
   assert.doesNotMatch(browserCode, /WORLD_RP_SIGNING_KEY/);
   assert.doesNotMatch(browserCode, /WORLD_RP_ID/);
   assert.doesNotMatch(browserCode, /ENS_RPC_URL/);
+  assert.doesNotMatch(browserCode, /CHARTER_AUTH_SECRET/);
 });
 
 test("ships the resumable direct-wallet live flow and explorer proof links", async () => {
-  const assetRoot = new URL("../dist/client/assets/", import.meta.url);
-  const files = await readdir(assetRoot);
-  const javascriptAssets = files.filter((file) => file.endsWith(".js"));
+  const assetRoot = new URL("../.next/static/", import.meta.url);
+  const javascriptAssets = (await filesRecursively(assetRoot)).filter((file) =>
+    file.pathname.endsWith(".js"),
+  );
   const contents = await Promise.all(
-    javascriptAssets.map((file) => readFile(new URL(file, assetRoot), "utf8")),
+    javascriptAssets.map((file) => readFile(file, "utf8")),
   );
   const browserCode = contents.join("\n");
   assert.match(browserCode, /Guided live integration run/);
@@ -74,6 +96,9 @@ test("ships the resumable direct-wallet live flow and explorer proof links", asy
   assert.match(browserCode, /Test without human backing/);
   assert.match(browserCode, /Test 4\.2 HBAR request/);
   assert.match(browserCode, /Hedera WalletConnect/);
+  assert.match(browserCode, /Authenticating wallet/);
+  assert.match(browserCode, /\/api\/auth\/challenge/);
+  assert.match(browserCode, /\/api\/auth\/session/);
   assert.match(browserCode, /charter_active_live_program/);
   assert.match(browserCode, /hashscan\.io\/testnet\/topic/);
   assert.match(browserCode, /hashscan\.io\/testnet\/schedule/);
@@ -84,4 +109,57 @@ test("ships the resumable direct-wallet live flow and explorer proof links", asy
     /sandbox simulation|guest workspace|D1 sandbox|Connect MetaMask/i,
   );
   assert.doesNotMatch(browserCode, /server-side relay|demo-relay|verifier-relay/i);
+  assert.doesNotMatch(browserCode, /signin-with-chatgpt|chatgpt\.site/i);
 });
+
+async function availablePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      probe.close((error) => (error ? reject(error) : resolve(port)));
+    });
+  });
+}
+
+async function waitForServer(target, child) {
+  const deadline = Date.now() + 20_000;
+  let output = "";
+  child.stdout?.on("data", (chunk) => {
+    output += chunk;
+  });
+  child.stderr?.on("data", (chunk) => {
+    output += chunk;
+  });
+
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`Next.js server exited early.\n${output}`);
+    }
+    try {
+      const response = await fetch(target);
+      if (response.ok) return;
+    } catch {
+      // The server is still starting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Next.js server did not start.\n${output}`);
+}
+
+async function filesRecursively(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nested = await Promise.all(
+    entries.map((entry) => {
+      const url = new URL(entry.name, directory);
+      if (entry.isDirectory()) {
+        url.pathname += "/";
+        return filesRecursively(url);
+      }
+      return [url];
+    }),
+  );
+  return nested.flat();
+}
