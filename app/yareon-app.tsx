@@ -12,14 +12,17 @@ import {
   Fingerprint,
   Landmark,
   LayoutDashboard,
+  ListChecks,
   LockKeyhole,
   MapPin,
   RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Store,
   TimerReset,
   Truck,
+  Users,
   WalletCards,
   X,
 } from "lucide-react";
@@ -63,11 +66,13 @@ import {
 const tabs = [
   "Overview",
   "Agent",
-  "Buyer",
-  "Vendor",
-  "Verifier",
-  "Finance",
+  "Policy",
+  "Buyers",
+  "Suppliers",
+  "Marketplace",
+  "Orders",
   "Audit",
+  "Advanced",
 ] as const;
 type Tab = (typeof tabs)[number];
 const activeLiveRunKey = "yareon_active_live_program";
@@ -83,30 +88,40 @@ const tabDetails: Record<Tab, { title: string; description: string }> = {
     description:
       "Verify human backing and exercise the agent’s bounded purchasing authority.",
   },
-  Buyer: {
-    title: "Buyer controls",
+  Policy: {
+    title: "Policy",
     description:
-      "Manage program funding, buyer allocations, and policy-controlled orders.",
+      "The category, per-order limit, and spending rules applied to every purchase.",
   },
-  Vendor: {
-    title: "Vendor delivery",
+  Buyers: {
+    title: "Buyers",
     description:
-      "Accept the order and submit tamper-evident evidence of delivery.",
+      "Fund members and teams without approving each purchase individually.",
   },
-  Verifier: {
-    title: "Delivery verification",
+  Suppliers: {
+    title: "Suppliers",
     description:
-      "Review delivery evidence and add the independent verifier approval.",
+      "Manage eligibility for future purchases while preserving existing orders.",
   },
-  Finance: {
-    title: "Finance approval",
+  Marketplace: {
+    title: "Marketplace",
     description:
-      "Authorize treasury settlement after delivery has been independently verified.",
+      "Buy from policy-approved suppliers using an available allocation.",
+  },
+  Orders: {
+    title: "Orders",
+    description:
+      "Review locked supplier details and settlement status.",
   },
   Audit: {
     title: "Program audit",
     description:
       "Inspect the event history reconstructed from Hedera Mirror Node.",
+  },
+  Advanced: {
+    title: "Advanced settlement proof",
+    description:
+      "Legacy delivery evidence and independent wallet approvals for programs that explicitly require them.",
   },
 };
 
@@ -116,16 +131,20 @@ function TabIcon({ tab }: { tab: Tab }) {
       return <LayoutDashboard />;
     case "Agent":
       return <Cpu />;
-    case "Buyer":
+    case "Policy":
+      return <ShieldCheck />;
+    case "Buyers":
+      return <Users />;
+    case "Suppliers":
+      return <Store />;
+    case "Marketplace":
       return <WalletCards />;
-    case "Vendor":
-      return <Truck />;
-    case "Verifier":
-      return <BadgeCheck />;
-    case "Finance":
-      return <Landmark />;
+    case "Orders":
+      return <ListChecks />;
     case "Audit":
       return <FileCheck2 />;
+    case "Advanced":
+      return <LockKeyhole />;
   }
 }
 
@@ -499,7 +518,7 @@ export function YareonApp() {
     if (!session) return;
     setSettlementError(null);
     setOperationState("pending");
-    setNotice("Creating this program’s treasury on Hedera testnet…");
+    setNotice("Activating policy-authorized supplier payments on Hedera testnet…");
     try {
       const response = await fetch(
         `/api/programs/${encodeURIComponent(session.programId)}/settlement`,
@@ -518,7 +537,7 @@ export function YareonApp() {
       hydrateSession(body);
       setShowSettlementSettings(false);
       setOperationState("confirmed");
-      setNotice("Payment roles saved. This program is now active.");
+      setNotice("Supplier payments activated. This program is now active.");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Payment setup failed.";
@@ -640,16 +659,28 @@ export function YareonApp() {
   const program = projection.program!;
   const allocation = projection.allocations[activeSession.buyerId];
   const order = projection.orders[activeSession.orderId];
-  const offers = Object.values(projection.offers);
+  const offers = Object.values(projection.offers).filter(
+    (offer) => projection.vendors[offer.vendorId]?.status === "APPROVED",
+  );
+  const requestedOffer =
+    projection.offers[chosenOfferId ?? activeSession.selectedOfferId];
   const selectedOffer =
-    projection.offers[chosenOfferId ?? activeSession.selectedOfferId] ??
-    projection.offers[activeSession.selectedOfferId];
+    requestedOffer &&
+    projection.vendors[requestedOffer.vendorId]?.status === "APPROVED"
+      ? requestedOffer
+      : offers[0] ?? requestedOffer ?? Object.values(projection.offers)[0];
   const available = subtract(
     subtract(allocation.totalLimit, allocation.committed),
     allocation.paid,
   );
 
   const completed = order?.status === "PAYMENT_EXECUTED";
+  const visibleTabs = tabs.filter(
+    (tab) =>
+      tab !== "Advanced" ||
+      program.policy.requireDeliveryEvidence ||
+      program.policy.approvalRequirements.length > 0,
+  );
   const progress = (() => {
     const states = [
       "CREATED",
@@ -959,6 +990,78 @@ export function YareonApp() {
     setNewBuyerAmount("");
   }
 
+  async function removeSupplier(vendorId: string) {
+    const supplier = projection.vendors[vendorId];
+    if (!supplier || supplier.status !== "APPROVED") return;
+    const continuing = Object.values(projection.orders).filter(
+      (candidate) =>
+        candidate.vendorId === vendorId &&
+        candidate.status !== "PAYMENT_EXECUTED" &&
+        candidate.status !== "CANCELLED",
+    ).length;
+    await submitCommand(
+      {
+        type: "REMOVE_SUPPLIER",
+        idempotencyKey: `${activeSession.runId}:remove-supplier:${vendorId}:${crypto.randomUUID()}`,
+        actor: actor("ADMIN", "program-admin"),
+        vendorId,
+      },
+      continuing
+        ? `${supplier.name} was removed from future purchases. ${continuing} existing order${continuing === 1 ? "" : "s"} will continue with locked terms.`
+        : `${supplier.name} was removed from future purchases.`,
+    );
+  }
+
+  async function addSupplier(input: {
+    name: string;
+    title: string;
+    amount: string;
+    settlementAccountId: string;
+  }) {
+    const category = program.policy.allowedCategories[0];
+    if (
+      !category ||
+      !input.name.trim() ||
+      !input.title.trim() ||
+      !input.settlementAccountId.trim() ||
+      !input.amount.trim() ||
+      Number(input.amount) <= 0
+    ) {
+      throw new Error(
+        "Supplier name, offer title, settlement account, and a positive amount are required.",
+      );
+    }
+    const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
+    await submitCommand(
+      {
+        type: "UPSERT_SUPPLIER",
+        idempotencyKey: `${activeSession.runId}:add-supplier:${suffix}`,
+        actor: actor("ADMIN", "program-admin"),
+        vendor: {
+          id: `vendor_${suffix}`,
+          name: input.name.trim(),
+          settlementAccountId: input.settlementAccountId.trim(),
+          approvedCategories: [category],
+          status: "APPROVED",
+        },
+        offer: {
+          id: `offer_${suffix}`,
+          programId: program.id,
+          vendorId: `vendor_${suffix}`,
+          category,
+          title: input.title.trim(),
+          description: input.title.trim(),
+          amount: fromDisplay(
+            input.amount,
+            program.budget.asset,
+            program.budget.decimals,
+          ),
+        },
+      },
+      `${input.name.trim()} was added as an approved supplier.`,
+    );
+  }
+
   async function runAgentOrder(kind: "UNVERIFIED" | "OVER_LIMIT" | "VALID") {
     const amount =
       kind === "OVER_LIMIT"
@@ -1079,7 +1182,7 @@ export function YareonApp() {
         </section>
 
         <nav aria-label="Program workspace">
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab}
               className={activeTab === tab ? "active" : ""}
@@ -1230,8 +1333,12 @@ export function YareonApp() {
                 <div className="threshold">
                   <LockKeyhole size={18} />
                   <span>
-                    Treasury threshold
-                    <strong>{order?.approvals.length ?? 0} / 2 signatures</strong>
+                    Settlement authority
+                    <strong>
+                      {program.policy.approvalRequirements.length
+                        ? `${order?.approvals.length ?? 0} / ${program.policy.approvalRequirements.length} signatures`
+                        : "Policy authorized"}
+                    </strong>
                   </span>
                 </div>
                 {completed && (
@@ -1264,10 +1371,15 @@ export function YareonApp() {
               onValid={() => void runAgentOrder("VALID")}
             />
           )}
-          {activeTab === "Buyer" && (
+          {activeTab === "Policy" && (
+            <PolicyPanel program={program} />
+          )}
+          {activeTab === "Buyers" && (
             <BuyerPanel
+              view="buyers"
               offers={offers}
               vendors={projection.vendors}
+              policy={program.policy}
               allocations={projection.allocations}
               programBudget={program.budget}
               asset={program.budget.asset}
@@ -1334,48 +1446,109 @@ export function YareonApp() {
               }
             />
           )}
-          {activeTab === "Vendor" && (
-            <VendorPanel
-              order={order}
+          {activeTab === "Suppliers" && (
+            <SuppliersPanel
               vendors={projection.vendors}
-              file={evidenceFile}
-              onFile={setEvidenceFile}
-              onAccept={() =>
+              offers={projection.offers}
+              orders={projection.orders}
+              asset={program.budget.asset}
+              onAdd={addSupplier}
+              onRemove={(vendorId) =>
+                void removeSupplier(vendorId).catch((error) => {
+                  setOperationState("failed");
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "The supplier could not be removed.",
+                  );
+                })
+              }
+            />
+          )}
+          {activeTab === "Marketplace" && (
+            <BuyerPanel
+              view="marketplace"
+              offers={offers}
+              vendors={projection.vendors}
+              policy={program.policy}
+              allocations={projection.allocations}
+              programBudget={program.budget}
+              asset={program.budget.asset}
+              programUpfundAmount={programUpfundAmount}
+              allocationAmounts={allocationAmounts}
+              newBuyerId={newBuyerId}
+              newBuyerAmount={newBuyerAmount}
+              selectedOfferId={selectedOffer.id}
+              orderExists={Boolean(order)}
+              rejected={projection.timeline.some(
+                (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
+              )}
+              onSelect={setChosenOfferId}
+              onProgramUpfundAmount={setProgramUpfundAmount}
+              onUpfundProgram={() => void upfundProgram()}
+              onAllocationAmount={(buyerId, value) =>
+                setAllocationAmounts((current) => ({
+                  ...current,
+                  [buyerId]: value,
+                }))
+              }
+              onNewBuyerId={setNewBuyerId}
+              onNewBuyerAmount={setNewBuyerAmount}
+              onUpfund={(buyerId) => void upfundBuyer(buyerId)}
+              onAddBuyer={() => void addBuyerAllocation()}
+              onReject={() =>
                 run(
-                  "ACCEPT_ORDER",
-                  `${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId} accepted the order.`,
+                  "REJECT_OVER_LIMIT",
+                  "5.5 HBAR rejected: buyer allocation is limited to 5 HBAR.",
                 )
               }
-              onSubmit={submitEvidence}
+              onCreate={() =>
+                run(
+                  "CREATE_ORDER",
+                  `${toDisplay(selectedOffer.amount)} HBAR purchase completed with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
+                )
+              }
             />
           )}
-          {activeTab === "Verifier" && (
-            <ApprovalPanel
-              role="VERIFIER"
-              title="Independent delivery verification"
-              description="Review the delivery digest, authenticate the role wallet, then add the first required approval."
-              connected={
-                Boolean(roleWallets.VERIFIER)
-              }
-              accountId={roleWallets.VERIFIER}
-              order={order}
-              onConnect={() => void connectRoleWallet("VERIFIER")}
-              onApprove={() => void approve("VERIFIER")}
-            />
+          {activeTab === "Orders" && (
+            <OrdersPanel order={order} vendors={projection.vendors} />
           )}
-          {activeTab === "Finance" && (
-            <ApprovalPanel
-              role="FINANCE"
-              title="Treasury release"
-              description="Confirm the approved evidence and add the second threshold signature to release settlement."
-              connected={
-                Boolean(roleWallets.FINANCE)
-              }
-              accountId={roleWallets.FINANCE}
-              order={order}
-              onConnect={() => void connectRoleWallet("FINANCE")}
-              onApprove={() => void approve("FINANCE")}
-            />
+          {activeTab === "Advanced" && (
+            <div className="advanced-settlement-stack">
+              <VendorPanel
+                order={order}
+                vendors={projection.vendors}
+                file={evidenceFile}
+                onFile={setEvidenceFile}
+                onAccept={() =>
+                  run(
+                    "ACCEPT_ORDER",
+                    `${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId} accepted the order.`,
+                  )
+                }
+                onSubmit={submitEvidence}
+              />
+              <ApprovalPanel
+                role="VERIFIER"
+                title="Independent delivery verification"
+                description="Optional legacy control for programs that require delivery evidence."
+                connected={Boolean(roleWallets.VERIFIER)}
+                accountId={roleWallets.VERIFIER}
+                order={order}
+                onConnect={() => void connectRoleWallet("VERIFIER")}
+                onApprove={() => void approve("VERIFIER")}
+              />
+              <ApprovalPanel
+                role="FINANCE"
+                title="Treasury release"
+                description="Optional legacy control for programs that require a separate finance signature."
+                connected={Boolean(roleWallets.FINANCE)}
+                accountId={roleWallets.FINANCE}
+                order={order}
+                onConnect={() => void connectRoleWallet("FINANCE")}
+                onApprove={() => void approve("FINANCE")}
+              />
+            </div>
           )}
           {activeTab === "Audit" && (
             <AuditPanel
@@ -1535,7 +1708,7 @@ function LiveRunGuide({
   order?: Order;
   onNavigate: (tab: Tab) => void;
 }) {
-  const complete = [
+  const commonComplete = [
     Boolean(
       projection.program &&
         projection.timeline.some(
@@ -1552,28 +1725,44 @@ function LiveRunGuide({
       (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
     ),
     Boolean(order),
-    Boolean(order?.scheduleId),
-    Boolean(order?.evidence),
-    Boolean(
-      order?.approvals.some(
-        (approval) => approval.role === "DELIVERY_VERIFIER",
-      ),
-    ),
-    Boolean(order?.approvals.some((approval) => approval.role === "FINANCE")),
-    order?.status === "PAYMENT_EXECUTED",
   ];
-  const steps: Array<{ label: string; tab: Tab }> = [
+  const commonSteps: Array<{ label: string; tab: Tab }> = [
     { label: "Program on HCS", tab: "Audit" },
     { label: "Backing rejection", tab: "Agent" },
     { label: "World proof", tab: "Agent" },
     { label: "Limit rejection", tab: "Agent" },
-    { label: "Valid agent order", tab: "Agent" },
-    { label: "Schedule created", tab: "Vendor" },
-    { label: "Evidence hashed", tab: "Vendor" },
-    { label: "Verifier wallet", tab: "Verifier" },
-    { label: "Finance wallet", tab: "Finance" },
-    { label: "Mirror proof", tab: "Audit" },
+    { label: "Policy-authorized order", tab: "Marketplace" },
   ];
+  const advanced =
+    Boolean(projection.program?.policy.requireDeliveryEvidence) ||
+    Boolean(projection.program?.policy.approvalRequirements.length);
+  const complete = advanced
+    ? [
+        ...commonComplete,
+        Boolean(order?.scheduleId),
+        Boolean(order?.evidence),
+        Boolean(
+          order?.approvals.some(
+            (approval) => approval.role === "DELIVERY_VERIFIER",
+          ),
+        ),
+        Boolean(order?.approvals.some((approval) => approval.role === "FINANCE")),
+        order?.status === "PAYMENT_EXECUTED",
+      ]
+    : [...commonComplete, order?.status === "PAYMENT_EXECUTED"];
+  const steps: Array<{ label: string; tab: Tab }> = advanced
+    ? [
+        ...commonSteps,
+        { label: "Schedule created", tab: "Orders" },
+        { label: "Evidence hashed", tab: "Advanced" },
+        { label: "Verifier wallet", tab: "Advanced" },
+        { label: "Finance wallet", tab: "Advanced" },
+        { label: "Mirror proof", tab: "Audit" },
+      ]
+    : [
+        ...commonSteps,
+        { label: "Payment executed", tab: "Orders" },
+      ];
   const current = complete.findIndex((value) => !value);
 
   return (
@@ -1800,9 +1989,249 @@ function AuthorityStep({
   );
 }
 
+function PolicyPanel({
+  program,
+}: {
+  program: NonNullable<ProtocolProjection["program"]>;
+}) {
+  return (
+    <div className="panel-grid">
+      <div>
+        <PanelHeading
+          kicker="Active purchase policy"
+          title="Rules before review"
+          description="A member purchase proceeds automatically only when all of these rules pass."
+        />
+        <div className="policy-card">
+          <div>
+            <span>Allowed categories</span>
+            <strong>{program.policy.allowedCategories.join(", ")}</strong>
+          </div>
+          <div>
+            <span>Maximum order</span>
+            <strong>{toDisplay(program.policy.maxOrderAmount)} {program.budget.asset}</strong>
+          </div>
+          <div>
+            <span>Delivery confirmation</span>
+            <strong>{program.policy.requireDeliveryEvidence ? "Required" : "Not required"}</strong>
+          </div>
+          <div>
+            <span>Independent payment approval</span>
+            <strong>{program.policy.approvalRequirements.length ? "Enabled" : "Not required"}</strong>
+          </div>
+        </div>
+      </div>
+      <div className="approval-card">
+        <div className="approval-top">
+          <span>Member authority</span>
+          <span className="ready">Active</span>
+        </div>
+        <p>
+          Members choose any approved supplier and spend their own available
+          allocation. There is no case-by-case purchasing decision by finance.
+        </p>
+        <dl>
+          <div><dt>Program status</dt><dd>{program.status}</dd></div>
+          <div><dt>Total budget</dt><dd>{toDisplay(program.budget)} {program.budget.asset}</dd></div>
+          <div><dt>Supplier rule</dt><dd>Must be active when ordered</dd></div>
+          <div><dt>Audit</dt><dd>Every decision is recorded</dd></div>
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+function SuppliersPanel({
+  vendors,
+  offers,
+  orders,
+  asset,
+  onAdd,
+  onRemove,
+}: {
+  vendors: ProtocolProjection["vendors"];
+  offers: ProtocolProjection["offers"];
+  orders: ProtocolProjection["orders"];
+  asset: string;
+  onAdd: (input: {
+    name: string;
+    title: string;
+    amount: string;
+    settlementAccountId: string;
+  }) => Promise<void>;
+  onRemove: (vendorId: string) => void;
+}) {
+  const [draft, setDraft] = useState({
+    name: "",
+    title: "",
+    amount: "",
+    settlementAccountId: "",
+  });
+  const [adding, setAdding] = useState(false);
+  const activeSupplierCount = Object.values(vendors).filter(
+    (vendor) => vendor.status === "APPROVED",
+  ).length;
+  return (
+    <div>
+      <PanelHeading
+        kicker="Approved registry"
+        title="Suppliers"
+        description="Removal blocks future purchases immediately. Existing orders continue with their locked supplier, price, and settlement destination."
+      />
+      <div className="supplier-add-row">
+        <input
+          value={draft.name}
+          placeholder="Supplier name"
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, name: event.target.value }))
+          }
+        />
+        <input
+          value={draft.title}
+          placeholder="Offer title"
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, title: event.target.value }))
+          }
+        />
+        <input
+          value={draft.amount}
+          inputMode="decimal"
+          placeholder={`Price (${asset})`}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, amount: event.target.value }))
+          }
+        />
+        <input
+          value={draft.settlementAccountId}
+          placeholder="Settlement account (0.0.x)"
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              settlementAccountId: event.target.value,
+            }))
+          }
+        />
+        <button
+          className="primary-action"
+          disabled={adding}
+          onClick={() => {
+            setAdding(true);
+            void onAdd(draft)
+              .then(() =>
+                setDraft({
+                  name: "",
+                  title: "",
+                  amount: "",
+                  settlementAccountId: "",
+                }),
+              )
+              .catch(() => undefined)
+              .finally(() => setAdding(false));
+          }}
+        >
+          {adding ? "Adding…" : "Add supplier"}
+        </button>
+      </div>
+      <div className="supplier-registry">
+        {Object.values(vendors).map((vendor) => {
+          const vendorOffers = Object.values(offers).filter(
+            (offer) => offer.vendorId === vendor.id,
+          );
+          const continuingOrders = Object.values(orders).filter(
+            (order) =>
+              order.vendorId === vendor.id &&
+              order.status !== "PAYMENT_EXECUTED" &&
+              order.status !== "CANCELLED",
+          );
+          return (
+            <article className="supplier-registry-card" key={vendor.id}>
+              <div>
+                <span className={vendor.status === "APPROVED" ? "ready" : "waiting"}>
+                  {vendor.status === "APPROVED" ? "Approved" : "Removed"}
+                </span>
+                <h3>{vendor.name}</h3>
+                <code>{vendor.settlementAccountId || "Settlement account pending"}</code>
+              </div>
+              <dl>
+                <div><dt>Categories</dt><dd>{vendor.approvedCategories.join(", ")}</dd></div>
+                <div><dt>Offers</dt><dd>{vendorOffers.length}</dd></div>
+                <div><dt>Orders continuing</dt><dd>{continuingOrders.length}</dd></div>
+              </dl>
+              {vendor.status === "APPROVED" && (
+                <button
+                  className="danger-action"
+                  disabled={activeSupplierCount === 1}
+                  title={
+                    activeSupplierCount === 1
+                      ? "Add a replacement supplier before removing the last active supplier."
+                      : undefined
+                  }
+                  onClick={() => onRemove(vendor.id)}
+                >
+                  <X size={15} />
+                  {activeSupplierCount === 1
+                    ? "Last active supplier"
+                    : "Remove from future purchases"}
+                </button>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OrdersPanel({
+  order,
+  vendors,
+}: {
+  order?: Order;
+  vendors: ProtocolProjection["vendors"];
+}) {
+  if (!order) {
+    return <EmptyState text="No purchase has been created for this run." />;
+  }
+  const supplierName =
+    order.supplierName ?? vendors[order.vendorId]?.name ?? order.vendorId;
+  return (
+    <div className="panel-grid">
+      <div>
+        <PanelHeading
+          kicker="Purchase record"
+          title={order.id}
+          description="Supplier terms are copied onto the order when it is created."
+        />
+        <div className="order-card">
+          <span>Supplier</span>
+          <strong>{supplierName}</strong>
+          <code>{order.supplierSettlementAccountId ?? vendors[order.vendorId]?.settlementAccountId}</code>
+          <div className="order-status">{order.status.replaceAll("_", " ")}</div>
+        </div>
+      </div>
+      <div className="approval-card">
+        <div className="approval-top">
+          <span>Settlement</span>
+          <span className={order.status === "PAYMENT_EXECUTED" ? "ready" : "waiting"}>
+            {order.status === "PAYMENT_EXECUTED" ? "Complete" : "In progress"}
+          </span>
+        </div>
+        <dl>
+          <div><dt>Amount</dt><dd>{toDisplay(order.amount)} {order.amount.asset}</dd></div>
+          <div><dt>Category</dt><dd>{order.category}</dd></div>
+          <div><dt>Schedule</dt><dd>{order.scheduleId ?? "Not created"}</dd></div>
+          <div><dt>Payment</dt><dd>{order.paymentTransactionId ?? "Pending"}</dd></div>
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 function BuyerPanel({
+  view,
   offers,
   vendors,
+  policy,
   allocations,
   programBudget,
   asset,
@@ -1824,8 +2253,10 @@ function BuyerPanel({
   onReject,
   onCreate,
 }: {
+  view: "buyers" | "marketplace";
   offers: Offer[];
   vendors: Record<string, import("@/src/protocol/types").Vendor>;
+  policy: import("@/src/protocol/types").ProgramPolicy;
   allocations: Record<string, import("@/src/protocol/types").BuyerAllocation>;
   programBudget: import("@/src/protocol/types").Money;
   asset: string;
@@ -1913,25 +2344,37 @@ function BuyerPanel({
       return a.id === "offer_horizon" ? -1 : b.id === "offer_horizon" ? 1 : 0;
     });
 
+  if (view === "marketplace" && offers.length === 0) {
+    return (
+      <EmptyState text="No active suppliers are available. Add or reactivate a supplier before creating another purchase." />
+    );
+  }
+
   const selectedOffer = offers.find((offer) => offer.id === selectedOfferId)!;
   const selectedVendor =
-    vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId;
+    selectedOffer
+      ? vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId
+      : "";
 
   return (
     <div className="marketplace-layout">
       <aside className="buyer-brief">
         <PanelHeading
-          kicker="Buyer authority"
-          title="Shop approved compute"
-          description="Compare verified vendors. Every listing already satisfies your category and evidence requirements."
+          kicker={view === "buyers" ? "Spending authority" : "Buyer marketplace"}
+          title={view === "buyers" ? "Fund buyers" : "Shop approved compute"}
+          description={
+            view === "buyers"
+              ? "Members may use their allocation freely as long as each purchase stays within policy."
+              : "Every visible listing has already passed the program’s supplier and category rules."
+          }
         />
-        <div className="policy-card">
+        {view === "marketplace" && <div className="policy-card">
           <div><span>Category</span><strong>GPU_COMPUTE</strong></div>
           <div><span>Maximum order</span><strong>5 HBAR</strong></div>
-          <div><span>Evidence</span><strong>Required</strong></div>
-          <div><span>Approvals</span><strong>Verifier + Finance</strong></div>
-        </div>
-        <div className="allocation-manager">
+          <div><span>Delivery confirmation</span><strong>{policy.requireDeliveryEvidence ? "Required" : "Not required"}</strong></div>
+          <div><span>Extra approval</span><strong>{policy.approvalRequirements.length ? "Required" : "Not required"}</strong></div>
+        </div>}
+        {view === "buyers" && <div className="allocation-manager">
           <div className="program-funding-row">
             <div>
               <span className="section-label">Program funding</span>
@@ -1986,14 +2429,14 @@ function BuyerPanel({
             />
             <button onClick={onAddBuyer}>Add buyer</button>
           </div>
-        </div>
-        <button className="danger-action" onClick={onReject} disabled={rejected}>
+        </div>}
+        {view === "marketplace" && <button className="danger-action" onClick={onReject} disabled={rejected}>
           {rejected ? <Check size={17} /> : <X size={17} />}
           {rejected ? "Rejection recorded" : "Test 5.5 HBAR request"}
-        </button>
+        </button>}
       </aside>
 
-      <div className="marketplace">
+      {view === "marketplace" && <div className="marketplace">
         <div className="marketplace-header">
           <div>
             <span className="section-label">Approved marketplace</span>
@@ -2086,7 +2529,7 @@ function BuyerPanel({
                   {expanded && (
                     <div className="product-specs">
                       <span><Cpu size={14} /> Dedicated research allocation</span>
-                      <span><ShieldCheck size={14} /> Delivery evidence required</span>
+                      <span><ShieldCheck size={14} /> Policy-approved supplier</span>
                       <span><TimerReset size={14} /> {meta.availability}</span>
                     </div>
                   )}
@@ -2145,7 +2588,7 @@ function BuyerPanel({
           </div>
           <button className="primary-action" onClick={onCreate} disabled={orderExists}>
             <CircleDollarSign size={18} />
-            {orderExists ? "Order authorized" : "Authorize order"}
+            {orderExists ? "Purchase complete" : "Buy now"}
             {!orderExists && <ArrowRight size={17} />}
           </button>
         </div>
@@ -2153,7 +2596,7 @@ function BuyerPanel({
           Catalog photography by Helpameout and Victor Grigas via Wikimedia Commons,
           licensed under CC BY-SA 3.0.
         </p>
-      </div>
+      </div>}
     </div>
   );
 }

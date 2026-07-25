@@ -115,6 +115,64 @@ describe("mode-aware application service", () => {
     expect(overBudget.error?.code).toBe("PROGRAM_BUDGET_EXCEEDED");
   });
 
+  it("removes a supplier only from future purchases and preserves locked active orders", async () => {
+    let session = await createUniversityRun("simulation");
+    const offer = session.projection.offers[session.selectedOfferId];
+    const vendor = session.projection.vendors[offer.vendorId];
+    const created = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:supplier-lock:create`,
+      actor: human(session.buyerId, "BUYER"),
+      orderId: session.orderId,
+      buyerId: session.buyerId,
+      vendorId: vendor.id,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    session = { ...session, projection: created.projection! };
+    expect(session.projection.orders[session.orderId]).toMatchObject({
+      supplierName: vendor.name,
+      supplierSettlementAccountId: vendor.settlementAccountId,
+    });
+
+    const removed = await runProgramCommand(session.programId, "simulation", {
+      type: "REMOVE_SUPPLIER",
+      idempotencyKey: `${session.runId}:supplier-lock:remove`,
+      actor: human("program-admin", "ADMIN"),
+      vendorId: vendor.id,
+    });
+    session = { ...session, projection: removed.projection! };
+    expect(session.projection.vendors[vendor.id].status).toBe("SUSPENDED");
+    expect(session.projection.timeline.at(-1)?.data).toMatchObject({
+      continuingOrderIds: [session.orderId],
+    });
+
+    const accepted = await runProgramCommand(session.programId, "simulation", {
+      type: "ACCEPT_ORDER",
+      idempotencyKey: `${session.runId}:supplier-lock:accept`,
+      actor: human(vendor.id, "VENDOR"),
+      orderId: session.orderId,
+    });
+    expect(accepted.projection?.orders[session.orderId].status).toBe(
+      "PAYMENT_SCHEDULED",
+    );
+
+    const future = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:supplier-lock:future`,
+      actor: human(session.buyerId, "BUYER"),
+      orderId: `${session.orderId}_future`,
+      buyerId: session.buyerId,
+      vendorId: vendor.id,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(future.status).toBe("FAILED");
+    expect(future.error?.code).toBe("POLICY_REJECTED");
+  });
+
   it("upfunds a program without replacing its existing budget", async () => {
     const session = await createUniversityRun("simulation");
     const originalBudget = session.projection.program!.budget;

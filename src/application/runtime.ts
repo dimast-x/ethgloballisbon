@@ -200,6 +200,14 @@ async function configureProgramSettlementOnce(
       hedera,
       vendorId: selectedOffer.vendorId,
       vendorSettlementAccountId: setup.vendorAccountId,
+      policy:
+        setup.verifierAccountId && setup.financeAccountId
+          ? current.projection.program.policy
+          : {
+              ...current.projection.program.policy,
+              requireDeliveryEvidence: false,
+              approvalRequirements: [],
+            },
     },
   });
   const projection = await serviceFor(
@@ -573,18 +581,34 @@ async function provisionProgramHedera(
       "Verifier, finance, and vendor Hedera accounts are required.",
     );
   }
-  for (const [name, accountId] of Object.entries(setup)) {
+  for (const [name, accountId] of Object.entries(setup).filter(
+    ([, accountId]) => Boolean(accountId),
+  )) {
     try {
       AccountId.fromString(accountId);
     } catch {
       throw new Error(`${name} is not a valid Hedera account ID.`);
     }
   }
-  if (setup.verifierAccountId === setup.financeAccountId) {
+  if (
+    setup.verifierAccountId &&
+    setup.financeAccountId &&
+    setup.verifierAccountId === setup.financeAccountId
+  ) {
     throw new Error("Verifier and finance must use different Hedera accounts.");
   }
 
   const platform = hederaConfigFromEnv();
+  if (!setup.verifierAccountId && !setup.financeAccountId) {
+    return {
+      treasuryAccountId: platform.operatorAccountId,
+    };
+  }
+  if (!setup.verifierAccountId || !setup.financeAccountId) {
+    throw new Error(
+      "Provide both verifier and finance accounts for advanced approvals, or neither for policy-authorized payments.",
+    );
+  }
   const client = createHederaClient(platform);
   try {
     const [verifier, finance, vendor] = await Promise.all([
@@ -722,6 +746,15 @@ function materializeFixture(
       name: programName?.trim() || source.program.name,
       hedera,
       status: mode === "testnet" && !hedera ? "DRAFT" : source.program.status,
+      policy:
+        mode === "testnet" &&
+        !(setup?.verifierAccountId && setup?.financeAccountId)
+          ? {
+              ...source.program.policy,
+              requireDeliveryEvidence: false,
+              approvalRequirements: [],
+            }
+          : source.program.policy,
     },
     allocation: {
       ...source.allocation,
@@ -911,7 +944,7 @@ export class InMemoryEventStore implements EventStore {
 class InMemoryPaymentScheduler implements PaymentScheduler {
   private payments = new Map<
     string,
-    { request: ScheduledPaymentRequest; roles: Set<string> }
+    { request: ScheduledPaymentRequest; roles: Set<string>; immediate: boolean }
   >();
 
   async create(request: ScheduledPaymentRequest): Promise<ScheduledPayment> {
@@ -922,15 +955,22 @@ class InMemoryPaymentScheduler implements PaymentScheduler {
       return {
         scheduleId: existing[0],
         scheduledTransactionId: `simulated-payment@${request.orderId}`,
-        status: existing[1].roles.size >= 1 ? "EXECUTED" : "PENDING",
+        status:
+          existing[1].immediate || existing[1].roles.size >= 1
+            ? "EXECUTED"
+            : "PENDING",
       };
     }
     const scheduleId = `0.0.${7_400_000 + this.payments.size}`;
-    this.payments.set(scheduleId, { request, roles: new Set() });
+    this.payments.set(scheduleId, {
+      request,
+      roles: new Set(),
+      immediate: request.executeImmediately === true,
+    });
     return {
       scheduleId,
       scheduledTransactionId: `simulated-payment@${request.orderId}`,
-      status: "PENDING",
+      status: request.executeImmediately ? "EXECUTED" : "PENDING",
     };
   }
 
@@ -944,7 +984,7 @@ class InMemoryPaymentScheduler implements PaymentScheduler {
     const payment = this.payments.get(scheduleId);
     if (!payment) return { state: "FAILED" };
     const scheduledTransactionId = `simulated-payment@${payment.request.orderId}`;
-    return payment.roles.size >= 1
+    return payment.immediate || payment.roles.size >= 1
       ? {
           state: "EXECUTED",
           scheduledTransactionId,

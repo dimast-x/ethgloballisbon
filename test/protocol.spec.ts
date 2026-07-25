@@ -248,6 +248,59 @@ describe("events and reducer", () => {
     );
   });
 
+  it("activates the simplified policy without delivery or payment approvals", () => {
+    const program = {
+      ...universityGpuFixture.program,
+      status: "DRAFT" as const,
+      hedera: undefined,
+    };
+    const directPolicy = {
+      ...program.policy,
+      requireDeliveryEvidence: false,
+      approvalRequirements: [],
+    };
+    const vendor = universityGpuFixture.vendors[0];
+    const base = {
+      runId: "run_direct_policy",
+      organizationId: program.organizationId,
+      programId: program.id,
+      actor: { actorId: "admin", role: "ADMIN", actorType: "HUMAN" as const },
+    };
+    const projection = reduceProtocolEvents([
+      createEvent({
+        ...base,
+        eventType: "PROGRAM_CREATED",
+        correlationId: "create",
+        data: { program },
+      }),
+      createEvent({
+        ...base,
+        eventType: "VENDOR_APPROVED",
+        correlationId: "vendor",
+        data: { vendor },
+      }),
+      createEvent({
+        ...base,
+        eventType: "PROGRAM_SETTLEMENT_CONFIGURED",
+        correlationId: "configure",
+        data: {
+          hedera: { treasuryAccountId: "0.0.80001" },
+          vendorId: vendor.id,
+          vendorSettlementAccountId: "0.0.80004",
+          policy: directPolicy,
+        },
+      }),
+    ]);
+
+    expect(projection.program).toMatchObject({
+      status: "ACTIVE",
+      policy: {
+        requireDeliveryEvidence: false,
+        approvalRequirements: [],
+      },
+    });
+  });
+
   it("completes the lifecycle once despite duplicate commands", () => {
     let session = createDemoSession(universityGpuFixture);
     const actions: DemoAction[] = [

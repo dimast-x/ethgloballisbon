@@ -205,6 +205,7 @@ export class HederaEventStore implements EventStore {
 export class HederaPaymentScheduler implements PaymentScheduler {
   private client: Client;
   private roleAccounts: Record<string, string | undefined>;
+  private directPayments = new Map<string, string>();
   private createdByMemo = new Map<string, ScheduledPayment>();
   private mirrorNodeUrl: string;
   private approvalQueries: {
@@ -280,6 +281,20 @@ export class HederaPaymentScheduler implements PaymentScheduler {
       )
       .setTransactionMemo(request.memo)
       .freezeWith(this.client);
+    if (request.executeImmediately) {
+      const response = await transfer.execute(this.client);
+      await response.getReceipt(this.client);
+      const transactionId = response.transactionId.toString();
+      const scheduleId = `direct:${transactionId}`;
+      this.directPayments.set(scheduleId, transactionId);
+      const payment = {
+        scheduleId,
+        scheduledTransactionId: transactionId,
+        status: "EXECUTED" as const,
+      };
+      this.createdByMemo.set(request.memo, payment);
+      return payment;
+    }
     const response = await new ScheduleCreateTransaction()
       .setScheduledTransaction(transfer)
       .setScheduleMemo(request.memo)
@@ -376,6 +391,14 @@ export class HederaPaymentScheduler implements PaymentScheduler {
   }
 
   async getStatus(scheduleId: string): Promise<PaymentStatus> {
+    const directTransactionId = this.directPayments.get(scheduleId);
+    if (directTransactionId) {
+      return {
+        state: "EXECUTED",
+        scheduledTransactionId: directTransactionId,
+        paymentTransactionId: directTransactionId,
+      };
+    }
     const info = await new ScheduleInfoQuery()
       .setScheduleId(scheduleId)
       .execute(this.client);

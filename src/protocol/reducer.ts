@@ -83,15 +83,17 @@ export function applyProtocolEvent(
       break;
     }
     case "PROGRAM_SETTLEMENT_CONFIGURED": {
-      const { hedera, vendorId, vendorSettlementAccountId } = event.data as {
+      const { hedera, vendorId, vendorSettlementAccountId, policy } = event.data as {
         hedera: ProgramHederaConfig;
         vendorId: string;
         vendorSettlementAccountId: string;
+        policy?: Program["policy"];
       };
       if (next.program) {
         next.program = {
           ...next.program,
           hedera,
+          policy: policy ?? next.program.policy,
           status: "ACTIVE",
         };
       }

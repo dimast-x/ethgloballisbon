@@ -44,8 +44,8 @@ export function LandingPage({
           <span>Control at the core.</span>
         </h1>
         <p>
-          Create a procurement program, fund bounded buyer authority, verify
-          delivery, and release payment through one reconstructable workflow.
+          Create a procurement program, fund bounded buyer authority, and let
+          members buy from approved suppliers within policy.
         </p>
         <div className="op-landing-actions">
           <button
@@ -66,7 +66,7 @@ export function LandingPage({
         <div className="op-trust-line">
           <span>Creator-owned administration</span>
           <span>Append-only buyer funding</span>
-          <span>Independent wallet approvals</span>
+          <span>Policy-authorized payments</span>
         </div>
         {createError ? (
           <small role="alert">{createError}</small>
@@ -126,8 +126,7 @@ export function ProgramCreatePage({
             <h1>Start with a name.</h1>
             <p>
               That&apos;s enough to create your program and open the workspace.
-              Payment roles belong to each program and can be added later from
-              its settings.
+              Supplier settlement details can be added later from its settings.
             </p>
           </div>
           <div className="program-create-form">
@@ -158,7 +157,7 @@ export function ProgramCreatePage({
               <Check size={14} />
               {creating
                 ? "Publishing the program to Hedera testnet and waiting for confirmation…"
-                : "No verifier, finance, vendor, or treasury details needed now."}
+                : "No supplier or treasury details are needed now."}
             </span>
             {error && (
               <small className="program-setup-error" role="alert">
@@ -198,7 +197,7 @@ export function ProgramSettlementSettings({
   ) => void;
   onSave: () => void;
 }) {
-  const complete = Object.values(values).every((value) => value.trim());
+  const complete = Boolean(values.vendorAccountId.trim());
 
   if (!open) {
     return (
@@ -210,8 +209,8 @@ export function ProgramSettlementSettings({
           <span>Program draft</span>
           <strong>Configure payments when you&apos;re ready</strong>
           <p>
-            Explore the workspace now. Verifier, finance, and vendor wallets
-            are saved only for <b>{programName}</b>.
+            Explore the workspace now. Add the receiving supplier wallet when
+            you are ready to activate purchases for <b>{programName}</b>.
           </p>
         </div>
         <button type="button" onClick={() => onOpenChange(true)}>
@@ -227,7 +226,7 @@ export function ProgramSettlementSettings({
       <div className="program-settings-heading">
         <div>
           <span>Program settings</span>
-          <h2>Set up payment release</h2>
+          <h2>Set up supplier payments</h2>
           <p>
             These accounts apply only to <b>{programName}</b>. You can leave
             this unfinished and return later.
@@ -243,23 +242,11 @@ export function ProgramSettlementSettings({
       </div>
       <div className="program-role-grid">
         {(
-          [
-            [
-              "verifierAccountId",
-              "Delivery verifier",
-              "Confirms the delivery evidence.",
-            ],
-            [
-              "financeAccountId",
-              "Finance approver",
-              "Authorizes the payment release.",
-            ],
-            [
-              "vendorAccountId",
-              "Vendor settlement",
-              "Receives this program's demo purchase.",
-            ],
-          ] as const
+          [[
+            "vendorAccountId",
+            "Supplier settlement",
+            "Receives this program's demo purchase.",
+          ]] as const
         ).map(([field, label, help]) => (
           <label className="program-role-field" key={field}>
             <span className="program-role-copy">
@@ -278,8 +265,8 @@ export function ProgramSettlementSettings({
       </div>
       <div className="program-setup-actions">
         <span>
-          Saving creates this program&apos;s 2-of-2 treasury and provisions it
-          with 5 testnet HBAR.
+          Purchases that pass policy settle without delivery confirmation or
+          a separate finance approval.
         </span>
         <button
           className="op-primary"

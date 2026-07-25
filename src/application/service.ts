@@ -442,6 +442,7 @@ export class ProtocolApplicationService {
             payeeAccountId: order.supplierSettlementAccountId!,
             amount: order.amount,
             memo: `yareon:${program.id}:${order.id}`,
+            executeImmediately: true,
           });
           appended.push(
             await this.appendOnce(

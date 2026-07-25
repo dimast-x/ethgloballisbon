@@ -18,8 +18,8 @@ export type ProgramPolicy = {
 
 export type ProgramHederaConfig = {
   treasuryAccountId: string;
-  verifierAccountId: string;
-  financeAccountId: string;
+  verifierAccountId?: string;
+  financeAccountId?: string;
 };
 
 export type Program = {
@@ -191,6 +191,7 @@ export type ScheduledPaymentRequest = {
   payeeAccountId: string;
   amount: Money;
   memo: string;
+  executeImmediately?: boolean;
 };
 
 export type ScheduledPayment = {
