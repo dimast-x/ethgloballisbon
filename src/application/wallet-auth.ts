@@ -118,7 +118,7 @@ export async function verifyAdministratorHcsChallenge(input: {
   const topicId = process.env.HEDERA_TOPIC_ID;
   if (!topicId) return false;
   const transactionUrl = new URL(
-    `/api/v1/transactions/${encodeURIComponent(input.transactionId)}`,
+    `/api/v1/transactions/${encodeURIComponent(mirrorTransactionId(input.transactionId))}`,
     mirrorNodeUrl,
   );
 
@@ -132,13 +132,15 @@ export async function verifyAdministratorHcsChallenge(input: {
           name?: string;
           payer_account_id?: string;
           result?: string;
+          transaction_id?: string;
         }>;
       };
       const transaction = body.transactions?.find(
         (candidate) =>
           candidate.name === "CONSENSUSSUBMITMESSAGE" &&
           candidate.result === "SUCCESS" &&
-          candidate.payer_account_id === input.accountId &&
+          (candidate.payer_account_id === input.accountId ||
+            candidate.transaction_id?.startsWith(`${input.accountId}-`)) &&
           candidate.entity_id === topicId &&
           candidate.consensus_timestamp,
       );
@@ -170,6 +172,14 @@ export async function verifyAdministratorHcsChallenge(input: {
     }
   }
   return false;
+}
+
+function mirrorTransactionId(transactionId: string): string {
+  const [accountId, timestamp] = transactionId.split("@");
+  if (!accountId || !timestamp) return transactionId;
+  const separator = timestamp.indexOf(".");
+  if (separator < 0) return transactionId;
+  return `${accountId}-${timestamp.slice(0, separator)}-${timestamp.slice(separator + 1)}`;
 }
 
 export function createAdministratorSessionCookie(

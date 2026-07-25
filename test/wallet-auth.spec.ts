@@ -133,8 +133,9 @@ describe("Hedera wallet authentication", () => {
               consensus_timestamp: "1785000000.123456789",
               entity_id: "0.0.90001",
               name: "CONSENSUSSUBMITMESSAGE",
-              payer_account_id: "0.0.12345",
               result: "SUCCESS",
+              transaction_id:
+                "0.0.12345-1785000000-123456789",
             },
           ],
         });
