@@ -444,9 +444,6 @@ export async function getIdentityReadiness(
   if (!worldAppId) issues.push("Missing WORLD_APP_ID or NEXT_PUBLIC_WORLD_APP_ID.");
   const environment =
     process.env.WORLD_ENVIRONMENT === "staging" ? "staging" : "production";
-  if (environment !== "production") {
-    issues.push("Live integration runs require WORLD_ENVIRONMENT=production.");
-  }
   if (
     process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT &&
     process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT !== environment
