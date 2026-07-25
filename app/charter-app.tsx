@@ -48,8 +48,8 @@ import type { ProtocolProjection } from "@/src/protocol/reducer";
 import {
   connectHederaWallet,
   shortHederaAccount,
-  signHederaMessage,
   signHederaSchedule,
+  submitHederaAuthenticationChallenge,
 } from "@/src/wallet/hedera-wallet-client";
 import { LandingPage, ProgramSetupPage } from "./landing-page";
 
@@ -269,8 +269,17 @@ export function CharterApp() {
           challenge.error ?? "Wallet authentication challenge failed.",
         );
       }
-      const signatureMap = await signHederaMessage({
+      let topicId = readiness?.publicConfig.topicId;
+      if (!topicId) {
+        const configuration = await refreshReadiness();
+        topicId = configuration.hedera.publicConfig.topicId;
+      }
+      if (!topicId) {
+        throw new Error("The Charter authentication topic is not configured.");
+      }
+      const transactionId = await submitHederaAuthenticationChallenge({
         accountId,
+        topicId,
         message: challenge.message,
       });
       const sessionResponse = await fetch("/api/auth/session", {
@@ -279,7 +288,7 @@ export function CharterApp() {
         body: JSON.stringify({
           accountId,
           token: challenge.token,
-          signatureMap,
+          transactionId,
         }),
       });
       const authenticated = (await sessionResponse.json()) as {

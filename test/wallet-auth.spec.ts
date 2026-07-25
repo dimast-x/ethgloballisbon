@@ -7,6 +7,7 @@ import {
   createAdministratorSessionCookie,
   issueAdministratorChallenge,
   verifyAdministratorChallenge,
+  verifyAdministratorHcsChallenge,
 } from "../src/application/wallet-auth";
 
 describe("Hedera wallet authentication", () => {
@@ -111,5 +112,51 @@ describe("Hedera wallet authentication", () => {
         },
       }),
     ).toBe(false);
+  });
+
+  it("verifies an HCS authentication challenge from the wallet payer", async () => {
+    process.env.HEDERA_TOPIC_ID = "0.0.90001";
+    const request = new Request(
+      "https://charter.example/api/auth/challenge",
+    );
+    const challenge = issueAdministratorChallenge(
+      request,
+      "0.0.12345",
+      { secret },
+    );
+    const mirrorFetch = async (url: string | URL | Request) => {
+      const value = url.toString();
+      if (value.includes("/api/v1/transactions/")) {
+        return Response.json({
+          transactions: [
+            {
+              consensus_timestamp: "1785000000.123456789",
+              entity_id: "0.0.90001",
+              name: "CONSENSUSSUBMITMESSAGE",
+              payer_account_id: "0.0.12345",
+              result: "SUCCESS",
+            },
+          ],
+        });
+      }
+      return Response.json({
+        message: Buffer.from(challenge.message).toString("base64"),
+        payer_account_id: "0.0.12345",
+        topic_id: "0.0.90001",
+      });
+    };
+
+    expect(
+      await verifyAdministratorHcsChallenge({
+        request: new Request(
+          "https://charter.example/api/auth/session",
+        ),
+        accountId: "0.0.12345",
+        token: challenge.token,
+        transactionId: "0.0.12345@1785000000.123456789",
+        secret,
+        mirrorFetch,
+      }),
+    ).toBe(true);
   });
 });

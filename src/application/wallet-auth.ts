@@ -76,18 +76,8 @@ export async function verifyAdministratorChallenge(input: {
   if (!input.signatureMap || input.signatureMap.length > 20_000) return false;
 
   const secret = authenticationSecret(input.secret);
-  const payload = verifyToken<ChallengePayload>(input.token, secret);
-  if (
-    !payload ||
-    payload.kind !== "hedera-wallet-challenge" ||
-    payload.version !== 1 ||
-    payload.network !== "testnet" ||
-    payload.accountId !== input.accountId ||
-    payload.origin !== new URL(input.request.url).origin ||
-    !isFresh(payload.issuedAt, payload.expiresAt, input.now ?? new Date(), CHALLENGE_TTL_MS)
-  ) {
-    return false;
-  }
+  const payload = verifiedChallengePayload(input, secret);
+  if (!payload) return false;
 
   const publicKey = await fetchAccountPublicKey(
     input.accountId,
@@ -104,6 +94,82 @@ export async function verifyAdministratorChallenge(input: {
   } catch {
     return false;
   }
+}
+
+export async function verifyAdministratorHcsChallenge(input: {
+  request: Request;
+  accountId: string;
+  token: string;
+  transactionId: string;
+  secret?: string;
+  now?: Date;
+  mirrorFetch?: typeof fetch;
+}): Promise<boolean> {
+  validateAccountId(input.accountId);
+  if (!/^\d+\.\d+\.\d+@\d+\.\d+$/.test(input.transactionId)) return false;
+  const secret = authenticationSecret(input.secret);
+  const payload = verifiedChallengePayload(input, secret);
+  if (!payload) return false;
+
+  const mirrorFetch = input.mirrorFetch ?? fetch;
+  const mirrorNodeUrl =
+    process.env.HEDERA_MIRROR_NODE_URL ??
+    "https://testnet.mirrornode.hedera.com";
+  const topicId = process.env.HEDERA_TOPIC_ID;
+  if (!topicId) return false;
+  const transactionUrl = new URL(
+    `/api/v1/transactions/${encodeURIComponent(input.transactionId)}`,
+    mirrorNodeUrl,
+  );
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const transactionResponse = await mirrorFetch(transactionUrl);
+    if (transactionResponse.ok) {
+      const body = (await transactionResponse.json()) as {
+        transactions?: Array<{
+          consensus_timestamp?: string;
+          entity_id?: string;
+          name?: string;
+          payer_account_id?: string;
+          result?: string;
+        }>;
+      };
+      const transaction = body.transactions?.find(
+        (candidate) =>
+          candidate.name === "CONSENSUSSUBMITMESSAGE" &&
+          candidate.result === "SUCCESS" &&
+          candidate.payer_account_id === input.accountId &&
+          candidate.entity_id === topicId &&
+          candidate.consensus_timestamp,
+      );
+      if (transaction?.consensus_timestamp) {
+        const messageResponse = await mirrorFetch(
+          new URL(
+            `/api/v1/topics/messages/${transaction.consensus_timestamp}`,
+            mirrorNodeUrl,
+          ),
+        );
+        if (messageResponse.ok) {
+          const message = (await messageResponse.json()) as {
+            message?: string;
+            payer_account_id?: string;
+            topic_id?: string;
+          };
+          return Boolean(
+            message.payer_account_id === input.accountId &&
+              message.topic_id === topicId &&
+              message.message &&
+              Buffer.from(message.message, "base64").toString("utf8") ===
+                canonicalChallengeMessage(payload),
+          );
+        }
+      }
+    }
+    if (attempt < 11) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+  }
+  return false;
 }
 
 export function createAdministratorSessionCookie(
@@ -173,6 +239,35 @@ function canonicalChallengeMessage(payload: ChallengePayload): string {
     `issuedAt=${payload.issuedAt}`,
     `expiresAt=${payload.expiresAt}`,
   ].join("\n");
+}
+
+function verifiedChallengePayload(
+  input: {
+    request: Request;
+    accountId: string;
+    token: string;
+    now?: Date;
+  },
+  secret: string,
+): ChallengePayload | null {
+  const payload = verifyToken<ChallengePayload>(input.token, secret);
+  if (
+    !payload ||
+    payload.kind !== "hedera-wallet-challenge" ||
+    payload.version !== 1 ||
+    payload.network !== "testnet" ||
+    payload.accountId !== input.accountId ||
+    payload.origin !== new URL(input.request.url).origin ||
+    !isFresh(
+      payload.issuedAt,
+      payload.expiresAt,
+      input.now ?? new Date(),
+      CHALLENGE_TTL_MS,
+    )
+  ) {
+    return null;
+  }
+  return payload;
 }
 
 async function fetchAccountPublicKey(

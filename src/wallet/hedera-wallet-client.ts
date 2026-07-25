@@ -10,6 +10,7 @@ import {
   AccountId,
   LedgerId,
   ScheduleSignTransaction,
+  TopicMessageSubmitTransaction,
 } from "@hiero-ledger/sdk";
 
 let connectorPromise: Promise<DAppConnector> | undefined;
@@ -88,6 +89,23 @@ export async function signHederaMessage(input: {
     throw new Error("The Hedera wallet did not return a message signature.");
   }
   return result.result.signatureMap;
+}
+
+export async function submitHederaAuthenticationChallenge(input: {
+  accountId: string;
+  topicId: string;
+  message: string;
+}): Promise<string> {
+  const instance = await connector();
+  const accountId = AccountId.fromString(input.accountId);
+  const signer = instance.getSigner(accountId);
+  const transaction = new TopicMessageSubmitTransaction()
+    .setTopicId(input.topicId)
+    .setMessage(input.message);
+  await transaction.freezeWithSigner(signer);
+  const response = await transaction.executeWithSigner(signer);
+  await response.getReceiptWithSigner(signer);
+  return response.transactionId.toString();
 }
 
 export async function signHederaSchedule(input: {

@@ -3,6 +3,7 @@ import {
   clearAdministratorSessionCookie,
   createAdministratorSessionCookie,
   verifyAdministratorChallenge,
+  verifyAdministratorHcsChallenge,
 } from "@/src/application/wallet-auth";
 
 export async function GET(request: Request) {
@@ -19,19 +20,34 @@ export async function POST(request: Request) {
       accountId?: string;
       token?: string;
       signatureMap?: string;
+      transactionId?: string;
     };
-    if (!body.accountId || !body.token || !body.signatureMap) {
+    if (
+      !body.accountId ||
+      !body.token ||
+      (!body.signatureMap && !body.transactionId)
+    ) {
       return Response.json(
-        { error: "Wallet account, challenge, and signature are required." },
+        {
+          error:
+            "Wallet account, challenge, and a Hedera authentication proof are required.",
+        },
         { status: 400 },
       );
     }
-    const verified = await verifyAdministratorChallenge({
-      request,
-      accountId: body.accountId,
-      token: body.token,
-      signatureMap: body.signatureMap,
-    });
+    const verified = body.transactionId
+      ? await verifyAdministratorHcsChallenge({
+          request,
+          accountId: body.accountId,
+          token: body.token,
+          transactionId: body.transactionId,
+        })
+      : await verifyAdministratorChallenge({
+          request,
+          accountId: body.accountId,
+          token: body.token,
+          signatureMap: body.signatureMap!,
+        });
     if (!verified) {
       return Response.json(
         { error: "The Hedera wallet signature could not be verified." },
