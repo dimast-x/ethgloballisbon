@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "OpenProcure — Policy-controlled organizational spending";
+const title = "OpenProcure | Policy-controlled organizational spending";
 const description =
   "A reusable procurement protocol for bounded authority, verified delivery, approval-gated settlement, and independently reconstructable audit history.";
 

@@ -107,7 +107,13 @@ export type LedgerReference = {
   transactionId?: string;
 };
 
-export type PaymentStatus = "PENDING" | "EXECUTED" | "FAILED" | "EXPIRED";
+export type PaymentState = "PENDING" | "EXECUTED" | "FAILED" | "EXPIRED";
+
+export type PaymentStatus = {
+  state: PaymentState;
+  scheduledTransactionId?: string;
+  paymentTransactionId?: string;
+};
 
 export type ScheduledPaymentRequest = {
   programId: string;
@@ -121,7 +127,7 @@ export type ScheduledPaymentRequest = {
 export type ScheduledPayment = {
   scheduleId: string;
   scheduledTransactionId?: string;
-  status: PaymentStatus;
+  status: PaymentState;
 };
 
 export type Approval = {

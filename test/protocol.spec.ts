@@ -113,12 +113,16 @@ describe("wallet approval envelope", () => {
       protocolVersion: "0.1",
       action: "APPROVE_PAYMENT",
       role: "FINANCE",
+      organizationId: "org_lisbon_university",
       programId: "program_ai_compute",
       orderId: "order_1",
       scheduleId: "0.0.70001",
       asset: "HBAR",
       atomicAmount: "350000000",
       walletAccountId: "0.0.73102",
+      idempotencyKey: "run_test:approve-finance",
+      issuedAt: "2026-07-24T18:30:00.000Z",
+      expiresAt: "2026-07-24T18:35:00.000Z",
     });
     expect(message).toContain("role=FINANCE");
     expect(message).toContain("scheduleId=0.0.70001");

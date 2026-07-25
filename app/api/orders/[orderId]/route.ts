@@ -1,4 +1,5 @@
-import { getProgramSession } from "@/src/application/runtime";
+import { findOrder } from "@/src/application/runtime";
+import { parseExecutionMode } from "@/src/application/http";
 
 export async function GET(
   request: Request,
@@ -9,8 +10,8 @@ export async function GET(
   if (!programId) {
     return Response.json({ error: "programId is required" }, { status: 400 });
   }
-  const session = getProgramSession(programId);
-  const order = session?.projection.orders[orderId];
+  const mode = parseExecutionMode(new URL(request.url).searchParams.get("mode"));
+  const order = await findOrder(programId, orderId, mode);
   if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
   return Response.json(order);
 }

@@ -1,41 +1,33 @@
 import { PublicKey } from "@hashgraph/sdk";
+import { proto } from "@hiero-ledger/proto";
+import {
+  canonicalApprovalMessage,
+  type WalletApprovalPayload,
+} from "./approval-message";
 
-export type WalletApprovalPayload = {
-  protocolVersion: "0.1";
-  action: "APPROVE_DELIVERY" | "APPROVE_PAYMENT";
-  role: string;
-  programId: string;
-  orderId: string;
-  scheduleId: string;
-  asset: string;
-  atomicAmount: string;
-  walletAccountId: string;
-};
-
-export function canonicalApprovalMessage(
-  payload: WalletApprovalPayload,
-): string {
-  return [
-    "OpenProcure approval",
-    `protocolVersion=${payload.protocolVersion}`,
-    `action=${payload.action}`,
-    `role=${payload.role}`,
-    `programId=${payload.programId}`,
-    `orderId=${payload.orderId}`,
-    `scheduleId=${payload.scheduleId}`,
-    `asset=${payload.asset}`,
-    `atomicAmount=${payload.atomicAmount}`,
-    `walletAccountId=${payload.walletAccountId}`,
-  ].join("\n");
-}
+export { canonicalApprovalMessage };
+export type { WalletApprovalPayload };
 
 export async function verifyWalletApproval(input: {
   payload: WalletApprovalPayload;
-  signatureHex: string;
+  signatureMapBase64: string;
   expectedAccountId: string;
   mirrorNodeUrl?: string;
+  now?: Date;
 }): Promise<boolean> {
   if (input.payload.walletAccountId !== input.expectedAccountId) return false;
+  const now = input.now ?? new Date();
+  const issuedAt = new Date(input.payload.issuedAt);
+  const expiresAt = new Date(input.payload.expiresAt);
+  if (
+    Number.isNaN(issuedAt.valueOf()) ||
+    Number.isNaN(expiresAt.valueOf()) ||
+    issuedAt > new Date(now.valueOf() + 60_000) ||
+    expiresAt <= now ||
+    expiresAt.valueOf() - issuedAt.valueOf() > 10 * 60_000
+  ) {
+    return false;
+  }
   const base =
     input.mirrorNodeUrl ?? "https://testnet.mirrornode.hedera.com";
   const response = await fetch(
@@ -47,12 +39,13 @@ export async function verifyWalletApproval(input: {
   };
   if (!account.key?.key) return false;
   const publicKey = PublicKey.fromString(account.key.key);
-  const signature = Uint8Array.from(
-    input.signatureHex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) ??
-      [],
+  const signatureMap = proto.SignatureMap.decode(
+    Buffer.from(input.signatureMapBase64, "base64"),
   );
-  return publicKey.verify(
-    new TextEncoder().encode(canonicalApprovalMessage(input.payload)),
-    signature,
-  );
+  const pair = signatureMap.sigPair[0];
+  const signature = pair?.ed25519 ?? pair?.ECDSASecp256k1;
+  if (!signature) return false;
+  const message = canonicalApprovalMessage(input.payload);
+  const prefixed = `\x19Hedera Signed Message:\n${message.length}${message}`;
+  return publicKey.verify(Buffer.from(prefixed), signature);
 }

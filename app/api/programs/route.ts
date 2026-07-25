@@ -1,8 +1,14 @@
 import { createProgram } from "@/src/application/runtime";
+import { parseExecutionMode } from "@/src/application/http";
 import type { Program } from "@/src/protocol/types";
 
 export async function POST(request: Request) {
-  const program = (await request.json()) as Program;
+  const body = (await request.json()) as unknown;
+  const envelope = body as { mode?: unknown; program?: Program };
+  const program = envelope.program ?? (body as Program);
+  const mode = envelope.program
+    ? parseExecutionMode(envelope.mode)
+    : "simulation";
   if (
     !program?.id ||
     !program.organizationId ||
@@ -15,5 +21,5 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  return Response.json(createProgram(program), { status: 201 });
+  return Response.json(await createProgram(program, mode), { status: 201 });
 }

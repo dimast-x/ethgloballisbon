@@ -1,11 +1,19 @@
 import {
   AccountCreateTransaction,
+  AccountInfoQuery,
   Client,
   Hbar,
   KeyList,
   PrivateKey,
   TopicCreateTransaction,
+  TopicInfoQuery,
 } from "@hashgraph/sdk";
+
+try {
+  process.loadEnvFile?.(".env.local");
+} catch {
+  // The operator variables may be supplied by the invoking environment.
+}
 
 function required(name: string): string {
   const value = process.env[name];
@@ -16,6 +24,52 @@ function required(name: string): string {
 const operatorId = required("HEDERA_OPERATOR_ID");
 const operatorKey = PrivateKey.fromString(required("HEDERA_OPERATOR_KEY"));
 const client = Client.forTestnet().setOperator(operatorId, operatorKey);
+
+const existing = {
+  topicId: process.env.HEDERA_TOPIC_ID,
+  treasuryAccountId: process.env.HEDERA_TREASURY_ACCOUNT_ID,
+  vendorAccountId: process.env.HEDERA_VENDOR_ACCOUNT_ID,
+  verifierRelayPrivateKey: process.env.HEDERA_VERIFIER_RELAY_KEY,
+  financeRelayPrivateKey: process.env.HEDERA_FINANCE_RELAY_KEY,
+};
+
+if (Object.values(existing).every(Boolean)) {
+  const verifier = PrivateKey.fromString(existing.verifierRelayPrivateKey!);
+  const finance = PrivateKey.fromString(existing.financeRelayPrivateKey!);
+  const [topic, treasury] = await Promise.all([
+    new TopicInfoQuery().setTopicId(existing.topicId!).execute(client),
+    new AccountInfoQuery()
+      .setAccountId(existing.treasuryAccountId!)
+      .execute(client),
+  ]);
+  const key = treasury.key;
+  const validThreshold =
+    key instanceof KeyList &&
+    key.threshold === 2 &&
+    [verifier.publicKey, finance.publicKey].every((relay) =>
+      key.toArray().some((item) => item.toString() === relay.toString()),
+    );
+  if (!topic.topicId || !validThreshold) {
+    throw new Error(
+      "Existing infrastructure failed topic or treasury threshold validation.",
+    );
+  }
+  console.log(
+    JSON.stringify(
+      {
+        reused: true,
+        network: "testnet",
+        topicId: existing.topicId,
+        treasuryAccountId: existing.treasuryAccountId,
+        vendorAccountId: existing.vendorAccountId,
+      },
+      null,
+      2,
+    ),
+  );
+  client.close();
+  process.exit(0);
+}
 
 const verifierRelay = PrivateKey.generateECDSA();
 const financeRelay = PrivateKey.generateECDSA();
@@ -58,5 +112,7 @@ console.log(
     2,
   ),
 );
-console.log("Keep this output private and copy the values into .env.local.");
+console.log(
+  "Provisioned once. Keep this output private and copy the values into .env.local.",
+);
 client.close();
