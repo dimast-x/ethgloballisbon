@@ -59,8 +59,16 @@ export class ProtocolApplicationService {
           ),
     );
     const missing = events.filter((event) => !existingIds.has(event.eventId));
+    const programCreated = missing.find(
+      (event) => event.eventType === "PROGRAM_CREATED",
+    );
+    if (programCreated) {
+      await this.options.eventStore.append(programCreated);
+    }
     await Promise.all(
-      missing.map((event) => this.options.eventStore.append(event)),
+      missing
+        .filter((event) => event !== programCreated)
+        .map((event) => this.options.eventStore.append(event)),
     );
     return this.waitForEvents(
       programId,

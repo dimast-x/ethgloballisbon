@@ -302,6 +302,12 @@ describe("Hedera Mirror event store", () => {
       ...event("program_target", "event_2"),
       eventType: "AGENT_DELEGATION_GRANTED" as const,
     };
+    const chunked = {
+      ...event("program_target", "event_3"),
+      eventType: "AGENT_DELEGATION_GRANTED" as const,
+      data: { delegation: { description: "x".repeat(1_200) } },
+    };
+    const chunkedMessages = mirrorChunkMessages(chunked, 3);
     const ignored = event("program_other", "event_ignored");
     const second = event("program_target", "event_1");
     const pages = [
@@ -309,15 +315,16 @@ describe("Hedera Mirror event store", () => {
         messages: [
           mirrorTextMessage(
             "Charter administrator authentication\nversion=1",
-            1,
+            7,
           ),
-          mirrorMessage(first, 2),
-          mirrorMessage(ignored, 3),
+          chunkedMessages[1],
+          mirrorMessage(first, 4),
+          mirrorMessage(ignored, 6),
         ],
-        links: { next: "/api/v1/topics/0.0.123/messages?sequence_number=gt:3" },
+        links: { next: "/api/v1/topics/0.0.123/messages?sequence_number=lt:4" },
       },
       {
-        messages: [mirrorMessage(second, 1)],
+        messages: [chunkedMessages[0], mirrorMessage(second, 1)],
         links: { next: null },
       },
     ];
@@ -342,8 +349,13 @@ describe("Hedera Mirror event store", () => {
     const events = await store.read("program_target");
     expect(mirrorFetch).toHaveBeenCalledTimes(2);
     expect(mirrorFetch.mock.calls[0]?.[0].toString()).toContain("order=desc");
-    expect(events.map((item) => item.eventId)).toEqual(["event_1", "event_2"]);
+    expect(events.map((item) => item.eventId)).toEqual([
+      "event_1",
+      "event_2",
+      "event_3",
+    ]);
     expect(events[0].ledgerReference?.consensusTimestamp).toBe("1.000000001");
+    expect(events[2].ledgerReference?.sequenceNumber).toBe(5);
   });
 });
 
@@ -440,4 +452,24 @@ function mirrorTextMessage(value: string, sequence: number) {
     consensus_timestamp: `${sequence}.00000000${sequence}`,
     topic_id: "0.0.123",
   };
+}
+
+function mirrorChunkMessages(value: unknown, firstSequence: number) {
+  const payload = Buffer.from(JSON.stringify(value));
+  const splitAt = Math.ceil(payload.length / 2);
+  const parts = [payload.subarray(0, splitAt), payload.subarray(splitAt)];
+  return parts.map((part, index) => ({
+    message: part.toString("base64"),
+    sequence_number: firstSequence + index * 2,
+    consensus_timestamp: `${firstSequence + index * 2}.000000001`,
+    topic_id: "0.0.123",
+    chunk_info: {
+      initial_transaction_id: {
+        account_id: "0.0.1001",
+        transaction_valid_start: "2026-07-25T21:00:00.000Z",
+      },
+      number: index + 1,
+      total: parts.length,
+    },
+  }));
 }

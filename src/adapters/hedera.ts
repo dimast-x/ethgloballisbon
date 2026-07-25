@@ -79,6 +79,18 @@ export class HederaEventStore implements EventStore {
     const events: RecordedEvent[] = [];
     let pages = 0;
     let reachedProgramStart = false;
+    const chunkGroups = new Map<
+      string,
+      {
+        total: number;
+        parts: Map<number, Buffer>;
+        messages: Array<{
+          sequence_number: number;
+          consensus_timestamp: string;
+          topic_id: string;
+        }>;
+      }
+    >();
 
     while (url && pages < 100) {
       const response = await this.mirrorFetch(url);
@@ -91,11 +103,59 @@ export class HederaEventStore implements EventStore {
           sequence_number: number;
           consensus_timestamp: string;
           topic_id: string;
+          chunk_info?: {
+            initial_transaction_id?: {
+              account_id?: string;
+              nonce?: number;
+              scheduled?: boolean;
+              transaction_valid_start?: string;
+            };
+            number: number;
+            total: number;
+          };
         }>;
         links?: { next?: string | null };
       };
       for (const message of body.messages) {
-        const decoded = Buffer.from(message.message, "base64").toString("utf8");
+        let payload = Buffer.from(message.message, "base64");
+        let reference: {
+          sequence_number: number;
+          consensus_timestamp: string;
+          topic_id: string;
+        } = message;
+        const chunk = message.chunk_info;
+        if (chunk && chunk.total > 1) {
+          const chunkKey = JSON.stringify(
+            chunk.initial_transaction_id ?? {
+              topicId: message.topic_id,
+              firstSequence: message.sequence_number - chunk.number + 1,
+            },
+          );
+          const group = chunkGroups.get(chunkKey) ?? {
+            total: chunk.total,
+            parts: new Map<number, Buffer>(),
+            messages: [],
+          };
+          group.parts.set(chunk.number, payload);
+          group.messages.push(message);
+          chunkGroups.set(chunkKey, group);
+          if (group.parts.size < group.total) continue;
+
+          const orderedParts = Array.from(
+            { length: group.total },
+            (_, index) => group.parts.get(index + 1),
+          );
+          if (orderedParts.some((part) => !part)) continue;
+          payload = Buffer.concat(orderedParts as Buffer[]);
+          reference = group.messages.reduce((latest, candidate) =>
+            candidate.sequence_number > latest.sequence_number
+              ? candidate
+              : latest,
+          );
+          chunkGroups.delete(chunkKey);
+        }
+
+        const decoded = payload.toString("utf8");
         let event: ProtocolEvent;
         try {
           event = parseProtocolEvent(JSON.parse(decoded));
@@ -108,9 +168,9 @@ export class HederaEventStore implements EventStore {
         events.push({
           ...event,
           ledgerReference: {
-            topicId: message.topic_id,
-            sequenceNumber: message.sequence_number,
-            consensusTimestamp: message.consensus_timestamp,
+            topicId: reference.topic_id,
+            sequenceNumber: reference.sequence_number,
+            consensusTimestamp: reference.consensus_timestamp,
           },
         });
         if (event.eventType === "PROGRAM_CREATED") {
