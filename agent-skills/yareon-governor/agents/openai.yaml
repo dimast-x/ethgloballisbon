@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yareon Governor"
+  short_description: "Govern programs, budgets, members, and suppliers"
+  default_prompt: "Use $yareon-governor to create and fund a Yareon program, invite participants, allocate bounded purchasing authority, and register suppliers safely."

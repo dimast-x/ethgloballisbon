@@ -122,14 +122,20 @@ after explicit purchase authorization. See
 
 ## Agent skills
 
-The repository currently provides one installable skill:
+The repository provides two complementary installable skills:
 
 - [`yareon-agent`](agent-skills/yareon-agent/SKILL.md) — check readiness,
   compare policy-eligible offers, preview and create an explicitly authorized
   AgentKit-authenticated order, and inspect order or Hedera audit state.
+- [`yareon-governor`](agent-skills/yareon-governor/SKILL.md) — create and fund
+  programs, invite human or agent participants, allocate bounded authority,
+  register goods or service suppliers, and coordinate independent
+  counterparty and approval handoffs.
 
-The skill deliberately excludes program administration, funding, supplier
-management, delivery verification, finance approval, and human wallet signing.
+Together they separate administration from spending. Neither skill may
+impersonate suppliers, delivery verifiers, finance approvers, or human wallet
+signers. An agent supplier must accept and confirm the counterparty side with
+its own credentials.
 See the [agent skills catalog](agent-skills/README.md) for installation,
 connection, and invocation examples.
 
