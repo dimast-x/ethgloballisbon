@@ -135,6 +135,20 @@ export function applyProtocolEvent(
       }
       break;
     }
+    case "BUYER_PURCHASING_UPDATED": {
+      const { buyerId, active } = event.data as {
+        buyerId: string;
+        active: boolean;
+      };
+      const allocation = next.allocations[buyerId];
+      if (allocation) {
+        next.allocations[buyerId] = {
+          ...allocation,
+          purchasingStatus: active ? "ACTIVE" : "DISABLED",
+        };
+      }
+      break;
+    }
     case "VENDOR_APPROVED": {
       const vendor = (event.data as { vendor: Vendor }).vendor;
       next.vendors[vendor.id] = vendor;

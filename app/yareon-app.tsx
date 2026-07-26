@@ -21,6 +21,7 @@ import {
   Store,
   TimerReset,
   Truck,
+  UserMinus,
   Users,
   WalletCards,
   X,
@@ -59,7 +60,6 @@ import {
   controlPanelPreviewPrograms,
   createControlPanelPreviewSession,
 } from "./control-panel-preview";
-import { AgentkitDemoPanel } from "./agentkit-demo-panel";
 import { BrandLogo } from "./brand-logo";
 
 const tabs = [
@@ -74,6 +74,23 @@ type ControlSection = (typeof controlSections)[number];
 const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
 type PurchasingSection = (typeof purchasingSections)[number];
 const activeLiveRunKey = "yareon_active_live_program";
+
+export function restoredActiveOrderId(
+  orders: ProtocolProjection["orders"],
+  createOrderId: () => string = () =>
+    `order_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+) {
+  const ordered = Object.values(orders);
+  const unfinishedOrder = [...ordered]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.status !== "PAYMENT_EXECUTED" &&
+        candidate.status !== "CANCELLED",
+    );
+
+  return unfinishedOrder?.id ?? ordered.at(-1)?.id ?? createOrderId();
+}
 
 const tabDetails: Record<Tab, { title: string; description: string }> = {
   Overview: {
@@ -117,6 +134,7 @@ const eventLabels: Record<string, string> = {
   PROGRAM_UPFUNDED: "Program deposit confirmed",
   BUYER_ALLOCATED: "Buyer allocation granted",
   BUYER_ALLOCATION_UPFUNDED: "Buyer allocation upfunded",
+  BUYER_PURCHASING_UPDATED: "Buyer purchasing access updated",
   VENDOR_APPROVED: "Vendor approved",
   OFFER_REGISTERED: "Offer registered",
   SUPPLIER_UPDATED: "Supplier updated",
@@ -483,17 +501,7 @@ export function YareonApp() {
       setActiveBuyerId(
         body.buyerId || Object.keys(body.projection.allocations)[0] || "",
       );
-      const unfinishedOrder = Object.values(body.projection.orders)
-        .reverse()
-        .find(
-          (candidate) =>
-            candidate.status !== "PAYMENT_EXECUTED" &&
-            candidate.status !== "CANCELLED",
-        );
-      setActiveOrderId(
-        unfinishedOrder?.id ??
-          `order_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
-      );
+      setActiveOrderId(restoredActiveOrderId(body.projection.orders));
       setActiveTab("Overview");
   }
 
@@ -636,10 +644,15 @@ export function YareonApp() {
   const projection = activeSession.projection;
   const program = projection.program!;
   const programFunds = activeSession.treasuryBalance ?? program.budget;
+  const activeAllocations = Object.values(projection.allocations).filter(
+    (allocation) => allocation.purchasingStatus !== "DISABLED",
+  );
   const buyerId =
-    activeBuyerId && projection.allocations[activeBuyerId]
+    activeBuyerId &&
+    projection.allocations[activeBuyerId] &&
+    projection.allocations[activeBuyerId]?.purchasingStatus !== "DISABLED"
       ? activeBuyerId
-      : activeSession.buyerId;
+      : activeAllocations[0]?.buyerId ?? "";
   const order = projection.orders[activeOrderId];
   const offers = Object.values(projection.offers).filter(
     (offer) => projection.vendors[offer.vendorId]?.status === "APPROVED",
@@ -904,6 +917,33 @@ export function YareonApp() {
     setAllocationAmounts((current) => ({ ...current, [buyerId]: "" }));
   }
 
+  async function setBuyerPurchasing(buyerId: string, active: boolean) {
+    const continuing = Object.values(projection.orders).filter(
+      (candidate) =>
+        candidate.buyerId === buyerId &&
+        candidate.status !== "PAYMENT_EXECUTED" &&
+        candidate.status !== "CANCELLED",
+    ).length;
+    await submitCommand(
+      {
+        type: "SET_BUYER_PURCHASING",
+        idempotencyKey: `${activeSession.runId}:buyer-purchasing:${buyerId}:${active}:${crypto.randomUUID()}`,
+        actor: actor("ADMIN", "program-admin"),
+        buyerId,
+        active,
+      },
+      active
+        ? `${buyerId} can create purchases again.`
+        : `${buyerId} was removed from future purchasing.${continuing ? ` ${continuing} existing order${continuing === 1 ? "" : "s"} will continue unchanged.` : ""}`,
+    );
+    if (!active && activeBuyerId === buyerId) {
+      setActiveBuyerId(
+        activeAllocations.find((allocation) => allocation.buyerId !== buyerId)
+          ?.buyerId ?? "",
+      );
+    }
+  }
+
   async function upfundAgent() {
     const value = agentUpfundAmount.trim();
     if (!value || Number(value) <= 0) {
@@ -1019,6 +1059,7 @@ export function YareonApp() {
           id: `allocation_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
           programId: program.id,
           buyerId,
+          purchasingStatus: "ACTIVE",
           participantType: "HUMAN",
           humanVerificationRequired: newBuyerRequiresVerification,
           totalLimit: fromDisplay(
@@ -1304,6 +1345,19 @@ export function YareonApp() {
                 vendors={projection.vendors}
                 order={order}
                 events={projection.timeline}
+                depositAmount={programUpfundAmount}
+                depositing={operationState === "pending"}
+                onDepositAmount={setProgramUpfundAmount}
+                onDeposit={() =>
+                  void upfundProgram().catch((error) => {
+                    setOperationState("failed");
+                    setNotice(
+                      error instanceof Error
+                        ? error.message
+                        : "The program deposit could not be completed.",
+                    );
+                  })
+                }
                 onControls={(section) => {
                   setControlSection(section);
                   setActiveTab("Controls");
@@ -1357,14 +1411,6 @@ export function YareonApp() {
                   })
                 }
               />
-              <AgentkitDemoPanel
-                programId={program.id}
-                delegation={projection.agentDelegations[activeSession.agentId]}
-                decisions={projection.agentAuthorizationDecisions}
-                offerAmount={selectedOffer.amount}
-                orderExists={Boolean(order)}
-                liveReady={Boolean(identityReadiness?.ready)}
-              />
             </>
           )}
           {activeTab === "Controls" && controlSection === "Policy" && (
@@ -1377,10 +1423,8 @@ export function YareonApp() {
               vendors={projection.vendors}
               policy={program.policy}
               allocations={projection.allocations}
-              programFunds={programFunds}
-              treasuryAccountId={program.hedera?.treasuryAccountId}
+              orders={projection.orders}
               asset={program.budget.asset}
-              programUpfundAmount={programUpfundAmount}
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
               newBuyerAmount={newBuyerAmount}
@@ -1391,17 +1435,6 @@ export function YareonApp() {
               orderExists={Boolean(order)}
               orderCompleted={order?.status === "PAYMENT_EXECUTED"}
               onSelect={setChosenOfferId}
-              onProgramUpfundAmount={setProgramUpfundAmount}
-              onUpfundProgram={() =>
-                void upfundProgram().catch((error) => {
-                  setOperationState("failed");
-                  setNotice(
-                    error instanceof Error
-                      ? error.message
-                      : "The program deposit could not be completed.",
-                  );
-                })
-              }
               onAllocationAmount={(buyerId, value) =>
                 setAllocationAmounts((current) => ({
                   ...current,
@@ -1423,6 +1456,16 @@ export function YareonApp() {
                     error instanceof Error
                       ? error.message
                       : "The allocation could not be updated.",
+                  );
+                })
+              }
+              onSetPurchasing={(buyerId, active) =>
+                void setBuyerPurchasing(buyerId, active).catch((error) => {
+                  setOperationState("failed");
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "The buyer's purchasing access could not be updated.",
                   );
                 })
               }
@@ -1477,10 +1520,8 @@ export function YareonApp() {
               vendors={projection.vendors}
               policy={program.policy}
               allocations={projection.allocations}
-              programFunds={programFunds}
-              treasuryAccountId={program.hedera?.treasuryAccountId}
+              orders={projection.orders}
               asset={program.budget.asset}
-              programUpfundAmount={programUpfundAmount}
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
               newBuyerAmount={newBuyerAmount}
@@ -1491,8 +1532,6 @@ export function YareonApp() {
               orderExists={Boolean(order)}
               orderCompleted={order?.status === "PAYMENT_EXECUTED"}
               onSelect={setChosenOfferId}
-              onProgramUpfundAmount={setProgramUpfundAmount}
-              onUpfundProgram={() => void upfundProgram()}
               onAllocationAmount={(buyerId, value) =>
                 setAllocationAmounts((current) => ({
                   ...current,
@@ -1508,6 +1547,9 @@ export function YareonApp() {
                 setNotice("Human-buyer verification is outside this AgentKit flow.");
               }}
               onUpfund={(buyerId) => void upfundBuyer(buyerId)}
+              onSetPurchasing={(buyerId, active) =>
+                void setBuyerPurchasing(buyerId, active)
+              }
               onAddBuyer={() => void addBuyerAllocation()}
               onCreate={() =>
                 run(
@@ -1618,6 +1660,10 @@ function ProgramOverviewPanel({
   vendors,
   order,
   events,
+  depositAmount,
+  depositing,
+  onDepositAmount,
+  onDeposit,
   onControls,
   onPurchasing,
   onActivity,
@@ -1628,18 +1674,27 @@ function ProgramOverviewPanel({
   vendors: ProtocolProjection["vendors"];
   order?: Order;
   events: import("@/src/protocol/events").RecordedEvent[];
+  depositAmount: string;
+  depositing: boolean;
+  onDepositAmount: (value: string) => void;
+  onDeposit: () => void;
   onControls: (section: ControlSection) => void;
   onPurchasing: (section: PurchasingSection) => void;
   onActivity: () => void;
 }) {
-  const buyerAuthority = Object.values(allocations).reduce(
-    (total, allocation) =>
-      total +
+  const focusFunding = () =>
+    document
+      .getElementById("program-funding")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const buyerAuthority = Object.values(allocations).reduce((total, allocation) => {
+    if (allocation.purchasingStatus === "DISABLED") return total;
+    const remaining =
       BigInt(allocation.totalLimit.atomicAmount) -
       BigInt(allocation.committed.atomicAmount) -
-      BigInt(allocation.paid.atomicAmount),
-    0n,
-  );
+      BigInt(allocation.paid.atomicAmount);
+
+    return total + (remaining > 0n ? remaining : 0n);
+  }, 0n);
   const activeSuppliers = Object.values(vendors).filter(
     (vendor) => vendor.status === "APPROVED",
   ).length;
@@ -1658,7 +1713,7 @@ function ProgramOverviewPanel({
           description:
             "The program treasury is empty. Add HBAR, then assign it to buyers.",
           label: "Fund the program",
-          onClick: () => onControls("Buyers"),
+          onClick: focusFunding,
         }
       : !order || order.status === "PAYMENT_EXECUTED"
         ? {
@@ -1704,13 +1759,53 @@ function ProgramOverviewPanel({
         </button>
       </section>
 
+      <section
+        className="overview-funding"
+        id="program-funding"
+        aria-labelledby="program-funding-title"
+      >
+        <div className="overview-funding-balance">
+          <WalletCards size={20} aria-hidden="true" />
+          <div>
+            <span>Program treasury</span>
+            <strong id="program-funding-title">
+              {toDisplay(programFunds)} {programFunds.asset} available
+            </strong>
+            <small>
+              {program.hedera?.treasuryAccountId
+                ? `Hedera treasury ${shortHederaAccount(program.hedera.treasuryAccountId)}`
+                : "Configure a treasury before depositing funds."}
+            </small>
+          </div>
+        </div>
+        <label>
+          <span>Deposit amount</span>
+          <div>
+            <input
+              inputMode="decimal"
+              placeholder="0"
+              value={depositAmount}
+              onChange={(event) => onDepositAmount(event.target.value)}
+            />
+            <span>{program.budget.asset}</span>
+          </div>
+        </label>
+        <button
+          type="button"
+          onClick={onDeposit}
+          disabled={!program.hedera?.treasuryAccountId || depositing}
+        >
+          {depositing ? "Depositing…" : "Deposit funds"}
+        </button>
+      </section>
+
       <section className="overview-metrics" aria-label="Program summary">
         <article className="overview-metric balance">
           <CircleDollarSign size={18} />
           <span>Available program funds</span>
           <strong>{toDisplay(programFunds)} {programFunds.asset}</strong>
-          <button type="button" onClick={() => onControls("Buyers")}>
-            Manage funding
+          <button type="button" onClick={focusFunding}>
+            Deposit funds
           </button>
         </article>
         <article className="overview-metric">
@@ -2243,10 +2338,8 @@ function BuyerPanel({
   vendors,
   policy,
   allocations,
-  programFunds,
-  treasuryAccountId,
+  orders,
   asset,
-  programUpfundAmount,
   allocationAmounts,
   newBuyerId,
   newBuyerAmount,
@@ -2257,8 +2350,6 @@ function BuyerPanel({
   orderExists,
   orderCompleted,
   onSelect,
-  onProgramUpfundAmount,
-  onUpfundProgram,
   onAllocationAmount,
   onNewBuyerId,
   onNewBuyerAmount,
@@ -2266,6 +2357,7 @@ function BuyerPanel({
   onActiveBuyer,
   onVerifyBuyer,
   onUpfund,
+  onSetPurchasing,
   onAddBuyer,
   onCreate,
   onNextPurchase,
@@ -2275,10 +2367,8 @@ function BuyerPanel({
   vendors: Record<string, import("@/src/protocol/types").Vendor>;
   policy: import("@/src/protocol/types").ProgramPolicy;
   allocations: Record<string, import("@/src/protocol/types").BuyerAllocation>;
-  programFunds: import("@/src/protocol/types").Money;
-  treasuryAccountId?: string;
+  orders: Record<string, Order>;
   asset: string;
-  programUpfundAmount: string;
   allocationAmounts: Record<string, string>;
   newBuyerId: string;
   newBuyerAmount: string;
@@ -2292,8 +2382,6 @@ function BuyerPanel({
   orderExists: boolean;
   orderCompleted: boolean;
   onSelect: (offerId: string) => void;
-  onProgramUpfundAmount: (value: string) => void;
-  onUpfundProgram: () => void;
   onAllocationAmount: (buyerId: string, value: string) => void;
   onNewBuyerId: (value: string) => void;
   onNewBuyerAmount: (value: string) => void;
@@ -2301,6 +2389,7 @@ function BuyerPanel({
   onActiveBuyer: (buyerId: string) => void;
   onVerifyBuyer: (buyerId: string) => void;
   onUpfund: (buyerId: string) => void;
+  onSetPurchasing: (buyerId: string, active: boolean) => void;
   onAddBuyer: () => void;
   onCreate: () => void;
   onNextPurchase: () => void;
@@ -2309,6 +2398,9 @@ function BuyerPanel({
   const [deliveryFilter, setDeliveryFilter] = useState<"all" | "fast">("all");
   const [sort, setSort] = useState<"fit" | "price" | "delivery">("fit");
   const [expandedOfferId, setExpandedOfferId] = useState<string | null>(null);
+  const activeAllocations = Object.values(allocations).filter(
+    (allocation) => allocation.purchasingStatus !== "DISABLED",
+  );
 
   const visibleOffers = offers
     .filter((offer) => {
@@ -2334,6 +2426,12 @@ function BuyerPanel({
       return 0;
     });
 
+  if (view === "marketplace" && activeAllocations.length === 0) {
+    return (
+      <EmptyState text="No buyers currently have purchasing access. Add a buyer or restore access from Controls." />
+    );
+  }
+
   if (view === "marketplace" && offers.length === 0) {
     return (
       <EmptyState text="No active suppliers are available. Add or reactivate a supplier before creating another purchase." />
@@ -2350,51 +2448,35 @@ function BuyerPanel({
     <div className={`marketplace-layout ${view}`}>
       {view === "buyers" && <section className="buyer-brief">
         <PanelHeading
-          kicker="Spending authority"
-          title="Buyer allocations"
-          description="Give each member or team a clear budget. Purchases still have to pass the program policy."
+          kicker="Program members"
+          title="Buyers"
+          description="Add people or teams, set their purchasing authority, and control who can create new orders."
         />
         <div className="allocation-manager">
-          <div className="program-funding-row">
-            <div>
-              <span className="section-label">Program wallet</span>
-              <strong>{toDisplay(programFunds)} {programFunds.asset}</strong>
-              <small>
-                {treasuryAccountId
-                  ? `Treasury ${shortHederaAccount(treasuryAccountId)}`
-                  : "Configure a treasury before depositing funds."}
-              </small>
-            </div>
-            <label>
-              <span>Deposit amount</span>
-              <input
-                inputMode="decimal"
-                placeholder={`0 ${asset}`}
-                value={programUpfundAmount}
-                onChange={(event) => onProgramUpfundAmount(event.target.value)}
-              />
-            </label>
-            <button
-              onClick={onUpfundProgram}
-              disabled={!treasuryAccountId}
-            >
-              Deposit funds
-            </button>
-          </div>
           <div className="section-label allocation-section-label">
             Current buyers
           </div>
           {Object.values(allocations).map((item) => (
-            <div className="allocation-manager-row" key={item.buyerId}>
+            <div
+              className={`allocation-manager-row${item.purchasingStatus === "DISABLED" ? " disabled" : ""}`}
+              key={item.buyerId}
+            >
               <div>
-                <strong>{item.buyerId}</strong>
+                <strong>
+                  {item.buyerId}
+                  <span className="buyer-access-status">
+                    {item.purchasingStatus === "DISABLED" ? "Access removed" : "Active"}
+                  </span>
+                </strong>
                 <span>{toDisplay(item.totalLimit)} {item.totalLimit.asset}</span>
                 <small>
-                  {item.humanVerificationRequired
-                    ? humanBacking[item.buyerId]
-                      ? "Identity verified"
-                      : "Human verification required"
-                    : "Human verification not required"}
+                  {item.purchasingStatus === "DISABLED"
+                    ? `${Object.values(orders).filter((candidate) => candidate.buyerId === item.buyerId && candidate.status !== "PAYMENT_EXECUTED" && candidate.status !== "CANCELLED").length} existing orders continue unchanged`
+                    : item.humanVerificationRequired
+                      ? humanBacking[item.buyerId]
+                        ? "Identity verified"
+                        : "Human verification required"
+                      : "Human verification not required"}
                 </small>
               </div>
               <label>
@@ -2406,15 +2488,40 @@ function BuyerPanel({
                   onChange={(event) =>
                     onAllocationAmount(item.buyerId, event.target.value)
                   }
+                  disabled={item.purchasingStatus === "DISABLED"}
                 />
               </label>
-              <button onClick={() => onUpfund(item.buyerId)}>Add funds</button>
+              <button
+                onClick={() => onUpfund(item.buyerId)}
+                disabled={item.purchasingStatus === "DISABLED"}
+              >
+                Add authority
+              </button>
               {item.humanVerificationRequired &&
-                !humanBacking[item.buyerId] && (
+                !humanBacking[item.buyerId] &&
+                item.purchasingStatus !== "DISABLED" && (
                   <button onClick={() => onVerifyBuyer(item.buyerId)}>
                     Verify
                   </button>
                 )}
+              <button
+                className={item.purchasingStatus === "DISABLED" ? "restore-action" : "danger-action"}
+                onClick={() =>
+                  onSetPurchasing(
+                    item.buyerId,
+                    item.purchasingStatus === "DISABLED",
+                  )
+                }
+              >
+                {item.purchasingStatus === "DISABLED" ? (
+                  "Restore access"
+                ) : (
+                  <>
+                    <UserMinus size={13} aria-hidden="true" />
+                    Remove access
+                  </>
+                )}
+              </button>
             </div>
           ))}
           <div className="allocation-manager-new">
@@ -2463,15 +2570,18 @@ function BuyerPanel({
               onChange={(event) => onActiveBuyer(event.target.value)}
               disabled={Boolean(orderExists)}
             >
-              {Object.values(allocations).map((allocation) => (
+              {activeAllocations.map((allocation) => (
                 <option key={allocation.buyerId} value={allocation.buyerId}>
                   {allocation.buyerId} · {toDisplay({
                     ...allocation.totalLimit,
-                    atomicAmount: (
+                    atomicAmount: (() => {
+                      const remaining =
                       BigInt(allocation.totalLimit.atomicAmount) -
                       BigInt(allocation.committed.atomicAmount) -
-                      BigInt(allocation.paid.atomicAmount)
-                    ).toString(),
+                      BigInt(allocation.paid.atomicAmount);
+
+                      return (remaining > 0n ? remaining : 0n).toString();
+                    })(),
                   })} {allocation.totalLimit.asset} available
                 </option>
               ))}

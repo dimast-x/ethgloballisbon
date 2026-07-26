@@ -1,8 +1,9 @@
 # World AgentKit integration
 
 Yareon grants procurement execution rights only to the dedicated EVM agent
-wallet configured by `WORLD_AGENT_PRIVATE_KEY` and registered in the canonical
-World AgentBook.
+wallet whose public `WORLD_AGENT_ADDRESS` is configured on the server and
+registered in the canonical World AgentBook. Keep `WORLD_AGENT_PRIVATE_KEY`
+only in the agent CLI environment.
 
 ## Request flow
 
@@ -27,7 +28,10 @@ cannot be reused.
 
 ## Troubleshooting
 
-- `Missing WORLD_AGENT_PRIVATE_KEY`: configure a dedicated 32-byte hex key.
+- `Missing WORLD_AGENT_ADDRESS`: configure the agent's public address on the
+  Yareon server.
+- `Missing WORLD_AGENT_PRIVATE_KEY`: configure a dedicated 32-byte hex key only
+  in the agent environment before execution.
 - `not registered in World AgentBook`: run the AgentKit CLI registration flow
   for the address printed by `npm run agentkit:address`.
 - `delegation predates AgentKit`: create a new program after AgentKit is

@@ -7,6 +7,8 @@ import {
 } from "../src/adapters/identity";
 import {
   agentkitVerificationReference,
+  agentkitSignerConfigFromEnv,
+  agentkitVerifierConfigFromEnv,
   createAgentkitChallenge,
   verifyAgentkitRequest,
   WORLD_AGENT_CHAIN_ID,
@@ -63,6 +65,30 @@ describe("World AgentKit adapter", () => {
   const account = privateKeyToAccount(privateKey);
   const resource =
     "https://yareon.example/api/agents/agentkit/procure?intent=sha256%3Atest";
+
+  it("keeps server verification independent from the signing key", () => {
+    const previousAddress = process.env.WORLD_AGENT_ADDRESS;
+    const previousKey = process.env.WORLD_AGENT_PRIVATE_KEY;
+    process.env.WORLD_AGENT_ADDRESS = account.address;
+    delete process.env.WORLD_AGENT_PRIVATE_KEY;
+    try {
+      expect(agentkitVerifierConfigFromEnv().agentAddress).toBe(account.address);
+      expect(() => agentkitSignerConfigFromEnv()).toThrow(
+        "Missing WORLD_AGENT_PRIVATE_KEY",
+      );
+    } finally {
+      if (previousAddress === undefined) {
+        delete process.env.WORLD_AGENT_ADDRESS;
+      } else {
+        process.env.WORLD_AGENT_ADDRESS = previousAddress;
+      }
+      if (previousKey === undefined) {
+        delete process.env.WORLD_AGENT_PRIVATE_KEY;
+      } else {
+        process.env.WORLD_AGENT_PRIVATE_KEY = previousKey;
+      }
+    }
+  });
 
   async function signedRequest(
     url = resource,

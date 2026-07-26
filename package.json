@@ -2,6 +2,9 @@
   "name": "yareon",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },
@@ -9,6 +12,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "build:cli": "npm run build --workspace @yareon/cli",
     "test": "vitest run --config vitest.config.ts",
     "test:testnet": "RUN_HEDERA_TESTNET=1 vitest run --config vitest.config.ts test/hedera.testnet.spec.ts",
     "test:site": "npm run build && node --test tests/rendered-html.test.mjs",
@@ -23,7 +27,7 @@
     "agentkit:validate": "tsx scripts/agentkit-cli.ts validate",
     "demo:agentkit": "tsx scripts/agentkit-cli.ts demo",
     "setup:testnet": "tsx scripts/setup-platform-testnet.ts",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern packages/cli/dist"
   },
   "dependencies": {
     "@hashgraph/hedera-wallet-connect": "^2.1.3",

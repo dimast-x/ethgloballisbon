@@ -5,6 +5,7 @@ import {
   type AgentkitProcurementIntent,
 } from "../src/application/agentkit";
 import { POST as protectedProcurement } from "../app/api/agents/agentkit/procure/route";
+import { GET as agentManifest } from "../app/api/agents/agentkit/manifest/route";
 import { POST as genericCommand } from "../app/api/programs/[programId]/commands/route";
 
 const intent: AgentkitProcurementIntent = {
@@ -15,6 +16,15 @@ const intent: AgentkitProcurementIntent = {
 };
 
 describe("AgentKit procurement boundary", () => {
+  it("advertises a stable agent API manifest", async () => {
+    const response = await agentManifest();
+    await expect(response.json()).resolves.toMatchObject({
+      service: "yareon",
+      apiVersion: "1",
+      agentkit: { chainId: "eip155:480" },
+    });
+  });
+
   it("canonically binds the complete intent into the protected URI", () => {
     expect(canonicalAgentkitIntent(intent)).toBe(
       '{"action":"CREATE_ORDER","agentId":"agent_1","offerId":"offer_1","programId":"program_1"}',

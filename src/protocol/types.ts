@@ -38,6 +38,7 @@ export type BuyerAllocation = {
   id: string;
   programId: string;
   buyerId: string;
+  purchasingStatus?: "ACTIVE" | "DISABLED";
   participantType?: "HUMAN" | "AGENT";
   humanVerificationRequired?: boolean;
   totalLimit: Money;

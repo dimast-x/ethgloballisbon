@@ -60,6 +60,11 @@ export type ProtocolCommand =
       amount: Money;
     })
   | (CommandEnvelope & {
+      type: "SET_BUYER_PURCHASING";
+      buyerId: string;
+      active: boolean;
+    })
+  | (CommandEnvelope & {
       type: "APPROVE_VENDOR";
       vendor: Vendor;
     })

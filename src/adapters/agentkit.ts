@@ -33,38 +33,60 @@ export type VerifiedAgentkitAccess = {
   expiresAt: string;
 };
 
-export type AgentkitConfig = {
-  privateKey: Hex;
+export type AgentkitVerifierConfig = {
   agentAddress: string;
   worldChainRpcUrl?: string;
+};
+
+export type AgentkitSignerConfig = AgentkitVerifierConfig & {
+  privateKey: Hex;
 };
 
 type AgentBookLookup = {
   lookupHuman(address: string): Promise<string | null>;
 };
 
-export function agentkitConfigFromEnv(): AgentkitConfig {
+export function agentkitVerifierConfigFromEnv(): AgentkitVerifierConfig {
+  const raw = process.env.WORLD_AGENT_ADDRESS;
+  if (!raw) throw new Error("Missing WORLD_AGENT_ADDRESS.");
+  return {
+    agentAddress: validateAgentAddress(raw),
+    worldChainRpcUrl: process.env.WORLD_CHAIN_RPC_URL,
+  };
+}
+
+export function agentkitSignerConfigFromEnv(): AgentkitSignerConfig {
   const raw = process.env.WORLD_AGENT_PRIVATE_KEY;
   if (!raw) throw new Error("Missing WORLD_AGENT_PRIVATE_KEY.");
   const privateKey = normalizePrivateKey(raw);
   const account = privateKeyToAccount(privateKey);
+  const agentAddress = getAddress(account.address);
+  const expectedAddress = process.env.WORLD_AGENT_ADDRESS;
+  if (
+    expectedAddress &&
+    validateAgentAddress(expectedAddress) !== agentAddress
+  ) {
+    throw new Error(
+      "WORLD_AGENT_PRIVATE_KEY does not match WORLD_AGENT_ADDRESS.",
+    );
+  }
   return {
     privateKey,
-    agentAddress: getAddress(account.address),
+    agentAddress,
     worldChainRpcUrl: process.env.WORLD_CHAIN_RPC_URL,
   };
 }
 
 export function configuredAgentkitAddress(): string | undefined {
   try {
-    return agentkitConfigFromEnv().agentAddress;
+    return agentkitVerifierConfigFromEnv().agentAddress;
   } catch {
     return undefined;
   }
 }
 
 export async function lookupConfiguredAgentHuman(): Promise<boolean> {
-  const config = agentkitConfigFromEnv();
+  const config = agentkitVerifierConfigFromEnv();
   const agentBook = createAgentBookVerifier(
     config.worldChainRpcUrl
       ? { rpcUrl: config.worldChainRpcUrl }
@@ -116,7 +138,7 @@ export function createAgentkitChallenge(resourceUrl: string) {
 export function createConfiguredAgentkitClient(
   onTrace?: (event: AgentkitTraceEvent) => void,
 ) {
-  const config = agentkitConfigFromEnv();
+  const config = agentkitSignerConfigFromEnv();
   const account = privateKeyToAccount(config.privateKey);
   return createAgentkitClient({
     signer: {

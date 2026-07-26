@@ -1,5 +1,6 @@
 import {
-  agentkitConfigFromEnv,
+  agentkitSignerConfigFromEnv,
+  agentkitVerifierConfigFromEnv,
   createConfiguredAgentkitClient,
   lookupConfiguredAgentHuman,
   type AgentkitTraceEvent,
@@ -18,9 +19,9 @@ try {
 const command = process.argv[2] ?? "address";
 
 if (command === "address") {
-  console.log(agentkitConfigFromEnv().agentAddress);
+  console.log(agentkitSignerConfigFromEnv().agentAddress);
 } else if (command === "validate") {
-  const config = agentkitConfigFromEnv();
+  const config = agentkitVerifierConfigFromEnv();
   const registered = await lookupConfiguredAgentHuman();
   console.log(
     JSON.stringify(

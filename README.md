@@ -51,8 +51,8 @@ npm run test:site
 This is a native Next.js application and can be imported directly into Vercel.
 Use the default Next.js build settings and configure every value from
 `.env.example` in Project Settings → Environment Variables. Keep
-`HEDERA_OPERATOR_KEY`, `WORLD_AGENT_PRIVATE_KEY`, `ENS_RPC_URL`, and
-`YAREON_AUTH_SECRET` server-only.
+`HEDERA_OPERATOR_KEY`, `ENS_RPC_URL`, and `YAREON_AUTH_SECRET` server-only.
+Configure only the agent's public `WORLD_AGENT_ADDRESS` on the server.
 
 Deploy from the project directory with:
 
@@ -74,7 +74,7 @@ HEDERA_OPERATOR_ID
 HEDERA_OPERATOR_KEY
 HEDERA_TOPIC_ID
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-WORLD_AGENT_PRIVATE_KEY
+WORLD_AGENT_ADDRESS
 WORLD_CHAIN_RPC_URL
 YAREON_PUBLIC_URL
 ```
@@ -82,25 +82,43 @@ YAREON_PUBLIC_URL
 ## World AgentKit setup
 
 Yareon uses a dedicated EVM wallet as the procurement agent's World identity.
-The wallet signs short-lived AgentKit challenges; the server verifies the
-signature, checks the canonical AgentBook on World Chain, binds the address to
-the agent's Hedera execution account, and only then evaluates procurement
-policy.
+The private key stays in the agent environment. The server stores only its
+public `WORLD_AGENT_ADDRESS`, verifies short-lived AgentKit signatures, checks
+the canonical AgentBook on World Chain, and binds the address to the agent's
+delegation before evaluating procurement policy.
 
-Generate a dedicated 32-byte key outside the repository, configure it as
-`WORLD_AGENT_PRIVATE_KEY`, and print its address:
+Generate a dedicated 32-byte key outside the repository. Configure it as
+`WORLD_AGENT_PRIVATE_KEY` only in the agent environment, then print its public
+address:
 
 ```bash
 openssl rand -hex 32
 npm run agentkit:address
 ```
 
-Register that address once through World App:
+Configure the printed value as `WORLD_AGENT_ADDRESS` on the Yareon server and
+register it once through World App:
 
 ```bash
 npx @worldcoin/agentkit-cli register <agent-address>
 npm run agentkit:validate
 ```
+
+## Agent CLI
+
+Agents and their users do not need to clone this repository. After publishing
+`@yareon/cli`, connect once and install the skill:
+
+```bash
+npm install --global @yareon/cli
+yareon connect "https://your-yareon.example/?programId=<program-id>"
+yareon skill install
+```
+
+The connection file contains only the public URL and program ID. The agent then
+uses `yareon doctor`, `yareon context`, and `yareon buy`. Add `--execute` only
+after explicit purchase authorization. See
+`packages/cli/README.md` for the compact user workflow.
 
 The protected resource is
 `POST /api/agents/agentkit/procure?intent=<sha256>`. An unsigned request
@@ -109,11 +127,13 @@ EIP-191 signature bound to the exact intent URL. Raw AgentBook human
 identifiers are never returned, logged, or written to HCS.
 
 Run the complete bot-rejection, AgentBook-verification, delegation-rejection,
-and valid-order sequence with:
+and valid-order sequence locally, with the agent key in your shell environment:
 
 ```bash
 npm run demo:agentkit -- <programId>
 ```
+
+The Yareon server never signs for the agent.
 
 Run `npm run setup:testnet` once to provision or validate the shared event
 topic. An authenticated creator can create a draft program with only a name and

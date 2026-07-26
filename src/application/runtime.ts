@@ -19,7 +19,7 @@ import {
   StaticPublicIdentityResolver,
 } from "../adapters/identity";
 import {
-  agentkitConfigFromEnv,
+  agentkitVerifierConfigFromEnv,
   configuredAgentkitAddress,
   lookupConfiguredAgentHuman,
 } from "../adapters/agentkit";
@@ -586,7 +586,7 @@ export async function getIdentityReadiness(
   let agentAddress: string | undefined;
   let agentBookRegistered: boolean | undefined;
   try {
-    agentAddress = agentkitConfigFromEnv().agentAddress;
+    agentAddress = agentkitVerifierConfigFromEnv().agentAddress;
     if (probeNetwork) {
       agentBookRegistered = await lookupConfiguredAgentHuman();
       if (!agentBookRegistered) {

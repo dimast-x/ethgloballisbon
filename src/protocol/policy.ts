@@ -28,6 +28,14 @@ export function validatePurchase(context: PurchaseContext): PolicyDecision {
     failures.push({ code: "PROGRAM_NOT_ACTIVE", reason: "Program is not active." });
   }
 
+  rules.push("BUYER_ACTIVE");
+  if (context.allocation.purchasingStatus === "DISABLED") {
+    failures.push({
+      code: "BUYER_PURCHASING_DISABLED",
+      reason: "This buyer no longer has access to create purchases.",
+    });
+  }
+
   rules.push("CATEGORY_ALLOWED");
   if (
     !context.program.policy.allowedCategories.includes(context.category) ||

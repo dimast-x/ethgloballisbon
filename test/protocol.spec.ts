@@ -50,6 +50,30 @@ describe("purchase policy", () => {
     );
   });
 
+  it("blocks new purchases when buyer access is disabled", () => {
+    const offer = universityGpuFixture.offers.find(
+      (item) => item.id === universityGpuFixture.selectedOfferId,
+    )!;
+    const vendor = universityGpuFixture.vendors.find(
+      (item) => item.id === offer.vendorId,
+    )!;
+    const decision = validatePurchase({
+      program: universityGpuFixture.program,
+      allocation: {
+        ...universityGpuFixture.allocation,
+        purchasingStatus: "DISABLED",
+      },
+      vendor,
+      category: offer.category,
+      amount: offer.amount,
+    });
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      code: "BUYER_PURCHASING_DISABLED",
+    });
+  });
+
   it("runs a non-GPU fixture through the unchanged core", () => {
     const offer = medicalSupplyFixture.offers[0];
     const decision = validatePurchase({

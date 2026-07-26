@@ -5,122 +5,61 @@ description: "Operate Yareon as a delegated procurement agent: inspect a program
 
 # Yareon Agent
 
-Use Yareon's agent API without bypassing its policy, identity, or separation-of-duty controls.
+Use the `yareon` CLI without bypassing policy, identity, or separation-of-duty controls.
 
-## Scope
+## Boundaries
 
-The agent may:
-
-- Read a program and its currently eligible offers.
-- Compare those offers and select one that satisfies the user's stated criteria.
-- Preview an order, then create it through World AgentKit.
-- Read an order and the append-only Hedera audit trail.
-
-The agent may not:
-
-- Create, fund, pause, or reconfigure programs.
-- Add suppliers, offers, buyers, or delegations.
+- Read eligible offers, preview and create one order, and inspect its state or evidence.
+- Never create, fund, pause, or configure programs, suppliers, buyers, offers, or delegations.
 - Submit or approve delivery, sign verifier or finance approvals, or force settlement.
 - Invent offer IDs, amounts, identities, approvals, or ledger evidence.
+- Keep `WORLD_AGENT_PRIVATE_KEY` in the agent's secret environment. Never print, transmit, or commit it.
 
-Those actions belong to program administrators or independent human wallet roles.
+## 1. Check readiness
 
-## Prerequisites
-
-Run from the Yareon repository after `npm install`. Obtain:
-
-- A Yareon base URL, from `YAREON_PUBLIC_URL` or `http://127.0.0.1:3000`.
-- A program ID.
-- `WORLD_AGENT_PRIVATE_KEY` for the delegated agent when creating an order.
-
-The key must be a dedicated 32-byte EVM key registered in World AgentBook and bound to the program delegation. Never print, log, transmit, or commit it.
-
-Use the bundled CLI:
+Run:
 
 ```bash
-npx tsx agent-skills/yareon-agent/scripts/yareon.ts <command> [options]
+yareon doctor
 ```
 
-Pass `--base-url https://…` when not using `YAREON_PUBLIC_URL`.
+If the command is unavailable, use `npx --yes @yareon/cli@latest` in place of `yareon`.
 
-## Workflow
+- Continue with reads only when `readyToRead` is true.
+- Execute only when `readyToExecute` is true.
+- Report failed checks exactly; never work around them.
 
-### 1. Inspect before acting
+## 2. Inspect and select
 
 ```bash
-npx tsx agent-skills/yareon-agent/scripts/yareon.ts context \
-  --program-id <program-id>
+yareon context
 ```
 
-Treat `offers` as the complete eligible set at that moment. Yareon has already checked program status, supplier approval, category rules, delegation validity, per-order and total limits, buyer allocation, and available program funds.
+Treat `offers` as the complete eligible set at that moment. Apply the user's explicit criteria only to returned fields. Otherwise use `recommendedOfferId`, the lowest-priced eligible offer with offer ID as the stable tie-breaker.
 
-If there are no offers, stop and report that no policy-eligible purchase is available. Do not work around the policy.
+Stop when no eligible offer exists. Never invent or recalculate amounts; the server derives all financial fields from Mirror Node-backed state.
 
-### 2. Select an offer
-
-Use the user's explicit criteria when they match fields returned in the context. Otherwise use `recommendedOfferId`, which is the lowest-priced eligible offer with offer ID as the stable tie-breaker.
-
-Do not send or recalculate an amount. The server derives all financial fields from its Mirror Node-backed state.
-
-### 3. Preview the order
+## 3. Preview, then execute once
 
 ```bash
-npx tsx agent-skills/yareon-agent/scripts/yareon.ts buy \
-  --program-id <program-id> \
-  --offer-id <offer-id>
+yareon buy --offer-id <offer-id>
 ```
 
-Omit `--offer-id` to preview `recommendedOfferId`. Report the supplier, description, amount in atomic units, asset decimals, and delivery estimate when present.
-
-### 4. Create exactly one order
-
-Only execute when the user's request clearly authorizes a purchase:
+Report the supplier, description, atomic and display amounts, and delivery estimate. Execute only when the user clearly authorizes this purchase:
 
 ```bash
-npx tsx agent-skills/yareon-agent/scripts/yareon.ts buy \
-  --program-id <program-id> \
-  --offer-id <offer-id> \
-  --execute
+yareon buy --offer-id <offer-id> --execute
 ```
 
-The CLI obtains the short-lived `402` challenge, signs the exact intent URI with World AgentKit, and submits the identifier-only intent. A successful response must have `status: "CONFIRMED"` and `agentkit.verified: true`.
+Accept success only when `result.status` is `CONFIRMED` and `result.agentkit.verified` is true. Never submit multiple offers. On `MUTATION_OUTCOME_UNKNOWN`, inspect evidence before considering another execution.
 
-Do not send multiple offers or retry a timed-out mutation blindly. On an uncertain result, inspect the audit trail for `AGENTKIT_ACCESS_VERIFIED` and `ORDER_CREATED` before trying again.
-
-### 5. Check progress and evidence
+## 4. Check state and evidence
 
 ```bash
-npx tsx agent-skills/yareon-agent/scripts/yareon.ts order \
-  --program-id <program-id> \
-  --order-id <order-id>
-
-npx tsx agent-skills/yareon-agent/scripts/yareon.ts audit \
-  --program-id <program-id>
+yareon order --order-id <order-id>
+yareon audit --order-id <order-id> --summary
 ```
 
-Order states progress as:
-
-`CREATED → VENDOR_ACCEPTED → PAYMENT_SCHEDULED → DELIVERY_SUBMITTED → DELIVERY_APPROVED → PAYMENT_EXECUTED`
-
-Report the current state and what independent role must act next. Reading state does not authorize the agent to perform that role.
-
-## Failure handling
-
-- `400`: Fix missing identifiers or a changed intent. Re-read context before rebuilding it.
-- `402`: The request was unsigned. Use the bundled `buy --execute` command.
-- `403`: AgentKit verification, configured address, or AgentBook registration failed. Stop and report the server error.
-- `404`: The program, delegation, offer, or order does not exist. Re-check IDs.
-- `409`: Policy or current state rejected the action. Report the stable error and do not circumvent it.
-- `5xx` or network timeout after submission: Treat the outcome as unknown and inspect audit/order state.
-
-## Reporting
-
-After a mutation, return:
-
-- Program, selected offer, supplier, and order ID.
-- `CONFIRMED` or the exact rejection.
-- Current order state.
-- AgentKit verification reference and Hedera ledger reference when returned.
-- The next required human or vendor action.
+Report the order, exact result or error code, current state, AgentKit and Hedera references, and returned `nextAction`. Reading state never authorizes acting as that independent role.
 
 Never claim settlement until the order is `PAYMENT_EXECUTED` and the payment transaction is present.

@@ -328,6 +328,73 @@ describe("mode-aware application service", () => {
     expect(future.error?.code).toBe("POLICY_REJECTED");
   });
 
+  it("removes buyer access only from future purchases and preserves active orders", async () => {
+    let session = await createUniversityRun("simulation");
+    const offer = session.projection.offers[session.selectedOfferId];
+    const created = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:buyer-access:create`,
+      actor: human(session.buyerId, "BUYER"),
+      orderId: session.orderId,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    session = { ...session, projection: created.projection! };
+
+    const disabled = await runProgramCommand(session.programId, "simulation", {
+      type: "SET_BUYER_PURCHASING",
+      idempotencyKey: `${session.runId}:buyer-access:disable`,
+      actor: human("program-admin", "ADMIN"),
+      buyerId: session.buyerId,
+      active: false,
+    });
+    session = { ...session, projection: disabled.projection! };
+    expect(
+      session.projection.allocations[session.buyerId].purchasingStatus,
+    ).toBe("DISABLED");
+    expect(session.projection.timeline.at(-1)?.data).toMatchObject({
+      continuingOrderIds: [session.orderId],
+    });
+
+    const accepted = await runProgramCommand(session.programId, "simulation", {
+      type: "ACCEPT_ORDER",
+      idempotencyKey: `${session.runId}:buyer-access:accept`,
+      actor: human(offer.vendorId, "VENDOR"),
+      orderId: session.orderId,
+    });
+    expect(accepted.projection?.orders[session.orderId].status).toBe(
+      "PAYMENT_SCHEDULED",
+    );
+
+    const future = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:buyer-access:future`,
+      actor: human(session.buyerId, "BUYER"),
+      orderId: `${session.orderId}_future`,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(future.status).toBe("FAILED");
+    expect(future.error?.code).toBe("POLICY_REJECTED");
+
+    const restored = await runProgramCommand(session.programId, "simulation", {
+      type: "SET_BUYER_PURCHASING",
+      idempotencyKey: `${session.runId}:buyer-access:restore`,
+      actor: human("program-admin", "ADMIN"),
+      buyerId: session.buyerId,
+      active: true,
+    });
+    expect(
+      restored.projection?.allocations[session.buyerId].purchasingStatus,
+    ).toBe("ACTIVE");
+  });
+
   it("upfunds a program without replacing its existing budget", async () => {
     const session = await createUniversityRun("simulation");
     const originalBudget = session.projection.program!.budget;

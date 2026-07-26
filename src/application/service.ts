@@ -302,6 +302,44 @@ export class ProtocolApplicationService {
             }),
           ),
         ];
+      case "SET_BUYER_PURCHASING": {
+        const allocation = projection.allocations[command.buyerId];
+        if (!allocation) {
+          throw new CommandError(
+            "BUYER_ALLOCATION_NOT_FOUND",
+            "The selected buyer does not have an allocation in this program.",
+          );
+        }
+        const currentlyActive = allocation.purchasingStatus !== "DISABLED";
+        if (currentlyActive === command.active) return [];
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "BUYER_PURCHASING_UPDATED",
+              ),
+              eventType: "BUYER_PURCHASING_UPDATED",
+              data: {
+                buyerId: command.buyerId,
+                active: command.active,
+                continuingOrderIds: Object.values(projection.orders)
+                  .filter(
+                    (order) =>
+                      order.buyerId === command.buyerId &&
+                      order.status !== "PAYMENT_EXECUTED" &&
+                      order.status !== "CANCELLED",
+                  )
+                  .map((order) => order.id),
+                effect: command.active
+                  ? "Future purchases are allowed again."
+                  : "Future purchases are blocked. Existing orders continue through their current settlement lifecycle.",
+              },
+            }),
+          ),
+        ];
+      }
       case "APPROVE_VENDOR":
         return [
           await this.appendOnce(

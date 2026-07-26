@@ -5,7 +5,7 @@ import {
   parseAgentkitProcurementIntent,
 } from "@/src/application/agentkit";
 import {
-  agentkitConfigFromEnv,
+  agentkitVerifierConfigFromEnv,
   createAgentkitChallenge,
   verifyAgentkitRequest,
 } from "@/src/adapters/agentkit";
@@ -17,7 +17,10 @@ export async function POST(request: Request) {
     const suppliedHash = new URL(request.url).searchParams.get("intent");
     if (!suppliedHash || suppliedHash !== agentkitIntentHash(intent)) {
       return Response.json(
-        { error: "The AgentKit intent hash does not match the request body." },
+        {
+          code: "INTENT_HASH_MISMATCH",
+          error: "The AgentKit intent hash does not match the request body.",
+        },
         { status: 400 },
       );
     }
@@ -32,14 +35,18 @@ export async function POST(request: Request) {
     const delegation = session?.projection.agentDelegations[intent.agentId];
     if (!session || !delegation) {
       return Response.json(
-        { error: "The delegated procurement agent was not found." },
+        {
+          code: "DELEGATED_AGENT_NOT_FOUND",
+          error: "The delegated procurement agent was not found.",
+        },
         { status: 404 },
       );
     }
-    const config = agentkitConfigFromEnv();
+    const config = agentkitVerifierConfigFromEnv();
     if (!delegation.worldAgentAddress) {
       return Response.json(
         {
+          code: "DELEGATION_ADDRESS_MISSING",
           error:
             "This delegation predates AgentKit. Create a new program with AgentKit configured.",
         },
@@ -66,6 +73,9 @@ export async function POST(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "AgentKit verification failed.";
-    return Response.json({ error: message }, { status: 403 });
+    return Response.json(
+      { code: "AGENTKIT_VERIFICATION_FAILED", error: message },
+      { status: 403 },
+    );
   }
 }
