@@ -3928,6 +3928,135 @@ button:not(:disabled):active {
   grid-column: auto;
 }
 
+.marketplace-layout.governor-orders .governor-orders-brief {
+  padding: 0;
+  border: 0;
+}
+
+.governor-order-stats {
+  width: fit-content;
+  margin: -4px 0 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(90px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf6;
+  overflow: hidden;
+}
+
+.governor-order-stats > span {
+  padding: 11px 14px;
+  display: grid;
+  gap: 2px;
+  border-right: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.governor-order-stats > span:last-child {
+  border-right: 0;
+}
+
+.governor-order-stats strong {
+  color: var(--ink);
+  font-size: 16px;
+  letter-spacing: -0.03em;
+}
+
+.governor-order-manager {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.governor-order-row {
+  min-height: 82px;
+  grid-template-columns:
+    minmax(180px, 0.85fr)
+    minmax(280px, 1.25fr)
+    minmax(100px, 0.45fr)
+    auto;
+}
+
+.governor-order-identity > span {
+  text-transform: capitalize;
+}
+
+.governor-order-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 18px;
+}
+
+.governor-order-facts > div,
+.governor-order-amount {
+  min-width: 0;
+}
+
+.governor-order-facts dt,
+.governor-order-amount > span {
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.governor-order-facts dd {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.governor-order-amount {
+  display: grid;
+  gap: 5px;
+}
+
+.governor-order-amount strong {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.governor-order-status {
+  width: fit-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #edf1ef;
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.governor-order-status.payment_executed {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.governor-order-status.cancelled {
+  background: var(--orange-soft);
+  color: #9b3f1c;
+}
+
+.governor-order-status.delivery_submitted,
+.governor-order-status.delivery_approved,
+.governor-order-status.payment_scheduled {
+  background: #e8f0ed;
+  color: #366a5d;
+}
+
 .verification-requirement {
   min-height: 40px;
   display: flex;
@@ -4991,6 +5120,14 @@ button:not(:disabled):active {
     grid-column: 1 / -1;
     justify-self: start;
   }
+
+  .governor-order-row {
+    grid-template-columns: minmax(200px, 0.8fr) minmax(280px, 1.2fr);
+  }
+
+  .governor-order-status {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 680px) {
@@ -5143,6 +5280,15 @@ button:not(:disabled):active {
   }
 
   .supplier-manager-facts {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .governor-order-stats {
+    width: 100%;
+  }
+
+  .governor-order-facts {
     grid-template-columns: 1fr;
     gap: 10px;
   }

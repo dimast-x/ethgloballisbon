@@ -66,7 +66,7 @@ const tabs = [
   "Activity",
 ] as const;
 type Tab = (typeof tabs)[number];
-const controlSections = ["Members", "Suppliers"] as const;
+const controlSections = ["Members", "Suppliers", "Orders"] as const;
 type ControlSection = (typeof controlSections)[number];
 const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
 type PurchasingSection = (typeof purchasingSections)[number];
@@ -1374,6 +1374,13 @@ export function YareonApp() {
               }
             />
           )}
+          {activeTab === "Controls" && controlSection === "Orders" && (
+            <GovernorOrdersPanel
+              orders={projection.orders}
+              vendors={projection.vendors}
+              events={projection.timeline}
+            />
+          )}
           {activeTab === "Purchasing" && purchasingSection === "Catalog" && (
             <BuyerPanel
               view="marketplace"
@@ -1902,6 +1909,108 @@ function SuppliersPanel({
             </p>
           )}
         </div>
+      </section>
+    </div>
+  );
+}
+
+function GovernorOrdersPanel({
+  orders,
+  vendors,
+  events,
+}: {
+  orders: ProtocolProjection["orders"];
+  vendors: ProtocolProjection["vendors"];
+  events: import("@/src/protocol/events").RecordedEvent[];
+}) {
+  const history = Object.values(orders).reverse();
+  const createdEvents = new Map(
+    events
+      .filter((event) => event.eventType === "ORDER_CREATED" && event.orderId)
+      .map((event) => [event.orderId!, event]),
+  );
+  const completed = history.filter(
+    (order) => order.status === "PAYMENT_EXECUTED",
+  ).length;
+  const inProgress = history.filter(
+    (order) =>
+      order.status !== "PAYMENT_EXECUTED" && order.status !== "CANCELLED",
+  ).length;
+
+  return (
+    <div className="marketplace-layout governor-orders">
+      <section className="governor-orders-brief">
+        <PanelHeading
+          kicker="Program purchasing"
+          title="Orders"
+          description="Review every member purchase in this program, from creation through settlement."
+        />
+        <div className="governor-order-stats" aria-label="Order totals">
+          <span>
+            <strong>{history.length}</strong>
+            Total
+          </span>
+          <span>
+            <strong>{inProgress}</strong>
+            In progress
+          </span>
+          <span>
+            <strong>{completed}</strong>
+            Paid
+          </span>
+        </div>
+
+        {history.length === 0 ? (
+          <EmptyState text="No member orders have been created for this program." />
+        ) : (
+          <div className="allocation-manager governor-order-manager">
+            <div className="section-label allocation-section-label">
+              Order history
+            </div>
+            {history.map((order) => {
+              const created = createdEvents.get(order.id);
+              const createdAt =
+                created?.ledgerReference?.consensusTimestamp ??
+                created?.occurredAt;
+              return (
+                <article className="allocation-manager-row governor-order-row" key={order.id}>
+                  <div className="governor-order-identity">
+                    <strong>{order.id}</strong>
+                    <span>{order.category.replaceAll("_", " ")}</span>
+                    <small>
+                      <time dateTime={createdAt}>{formatDateTime(createdAt)}</time>
+                    </small>
+                  </div>
+                  <dl className="governor-order-facts">
+                    <div>
+                      <dt>Member</dt>
+                      <dd>{order.buyerId}</dd>
+                    </div>
+                    <div>
+                      <dt>Supplier</dt>
+                      <dd>
+                        {order.supplierName ??
+                          vendors[order.vendorId]?.name ??
+                          order.vendorId}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="governor-order-amount">
+                    <span>Amount</span>
+                    <strong>
+                      {toDisplay(order.amount)} {order.amount.asset}
+                    </strong>
+                  </div>
+                  <span
+                    className={`governor-order-status ${order.status.toLowerCase()}`}
+                  >
+                    {order.status.replaceAll("_", " ")}
+                  </span>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );
@@ -2702,6 +2811,23 @@ function formatTime(value?: string) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+  });
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "Ledger time pending";
+  const hederaTimestamp = /^(\d+)\.(\d+)$/.exec(value);
+  const date = hederaTimestamp
+    ? new Date(
+        Number(hederaTimestamp[1]) * 1_000 +
+          Number(`0.${hederaTimestamp[2]}`) * 1_000,
+      )
+    : new Date(value);
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 

@@ -71,23 +71,24 @@ export function RoleSelection() {
             <Bot size={19} />
           </span>
           <div>
-            <strong>Delegated agent?</strong>
+            <strong>Using an agent?</strong>
             <span>
-              Agents use the same member purchasing boundary through the Yareon
-              CLI and installed skill.
+              Purchasing agents use the member boundary through the Yareon CLI
+              and $yareon-agent. Governor agents administer programs through
+              the creator-owned console and $yareon-governor.
             </span>
             <a
-              href="https://github.com/dimast-x/ethgloballisbon/blob/master/agent-skills/yareon-agent/SKILL.md"
+              href="https://github.com/dimast-x/ethgloballisbon/blob/master/agent-skills/README.md"
               target="_blank"
               rel="noreferrer"
             >
-              View and install the Yareon skill
+              View and install Yareon agent skills
               <ArrowRight size={13} />
             </a>
           </div>
           <code>
             <TerminalSquare size={14} />
-            yareon offers
+            yareon skill install
           </code>
         </div>
       </section>

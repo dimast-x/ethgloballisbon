@@ -18,10 +18,10 @@ Purchasing is not a governor navigation destination. A governor can open the
 member portal for a program, but the member wallet still has to authenticate and
 resolve to its own allocation.
 
-Governor Controls contains `Policy`, `Members`, and `Suppliers`. Human and agent
+Governor Controls contains `Members`, `Suppliers`, and `Orders`. Human and agent
 allocations are managed together in Members and carry an explicit participant
-type. Agent identity and delegation events remain visible in Activity when they
-exist; there is no separate empty Agent setup surface.
+type. Orders provides program-wide purchase history, while ledger-level events
+remain in Activity. There is no separate empty Agent setup surface.
 
 ## Human member
 
