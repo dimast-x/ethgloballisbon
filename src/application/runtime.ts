@@ -628,7 +628,7 @@ export async function createAgentWorldRequest(
 ) {
   const session = await getProgramSession(programId, mode);
   if (!session) throw new Error("Program not found.");
-  const signal = agentAuthorizationSignal(session, agentId);
+  const signal = humanVerificationSignal(session, agentId);
   if (mode === "simulation") {
     return {
       appId: "app_simulation",
@@ -657,7 +657,7 @@ export async function verifyAgentHumanBacking(input: {
 }): Promise<CommandResult> {
   const session = await getProgramSession(input.programId, input.mode);
   if (!session) throw new Error("Program not found.");
-  const signal = agentAuthorizationSignal(session, input.agentId);
+  const signal = humanVerificationSignal(session, input.agentId);
   const attestation =
     input.mode === "simulation"
       ? {
@@ -711,6 +711,29 @@ export function agentAuthorizationBinding(
     principalId: delegation.principalId,
     delegationHash: delegation.integrityHash,
   };
+}
+
+export function humanVerificationSignal(
+  session: ProgramSession,
+  subjectId: string,
+): string {
+  const delegation = session.projection.agentDelegations[subjectId];
+  if (delegation) return agentAuthorizationSignal(session, subjectId);
+  const allocation = session.projection.allocations[subjectId];
+  if (!allocation) {
+    throw new Error("The member or agent was not found in this program.");
+  }
+  return sha256(
+    JSON.stringify({
+      protocolVersion: "0.2",
+      runId: session.runId,
+      organizationId: session.projection.program?.organizationId,
+      programId: session.programId,
+      subjectId,
+      participantType: allocation.participantType ?? "HUMAN",
+      allocationId: allocation.id,
+    }),
+  );
 }
 
 export function agentAuthorizationSignal(
@@ -1052,6 +1075,8 @@ function delegationIntegrityHash(
     organizationId: delegation.organizationId,
     principalId: delegation.principalId,
     agentId: delegation.agentId,
+    humanVerificationRequired:
+      delegation.humanVerificationRequired !== false,
     allowedPrograms: delegation.allowedPrograms,
     allowedActions: delegation.allowedActions,
     allowedCategories: delegation.allowedCategories,

@@ -115,6 +115,109 @@ describe("mode-aware application service", () => {
     expect(overBudget.error?.code).toBe("PROGRAM_BUDGET_EXCEEDED");
   });
 
+  it("enforces the World requirement selected when a member is onboarded", async () => {
+    let session = await createUniversityRun("simulation");
+    const original = session.projection.allocations[session.buyerId];
+    const memberId = "buyer_verified_member";
+    const zero = { ...original.totalLimit, atomicAmount: "0" };
+    const onboarded = await runProgramCommand(session.programId, "simulation", {
+      type: "ALLOCATE_BUYER",
+      idempotencyKey: `${session.runId}:verified-member`,
+      actor: human("program-admin", "ADMIN"),
+      allocation: {
+        id: "allocation_verified_member",
+        programId: session.programId,
+        buyerId: memberId,
+        participantType: "HUMAN",
+        humanVerificationRequired: true,
+        totalLimit: { ...original.totalLimit, atomicAmount: "400000000" },
+        committed: zero,
+        paid: zero,
+        allowedCategories: [...original.allowedCategories],
+      },
+    });
+    session = { ...session, projection: onboarded.projection! };
+    const offer = session.projection.offers[session.selectedOfferId];
+
+    const rejected = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:verified-member:rejected`,
+      actor: human(memberId, "BUYER"),
+      orderId: "order_verified_member",
+      buyerId: memberId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(rejected.error?.code).toBe("HUMAN_BACKING_REQUIRED");
+
+    const verified = await verifyAgentHumanBacking({
+      programId: session.programId,
+      mode: "simulation",
+      agentId: memberId,
+      idempotencyKey: `${session.runId}:verified-member:world`,
+      proof: {},
+    });
+    expect(verified.status).toBe("CONFIRMED");
+
+    const created = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:verified-member:created`,
+      actor: human(memberId, "BUYER"),
+      orderId: "order_verified_member",
+      buyerId: memberId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(created.status).toBe("CONFIRMED");
+  });
+
+  it("allows a member to purchase again after their allocation is increased", async () => {
+    let session = await createUniversityRun("simulation");
+    const offer = session.projection.offers[session.selectedOfferId];
+    const first = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:repeat:first`,
+      actor: human(session.buyerId, "BUYER"),
+      orderId: `${session.orderId}_first`,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    session = { ...session, projection: first.projection! };
+    const upfunded = await runProgramCommand(session.programId, "simulation", {
+      type: "UPFUND_BUYER_ALLOCATION",
+      idempotencyKey: `${session.runId}:repeat:upfund`,
+      actor: human("program-admin", "ADMIN"),
+      buyerId: session.buyerId,
+      amount: { ...offer.amount, atomicAmount: "500000000" },
+    });
+    session = { ...session, projection: upfunded.projection! };
+    const second = await runProgramCommand(session.programId, "simulation", {
+      type: "CREATE_ORDER",
+      idempotencyKey: `${session.runId}:repeat:second`,
+      actor: human(session.buyerId, "BUYER"),
+      orderId: `${session.orderId}_second`,
+      buyerId: session.buyerId,
+      vendorId: offer.vendorId,
+      offerId: offer.id,
+      category: offer.category,
+      amount: offer.amount,
+    });
+    expect(second.status).toBe("CONFIRMED");
+    expect(Object.keys(second.projection!.orders)).toEqual(
+      expect.arrayContaining([
+        `${session.orderId}_first`,
+        `${session.orderId}_second`,
+      ]),
+    );
+  });
+
   it("removes a supplier only from future purchases and preserves locked active orders", async () => {
     let session = await createUniversityRun("simulation");
     const offer = session.projection.offers[session.selectedOfferId];

@@ -27,6 +27,11 @@ export type ProtocolCommand =
       delegation: AgentDelegation;
     })
   | (CommandEnvelope & {
+      type: "UPFUND_AGENT_DELEGATION";
+      agentId: string;
+      amount: Money;
+    })
+  | (CommandEnvelope & {
       type: "RECORD_HUMAN_BACKING";
       attestation: HumanBackingAttestation;
     })

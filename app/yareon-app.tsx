@@ -250,6 +250,12 @@ export function YareonApp() {
   const [programUpfundAmount, setProgramUpfundAmount] = useState("");
   const [newBuyerId, setNewBuyerId] = useState("");
   const [newBuyerAmount, setNewBuyerAmount] = useState("");
+  const [newBuyerRequiresVerification, setNewBuyerRequiresVerification] =
+    useState(false);
+  const [activeBuyerId, setActiveBuyerId] = useState("");
+  const [activeOrderId, setActiveOrderId] = useState("");
+  const [worldSubjectId, setWorldSubjectId] = useState("");
+  const [agentUpfundAmount, setAgentUpfundAmount] = useState("");
   const [publicShowcase, setPublicShowcase] = useState<PublicShowcase | null>(
     null,
   );
@@ -525,6 +531,20 @@ export function YareonApp() {
       setEvidenceFile(null);
       setRetryCommand(null);
       setChosenOfferId(body.selectedOfferId);
+      setActiveBuyerId(
+        body.buyerId || Object.keys(body.projection.allocations)[0] || "",
+      );
+      const unfinishedOrder = Object.values(body.projection.orders)
+        .reverse()
+        .find(
+          (candidate) =>
+            candidate.status !== "PAYMENT_EXECUTED" &&
+            candidate.status !== "CANCELLED",
+        );
+      setActiveOrderId(
+        unfinishedOrder?.id ??
+          `order_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+      );
       setWorldRequest(null);
       setWorldOpen(false);
       setActiveTab("Overview");
@@ -569,6 +589,9 @@ export function YareonApp() {
     setAllocationAmounts({});
     setNewBuyerId("");
     setNewBuyerAmount("");
+    setNewBuyerRequiresVerification(false);
+    setActiveBuyerId("");
+    setActiveOrderId("");
     setProgramSetup({
       verifierAccountId: "",
       financeAccountId: "",
@@ -676,7 +699,11 @@ export function YareonApp() {
   const projection = activeSession.projection;
   const program = projection.program!;
   const programFunds = activeSession.treasuryBalance ?? program.budget;
-  const order = projection.orders[activeSession.orderId];
+  const buyerId =
+    activeBuyerId && projection.allocations[activeBuyerId]
+      ? activeBuyerId
+      : activeSession.buyerId;
+  const order = projection.orders[activeOrderId];
   const offers = Object.values(projection.offers).filter(
     (offer) => projection.vendors[offer.vendorId]?.status === "APPROVED",
   );
@@ -733,13 +760,16 @@ export function YareonApp() {
       | "APPROVE_FINANCE",
     evidence?: EvidenceReference,
   ): ProtocolCommand {
-    const idempotencyKey = `${activeSession.runId}:${action.toLowerCase()}`;
+    const idempotencyKey =
+      action === "REJECT_OVER_LIMIT"
+        ? `${activeSession.runId}:${buyerId}:${action.toLowerCase()}:${crypto.randomUUID()}`
+        : `${activeSession.runId}:${activeOrderId}:${action.toLowerCase()}`;
     if (action === "REJECT_OVER_LIMIT") {
       return {
         type: "TEST_PURCHASE_POLICY",
         idempotencyKey,
-        actor: actor("BUYER", activeSession.buyerId),
-        buyerId: activeSession.buyerId,
+        actor: actor("BUYER", buyerId),
+        buyerId,
         vendorId: selectedOffer.vendorId,
         category: selectedOffer.category,
         amount: { ...selectedOffer.amount, atomicAmount: "550000000" },
@@ -749,9 +779,9 @@ export function YareonApp() {
       return {
         type: "CREATE_ORDER",
         idempotencyKey,
-        actor: actor("BUYER", activeSession.buyerId),
-        orderId: activeSession.orderId,
-        buyerId: activeSession.buyerId,
+        actor: actor("BUYER", buyerId),
+        orderId: activeOrderId,
+        buyerId,
         vendorId: selectedOffer.vendorId,
         offerId: selectedOffer.id,
         category: selectedOffer.category,
@@ -763,7 +793,7 @@ export function YareonApp() {
         type: "ACCEPT_ORDER",
         idempotencyKey,
         actor: actor("VENDOR", selectedOffer.vendorId),
-        orderId: activeSession.orderId,
+        orderId: activeOrderId,
       };
     }
     if (action === "SUBMIT_DELIVERY") {
@@ -772,7 +802,7 @@ export function YareonApp() {
         type: "SUBMIT_DELIVERY",
         idempotencyKey,
         actor: actor("VENDOR", selectedOffer.vendorId),
-        orderId: activeSession.orderId,
+        orderId: activeOrderId,
         evidence,
       };
     }
@@ -784,7 +814,7 @@ export function YareonApp() {
         delivery ? "DELIVERY_VERIFIER" : "FINANCE",
         delivery ? "verifier" : "finance",
       ),
-      orderId: activeSession.orderId,
+      orderId: activeOrderId,
       approvalReference: "hedera-walletconnect:pending",
     } as ProtocolCommand;
   }
@@ -958,6 +988,30 @@ export function YareonApp() {
     setAllocationAmounts((current) => ({ ...current, [buyerId]: "" }));
   }
 
+  async function upfundAgent() {
+    const value = agentUpfundAmount.trim();
+    if (!value || Number(value) <= 0) {
+      setOperationState("failed");
+      setNotice("Enter a positive amount to append to the agent authority.");
+      return;
+    }
+    await submitCommand(
+      {
+        type: "UPFUND_AGENT_DELEGATION",
+        idempotencyKey: `${activeSession.runId}:agent-upfund:${activeSession.agentId}:${crypto.randomUUID()}`,
+        actor: actor("ADMIN", "program-admin"),
+        agentId: activeSession.agentId,
+        amount: fromDisplay(
+          value,
+          program.budget.asset,
+          program.budget.decimals,
+        ),
+      },
+      `${activeSession.agentId}'s delegated spending authority increased by ${value} ${program.budget.asset}.`,
+    );
+    setAgentUpfundAmount("");
+  }
+
   async function upfundProgram() {
     const value = programUpfundAmount.trim();
     if (!value || Number(value) <= 0) {
@@ -1049,6 +1103,8 @@ export function YareonApp() {
           id: `allocation_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
           programId: program.id,
           buyerId,
+          participantType: "HUMAN",
+          humanVerificationRequired: newBuyerRequiresVerification,
           totalLimit: fromDisplay(
             value,
             program.budget.asset,
@@ -1063,6 +1119,8 @@ export function YareonApp() {
     );
     setNewBuyerId("");
     setNewBuyerAmount("");
+    setNewBuyerRequiresVerification(false);
+    setActiveBuyerId(buyerId);
   }
 
   async function removeSupplier(vendorId: string) {
@@ -1144,10 +1202,10 @@ export function YareonApp() {
         : selectedOffer.amount;
     const command: ProtocolCommand = {
       type: "CREATE_ORDER",
-      idempotencyKey: `${activeSession.runId}:agent-order:${kind.toLowerCase()}`,
+      idempotencyKey: `${activeSession.runId}:${activeOrderId}:agent-order:${kind.toLowerCase()}`,
       actor: agentActor(),
-      orderId: activeSession.orderId,
-      buyerId: activeSession.buyerId,
+      orderId: activeOrderId,
+      buyerId,
       vendorId: selectedOffer.vendorId,
       offerId: selectedOffer.id,
       category: selectedOffer.category,
@@ -1170,7 +1228,9 @@ export function YareonApp() {
     }
   }
 
-  async function beginWorldVerification() {
+  async function beginWorldVerification(
+    subjectId: string = activeSession.agentId,
+  ) {
     if (mode === "testnet" && !identityReadiness?.ready) {
       setOperationState("failed");
       setNotice(identityReadiness?.issues.join(" ") || "Identity integrations are not ready.");
@@ -1182,7 +1242,7 @@ export function YareonApp() {
       body: JSON.stringify({
         mode,
         programId: program.id,
-        agentId: activeSession.agentId,
+        agentId: subjectId,
       }),
     });
     const request = (await response.json()) as WorldRequest & { error?: string };
@@ -1192,6 +1252,7 @@ export function YareonApp() {
       return;
     }
     setWorldRequest(request);
+    setWorldSubjectId(subjectId);
     setWorldOpen(true);
   }
 
@@ -1204,8 +1265,8 @@ export function YareonApp() {
       body: JSON.stringify({
         mode,
         programId: program.id,
-        agentId: activeSession.agentId,
-        idempotencyKey: `${activeSession.runId}:world-verification`,
+        agentId: worldSubjectId || activeSession.agentId,
+        idempotencyKey: `${activeSession.runId}:world-verification:${worldSubjectId || activeSession.agentId}`,
         proof,
       }),
     });
@@ -1219,7 +1280,7 @@ export function YareonApp() {
     }
     setSession({ ...activeSession, projection: result.projection });
     setOperationState("confirmed");
-    setNotice("World verified a unique human backing this agent.");
+    setNotice("World verified the required human backing.");
   }
 
   return (
@@ -1467,6 +1528,18 @@ export function YareonApp() {
               orderExists={Boolean(order)}
               liveReady={Boolean(identityReadiness?.ready)}
               liveIssues={identityReadiness?.issues ?? []}
+              upfundAmount={agentUpfundAmount}
+              onUpfundAmount={setAgentUpfundAmount}
+              onUpfund={() =>
+                void upfundAgent().catch((error) => {
+                  setOperationState("failed");
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "The agent authority could not be updated.",
+                  );
+                })
+              }
               onUnverified={() => void runAgentOrder("UNVERIFIED")}
               onVerify={() => void beginWorldVerification()}
               onOverLimit={() => void runAgentOrder("OVER_LIMIT")}
@@ -1490,8 +1563,12 @@ export function YareonApp() {
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
               newBuyerAmount={newBuyerAmount}
+              newBuyerRequiresVerification={newBuyerRequiresVerification}
+              activeBuyerId={buyerId}
+              humanBacking={projection.humanBacking}
               selectedOfferId={selectedOffer.id}
               orderExists={Boolean(order)}
+              orderCompleted={order?.status === "PAYMENT_EXECUTED"}
               rejected={projection.timeline.some(
                 (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
               )}
@@ -1515,6 +1592,11 @@ export function YareonApp() {
               }
               onNewBuyerId={setNewBuyerId}
               onNewBuyerAmount={setNewBuyerAmount}
+              onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
+              onActiveBuyer={setActiveBuyerId}
+              onVerifyBuyer={(subjectId) =>
+                void beginWorldVerification(subjectId)
+              }
               onUpfund={(buyerId) =>
                 void upfundBuyer(buyerId).catch((error) => {
                   setOperationState("failed");
@@ -1547,6 +1629,13 @@ export function YareonApp() {
                   `${toDisplay(selectedOffer.amount)} HBAR order authorized with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
                 )
               }
+              onNextPurchase={() => {
+                setActiveOrderId(
+                  `order_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+                );
+                setEvidenceFile(null);
+                setNotice("Ready for another purchase.");
+              }}
             />
           )}
           {activeTab === "Suppliers" && (
@@ -1582,8 +1671,12 @@ export function YareonApp() {
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
               newBuyerAmount={newBuyerAmount}
+              newBuyerRequiresVerification={newBuyerRequiresVerification}
+              activeBuyerId={buyerId}
+              humanBacking={projection.humanBacking}
               selectedOfferId={selectedOffer.id}
               orderExists={Boolean(order)}
+              orderCompleted={order?.status === "PAYMENT_EXECUTED"}
               rejected={projection.timeline.some(
                 (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
               )}
@@ -1598,6 +1691,11 @@ export function YareonApp() {
               }
               onNewBuyerId={setNewBuyerId}
               onNewBuyerAmount={setNewBuyerAmount}
+              onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
+              onActiveBuyer={setActiveBuyerId}
+              onVerifyBuyer={(subjectId) =>
+                void beginWorldVerification(subjectId)
+              }
               onUpfund={(buyerId) => void upfundBuyer(buyerId)}
               onAddBuyer={() => void addBuyerAllocation()}
               onReject={() =>
@@ -1612,6 +1710,13 @@ export function YareonApp() {
                   `${toDisplay(selectedOffer.amount)} HBAR purchase completed with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
                 )
               }
+              onNextPurchase={() => {
+                setActiveOrderId(
+                  `order_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+                );
+                setEvidenceFile(null);
+                setNotice("Ready for another purchase.");
+              }}
             />
           )}
           {activeTab === "Orders" && (
@@ -1948,6 +2053,9 @@ function AgentPanel({
   orderExists,
   liveReady,
   liveIssues,
+  upfundAmount,
+  onUpfundAmount,
+  onUpfund,
   onUnverified,
   onVerify,
   onOverLimit,
@@ -1961,6 +2069,9 @@ function AgentPanel({
   orderExists: boolean;
   liveReady: boolean;
   liveIssues: string[];
+  upfundAmount: string;
+  onUpfundAmount: (value: string) => void;
+  onUpfund: () => void;
   onUnverified: () => void;
   onVerify: () => void;
   onOverLimit: () => void;
@@ -2005,10 +2116,27 @@ function AgentPanel({
               <dd>{delegation?.principalId ?? "Not available"}</dd>
             </div>
             <div>
+              <dt>World verification</dt>
+              <dd>
+                {delegation?.humanVerificationRequired === false
+                  ? "Not required"
+                  : "Required"}
+              </dd>
+            </div>
+            <div>
               <dt>Identity boundary</dt>
               <dd>Organization record · ENS deferred</dd>
             </div>
           </dl>
+          <div className="allocation-manager-new">
+            <input
+              inputMode="decimal"
+              value={upfundAmount}
+              onChange={(event) => onUpfundAmount(event.target.value)}
+              placeholder={`Add ${delegation?.maxTotalSpend.asset ?? "HBAR"}`}
+            />
+            <button onClick={onUpfund}>Append agent points</button>
+          </div>
         </div>
         {!liveReady && (
           <p className="identity-readiness">
@@ -2352,8 +2480,12 @@ function BuyerPanel({
   allocationAmounts,
   newBuyerId,
   newBuyerAmount,
+  newBuyerRequiresVerification,
+  activeBuyerId,
+  humanBacking,
   selectedOfferId,
   orderExists,
+  orderCompleted,
   rejected,
   onSelect,
   onProgramUpfundAmount,
@@ -2361,10 +2493,14 @@ function BuyerPanel({
   onAllocationAmount,
   onNewBuyerId,
   onNewBuyerAmount,
+  onNewBuyerRequiresVerification,
+  onActiveBuyer,
+  onVerifyBuyer,
   onUpfund,
   onAddBuyer,
   onReject,
   onCreate,
+  onNextPurchase,
 }: {
   view: "buyers" | "marketplace";
   offers: Offer[];
@@ -2378,8 +2514,15 @@ function BuyerPanel({
   allocationAmounts: Record<string, string>;
   newBuyerId: string;
   newBuyerAmount: string;
+  newBuyerRequiresVerification: boolean;
+  activeBuyerId: string;
+  humanBacking: Record<
+    string,
+    import("@/src/protocol/types").HumanBackingAttestation
+  >;
   selectedOfferId: string;
   orderExists: boolean;
+  orderCompleted: boolean;
   rejected: boolean;
   onSelect: (offerId: string) => void;
   onProgramUpfundAmount: (value: string) => void;
@@ -2387,10 +2530,14 @@ function BuyerPanel({
   onAllocationAmount: (buyerId: string, value: string) => void;
   onNewBuyerId: (value: string) => void;
   onNewBuyerAmount: (value: string) => void;
+  onNewBuyerRequiresVerification: (value: boolean) => void;
+  onActiveBuyer: (buyerId: string) => void;
+  onVerifyBuyer: (buyerId: string) => void;
   onUpfund: (buyerId: string) => void;
   onAddBuyer: () => void;
   onReject: () => void;
   onCreate: () => void;
+  onNextPurchase: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState<"all" | "fast">("all");
@@ -2523,6 +2670,13 @@ function BuyerPanel({
               <div>
                 <strong>{item.buyerId}</strong>
                 <span>{toDisplay(item.totalLimit)} {item.totalLimit.asset}</span>
+                <small>
+                  {item.humanVerificationRequired
+                    ? humanBacking[item.buyerId]
+                      ? "World verified"
+                      : "World verification required"
+                    : "World verification not required"}
+                </small>
               </div>
               <label>
                 <span className="sr-only">Amount to append for {item.buyerId}</span>
@@ -2536,6 +2690,12 @@ function BuyerPanel({
                 />
               </label>
               <button onClick={() => onUpfund(item.buyerId)}>Append</button>
+              {item.humanVerificationRequired &&
+                !humanBacking[item.buyerId] && (
+                  <button onClick={() => onVerifyBuyer(item.buyerId)}>
+                    Verify
+                  </button>
+                )}
             </div>
           ))}
           <div className="allocation-manager-new">
@@ -2550,6 +2710,16 @@ function BuyerPanel({
               onChange={(event) => onNewBuyerAmount(event.target.value)}
               placeholder={`Initial ${asset}`}
             />
+            <label className="verification-requirement">
+              <input
+                type="checkbox"
+                checked={newBuyerRequiresVerification}
+                onChange={(event) =>
+                  onNewBuyerRequiresVerification(event.target.checked)
+                }
+              />
+              Require World human verification
+            </label>
             <button onClick={onAddBuyer}>Add buyer</button>
           </div>
         </div>}
@@ -2591,6 +2761,28 @@ function BuyerPanel({
             </label>
           </div>
         </div>
+
+        <label className="marketplace-buyer">
+          <span>Purchasing as</span>
+          <select
+            value={activeBuyerId}
+            onChange={(event) => onActiveBuyer(event.target.value)}
+            disabled={Boolean(orderExists)}
+          >
+            {Object.values(allocations).map((allocation) => (
+              <option key={allocation.buyerId} value={allocation.buyerId}>
+                {allocation.buyerId} · {toDisplay({
+                  ...allocation.totalLimit,
+                  atomicAmount: (
+                    BigInt(allocation.totalLimit.atomicAmount) -
+                    BigInt(allocation.committed.atomicAmount) -
+                    BigInt(allocation.paid.atomicAmount)
+                  ).toString(),
+                })} {allocation.totalLimit.asset} available
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="filter-row" aria-label="Delivery filters">
           <button
@@ -2709,9 +2901,17 @@ function BuyerPanel({
             <strong>{toDisplay(selectedOffer.amount)} HBAR</strong>
             <small>Within 5 HBAR limit</small>
           </div>
-          <button className="primary-action" onClick={onCreate} disabled={orderExists}>
+          <button
+            className="primary-action"
+            onClick={orderCompleted ? onNextPurchase : onCreate}
+            disabled={orderExists && !orderCompleted}
+          >
             <CircleDollarSign size={18} />
-            {orderExists ? "Purchase complete" : "Buy now"}
+            {orderCompleted
+              ? "Start another purchase"
+              : orderExists
+                ? "Purchase in progress"
+                : "Buy now"}
             {!orderExists && <ArrowRight size={17} />}
           </button>
         </div>

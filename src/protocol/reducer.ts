@@ -88,14 +88,6 @@ export function applyProtocolEvent(
             : next.program.status,
         };
       }
-      const allocations = Object.values(next.allocations);
-      if (depositTransactionId && allocations.length === 1) {
-        const allocation = allocations[0];
-        next.allocations[allocation.buyerId] = {
-          ...allocation,
-          totalLimit: add(allocation.totalLimit, amount),
-        };
-      }
       break;
     }
     case "PROGRAM_SETTLEMENT_CONFIGURED": {
@@ -259,6 +251,20 @@ export function applyProtocolEvent(
         event.data as { delegation: AgentDelegation }
       ).delegation;
       next.agentDelegations[delegation.agentId] = delegation;
+      break;
+    }
+    case "AGENT_DELEGATION_UPFUNDED": {
+      const { agentId, amount } = event.data as {
+        agentId: string;
+        amount: AgentDelegation["maxTotalSpend"];
+      };
+      const delegation = next.agentDelegations[agentId];
+      if (delegation) {
+        next.agentDelegations[agentId] = {
+          ...delegation,
+          maxTotalSpend: add(delegation.maxTotalSpend, amount),
+        };
+      }
       break;
     }
     case "AGENT_AUTHORIZATION_EVALUATED": {

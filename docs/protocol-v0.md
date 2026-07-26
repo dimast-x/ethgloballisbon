@@ -54,7 +54,8 @@ are provider-independent protocol boundaries. ENS and World are the first
 implementations, not protocol requirements.
 
 Protocol v0.2 adds `AGENT_IDENTITY_RESOLVED`,
-`AGENT_HUMAN_BACKING_VERIFIED`, `AGENT_DELEGATION_GRANTED`, and
+`AGENT_HUMAN_BACKING_VERIFIED`, `AGENT_DELEGATION_GRANTED`,
+`AGENT_DELEGATION_UPFUNDED`, and
 `AGENT_AUTHORIZATION_EVALUATED`. Proof bytes, secrets, and personal
 information are never event data.
 

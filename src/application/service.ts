@@ -168,6 +168,34 @@ export class ProtocolApplicationService {
             }),
           ),
         ];
+      case "UPFUND_AGENT_DELEGATION": {
+        const delegation = projection.agentDelegations[command.agentId];
+        if (!delegation) {
+          throw new CommandError(
+            "AGENT_DELEGATION_NOT_FOUND",
+            "The selected agent does not have a delegation in this program.",
+          );
+        }
+        if (!isPositiveProgramMoney(command.amount, program)) {
+          throw new CommandError(
+            "INVALID_UPFUND_AMOUNT",
+            "The agent upfund amount must be positive and use the program asset.",
+          );
+        }
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "AGENT_DELEGATION_UPFUNDED",
+              ),
+              eventType: "AGENT_DELEGATION_UPFUNDED",
+              data: { agentId: command.agentId, amount: command.amount },
+            }),
+          ),
+        ];
+      }
       case "RECORD_HUMAN_BACKING":
         return [
           await this.appendOnce(
@@ -355,6 +383,34 @@ export class ProtocolApplicationService {
       case "CREATE_ORDER": {
         if (projection.orders[command.orderId]) return [];
         const appended: RecordedEvent[] = [];
+        const allocation = projection.allocations[command.buyerId];
+        if (
+          command.actor.actorType === "HUMAN" &&
+          command.actor.actorId !== command.buyerId
+        ) {
+          throw new CommandError(
+            "BUYER_ACTOR_MISMATCH",
+            "A member can only purchase against their own allocation.",
+          );
+        }
+        if (command.actor.actorType === "HUMAN" && allocation?.humanVerificationRequired) {
+          const attestation = projection.humanBacking[command.buyerId];
+          if (!attestation) {
+            throw new CommandError(
+              "HUMAN_BACKING_REQUIRED",
+              "This member must complete World human verification before purchasing.",
+            );
+          }
+          if (
+            attestation.expiresAt &&
+            new Date(attestation.expiresAt).getTime() <= Date.now()
+          ) {
+            throw new CommandError(
+              "HUMAN_BACKING_EXPIRED",
+              "This member's World human verification has expired.",
+            );
+          }
+        }
         if (command.actor.actorType === "AGENT") {
           const storedIdentity =
             projection.agentIdentities[command.actor.actorId];
@@ -999,6 +1055,12 @@ function commandComplete(
       return Boolean(
         projection.agentDelegations[command.delegation.agentId],
       );
+    case "UPFUND_AGENT_DELEGATION":
+      return projection.timeline.some(
+        (event) =>
+          event.correlationId === command.idempotencyKey &&
+          event.eventType === "AGENT_DELEGATION_UPFUNDED",
+      );
     case "RECORD_HUMAN_BACKING":
       return Boolean(
         projection.humanBacking[command.attestation.subjectReference],
@@ -1076,6 +1138,7 @@ function agentDecision(
     requireResolvedIdentity,
     identityCurrent,
     attestation,
+    requireHumanBacking: delegation?.humanVerificationRequired !== false,
     delegation,
     executionAccountId: actor.hederaAccountId,
     category: request.category,

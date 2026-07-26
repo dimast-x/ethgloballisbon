@@ -38,6 +38,8 @@ export type BuyerAllocation = {
   id: string;
   programId: string;
   buyerId: string;
+  participantType?: "HUMAN" | "AGENT";
+  humanVerificationRequired?: boolean;
   totalLimit: Money;
   committed: Money;
   paid: Money;
@@ -138,6 +140,7 @@ export type AgentDelegation = {
   organizationId: string;
   principalId: string;
   agentId: string;
+  humanVerificationRequired?: boolean;
   allowedPrograms: string[];
   allowedActions: string[];
   allowedCategories: string[];

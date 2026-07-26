@@ -120,7 +120,7 @@ describe("user-funded programs", () => {
     ).rejects.toThrow("exact wallet deposit");
   });
 
-  it("activates and funds the default buyer from a confirmed deposit", () => {
+  it("activates and upfunds the program without silently changing an allocation", () => {
     const program: Program = {
       id: "program_deposit",
       organizationId: "org_test",
@@ -196,6 +196,6 @@ describe("user-funded programs", () => {
     });
     expect(
       funded.allocations.buyer_default.totalLimit.atomicAmount,
-    ).toBe(amount.atomicAmount);
+    ).toBe("0");
   });
 });

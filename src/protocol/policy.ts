@@ -87,6 +87,7 @@ export type AgentAuthorizationContext = {
   requireResolvedIdentity?: boolean;
   identityCurrent?: boolean;
   attestation?: HumanBackingAttestation;
+  requireHumanBacking?: boolean;
   delegation?: AgentDelegation;
   executionAccountId?: string;
   category: string;
@@ -144,20 +145,22 @@ export function validateAgentAuthorization(
     }
   }
 
-  rules.push("HUMAN_BACKING");
-  if (!context.attestation) {
-    failures.push({
-      code: "HUMAN_BACKING_REQUIRED",
-      reason: "The agent must be backed by a verified human.",
-    });
-  } else if (
-    context.attestation.expiresAt &&
-    new Date(context.attestation.expiresAt).getTime() <= now
-  ) {
-    failures.push({
-      code: "HUMAN_BACKING_EXPIRED",
-      reason: "The human-backing attestation has expired.",
-    });
+  if (context.requireHumanBacking !== false) {
+    rules.push("HUMAN_BACKING");
+    if (!context.attestation) {
+      failures.push({
+        code: "HUMAN_BACKING_REQUIRED",
+        reason: "The agent must be backed by a verified human.",
+      });
+    } else if (
+      context.attestation.expiresAt &&
+      new Date(context.attestation.expiresAt).getTime() <= now
+    ) {
+      failures.push({
+        code: "HUMAN_BACKING_EXPIRED",
+        reason: "The human-backing attestation has expired.",
+      });
+    }
   }
 
   rules.push("DELEGATION_ACTIVE");
