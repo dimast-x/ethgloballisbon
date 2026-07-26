@@ -26,10 +26,10 @@ policy summary, and recent activity.
 
 ### 2. Agent — needed a major revision
 
-- Authority management, identity readiness, and demo/qualification controls were
-  mixed together.
-- "Test unsigned bot" and similar controls exposed implementation concepts that
-  do not belong in the day-to-day admin journey.
+- Authority management and identity readiness were mixed with an obsolete
+  protocol demonstration.
+- The demonstration exposed implementation concepts that did not belong in the
+  day-to-day admin journey and has since been removed.
 
 Implemented: moved under Controls and reduced to human backing, identity status,
 delegated authority, and authority funding.

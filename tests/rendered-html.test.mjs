@@ -81,7 +81,7 @@ test("keeps private Hedera and identity configuration out of browser assets", as
   assert.doesNotMatch(browserCode, /YAREON_AUTH_SECRET/);
 });
 
-test("ships the authenticated AgentKit flow and transaction proof links", async () => {
+test("ships authenticated wallet controls and transaction proof links", async () => {
   const assetRoot = new URL("../.next/static/", import.meta.url);
   const javascriptAssets = (await filesRecursively(assetRoot)).filter((file) =>
     file.pathname.endsWith(".js"),
@@ -90,10 +90,6 @@ test("ships the authenticated AgentKit flow and transaction proof links", async 
     javascriptAssets.map((file) => readFile(file, "utf8")),
   );
   const browserCode = contents.join("\n");
-  assert.match(browserCode, /World AgentKit execution gate/);
-  assert.match(browserCode, /Test unsigned bot/);
-  assert.match(browserCode, /Run signed over-limit intent/);
-  assert.match(browserCode, /\/api\/agents\/agentkit\/run/);
   assert.match(browserCode, /Hedera WalletConnect/);
   assert.match(browserCode, /Authenticating wallet/);
   assert.match(browserCode, /Open control panel/);
