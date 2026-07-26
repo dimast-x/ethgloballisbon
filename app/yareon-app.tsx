@@ -386,13 +386,47 @@ export function YareonApp() {
           name: name.trim(),
         }),
       });
-      const body = (await response.json()) as ProgramSession & { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Run creation failed.");
-      hydrateSession(body);
-      window.localStorage.setItem(activeLiveRunKey, body.programId);
+      const created = (await response.json()) as ProgramSession & {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(created.error ?? "Run creation failed.");
+      }
+      hydrateSession(created);
+      window.localStorage.setItem(activeLiveRunKey, created.programId);
       void loadPrograms();
+
+      let active = created;
+      if (nextMode === "testnet" && !created.projection.program?.hedera) {
+        setNotice("Program created. Activating its Hedera treasury…");
+        const settlementResponse = await fetch(
+          `/api/programs/${encodeURIComponent(created.programId)}/settlement`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(programSetup),
+          },
+        );
+        const activated = (await settlementResponse.json()) as ProgramSession & {
+          error?: string;
+        };
+        if (!settlementResponse.ok) {
+          setShowSettlementSettings(true);
+          setSettlementError(
+            activated.error ?? "Program treasury activation failed.",
+          );
+          throw new Error(
+            activated.error ??
+              "The program was created, but its treasury could not be activated.",
+          );
+        }
+        active = activated;
+        hydrateSession(active);
+        void loadPrograms();
+      }
+
       setOperationState("confirmed");
-      setNotice("Program treasury created. Deposit HBAR to activate it.");
+      setNotice("Program created and activated. You can deposit HBAR now.");
     } catch (error) {
       setOperationState("failed");
       setNotice(error instanceof Error ? error.message : "Run creation failed.");
@@ -897,13 +931,49 @@ export function YareonApp() {
       setNotice("Enter a positive amount to deposit into this program.");
       return;
     }
-    if (!program.hedera?.treasuryAccountId) {
-      throw new Error("Configure the program treasury before depositing funds.");
+
+    let depositProgram = program;
+    if (!depositProgram.hedera?.treasuryAccountId) {
+      setOperationState("pending");
+      setNotice("Activating the program treasury before your deposit…");
+      const settlementResponse = await fetch(
+        `/api/programs/${encodeURIComponent(program.id)}/settlement`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(programSetup),
+        },
+      );
+      const activated = (await settlementResponse.json()) as ProgramSession & {
+        error?: string;
+      };
+      if (!settlementResponse.ok) {
+        setShowSettlementSettings(true);
+        setSettlementError(
+          activated.error ?? "Program treasury activation failed.",
+        );
+        throw new Error(
+          activated.error ??
+            "The program treasury could not be activated for this deposit.",
+        );
+      }
+      const activatedProgram = activated.projection.program;
+      if (!activatedProgram?.hedera?.treasuryAccountId) {
+        throw new Error("Hedera did not return a program treasury account.");
+      }
+      depositProgram = activatedProgram;
+      hydrateSession(activated);
+      void loadPrograms();
     }
+    const treasuryAccountId = depositProgram.hedera?.treasuryAccountId;
+    if (!treasuryAccountId) {
+      throw new Error("Hedera did not return a program treasury account.");
+    }
+
     const amount = fromDisplay(
       value,
-      program.budget.asset,
-      program.budget.decimals,
+      depositProgram.budget.asset,
+      depositProgram.budget.decimals,
     );
     setOperationState("pending");
     setRetryCommand(null);
@@ -920,13 +990,13 @@ export function YareonApp() {
     const accountId = await connectHederaWallet(authentication.accountId);
     const receipt = await depositHbarToProgram({
       accountId,
-      treasuryAccountId: program.hedera.treasuryAccountId,
+      treasuryAccountId,
       atomicAmount: amount.atomicAmount,
-      programId: program.id,
+      programId: depositProgram.id,
     });
     setNotice("Deposit submitted; waiting for Mirror Node confirmation…");
     const response = await fetch(
-      `/api/programs/${encodeURIComponent(program.id)}/funding`,
+      `/api/programs/${encodeURIComponent(depositProgram.id)}/funding`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1667,7 +1737,7 @@ function ProgramOverviewPanel({
             <small>
               {program.hedera?.treasuryAccountId
                 ? `Hedera treasury ${shortHederaAccount(program.hedera.treasuryAccountId)}`
-                : "Configure a treasury before depositing funds."}
+                : "Your treasury will be activated with the first deposit."}
             </small>
           </div>
         </div>
@@ -1686,7 +1756,7 @@ function ProgramOverviewPanel({
         <button
           type="button"
           onClick={onDeposit}
-          disabled={!program.hedera?.treasuryAccountId || depositing}
+          disabled={depositing}
         >
           {depositing ? "Depositing…" : "Deposit funds"}
         </button>

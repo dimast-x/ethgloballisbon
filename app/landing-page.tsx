@@ -136,8 +136,8 @@ export function ProgramCreatePage({
             <span>One-minute setup</span>
             <h1>Start with a name.</h1>
             <p>
-              Yareon will create the program now. Activate its treasury when
-              you&apos;re ready, then add suppliers at any time.
+              Yareon will create and activate the program treasury now. You can
+              deposit funds immediately and add suppliers at any time.
             </p>
           </div>
           <div className="program-create-form">
