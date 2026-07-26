@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { verifyHederaProgramDeposit } from "../src/application/program-funding";
+import { uncreditedTreasuryFunds } from "../src/application/runtime";
 import { createEvent } from "../src/protocol/events";
 import { reduceProtocolEvents } from "../src/protocol/reducer";
 import type { Program } from "../src/protocol/types";
@@ -11,6 +12,46 @@ const amount = {
 };
 
 describe("user-funded programs", () => {
+  it("detects real treasury funds missing from the event projection", () => {
+    const projection = reduceProtocolEvents([
+      createEvent({
+        runId: "run_reconcile",
+        organizationId: "org_test",
+        programId: "program_reconcile",
+        actor: {
+          actorId: "admin",
+          role: "ADMIN",
+          actorType: "HUMAN",
+        },
+        eventType: "PROGRAM_CREATED",
+        correlationId: "create",
+        data: {
+          program: {
+            id: "program_reconcile",
+            organizationId: "org_test",
+            name: "Reconcile",
+            description: "",
+            budget: { ...amount, atomicAmount: "0" },
+            status: "ACTIVE",
+            policy: {
+              allowedCategories: ["GPU_COMPUTE"],
+              maxOrderAmount: amount,
+              requireDeliveryEvidence: false,
+              approvalRequirements: [],
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(
+      uncreditedTreasuryFunds(projection, {
+        ...amount,
+        atomicAmount: "400000000",
+      }),
+    ).toBe(400000000n);
+  });
+
   it("accepts only the exact successful wallet-to-treasury transfer", async () => {
     const mirrorFetch = vi.fn(async () =>
       Response.json({

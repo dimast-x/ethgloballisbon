@@ -2145,8 +2145,6 @@ function PolicyPanel({
           allocation. There is no case-by-case purchasing decision by finance.
         </p>
         <dl>
-          <div><dt>Program status</dt><dd>{program.status}</dd></div>
-          <div><dt>Total budget</dt><dd>{toDisplay(program.budget)} {program.budget.asset}</dd></div>
           <div><dt>Supplier rule</dt><dd>Must be active when ordered</dd></div>
           <div><dt>Audit</dt><dd>Every decision is recorded</dd></div>
         </dl>

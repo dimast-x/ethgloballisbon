@@ -425,6 +425,68 @@ export async function getProgramTreasuryBalance(
   }
 }
 
+export async function reconcileProgramTreasuryFunding(
+  session: ProgramSession,
+): Promise<ProgramSession> {
+  const program = session.projection.program;
+  if (!program?.hedera) return session;
+  const treasuryBalance = await getProgramTreasuryBalance(program);
+  if (!treasuryBalance) return session;
+
+  const paidAtomic = Object.values(session.projection.allocations).reduce(
+    (total, allocation) => total + BigInt(allocation.paid.atomicAmount),
+    0n,
+  );
+  const uncreditedFunds = uncreditedTreasuryFunds(
+    session.projection,
+    treasuryBalance,
+  );
+  if (uncreditedFunds <= 0n) {
+    return { ...session, treasuryBalance };
+  }
+
+  const result = await runProgramCommand(session.programId, "testnet", {
+    type: "UPFUND_PROGRAM",
+    idempotencyKey: `${session.runId}:treasury-reconciliation:${treasuryBalance.atomicAmount}:${paidAtomic}`,
+    actor: {
+      actorId: "yareon",
+      role: "SYSTEM",
+      actorType: "SYSTEM",
+    },
+    amount: {
+      ...program.budget,
+      atomicAmount: uncreditedFunds.toString(),
+    },
+    depositTransactionId: `treasury-balance:${program.hedera.treasuryAccountId}:${treasuryBalance.atomicAmount}:${paidAtomic}`,
+  });
+  if (result.status === "FAILED" || !result.projection) {
+    throw new Error(
+      result.error?.message ??
+        "The live treasury balance could not be reconciled with program funding.",
+    );
+  }
+  return {
+    ...session,
+    projection: result.projection,
+    treasuryBalance,
+  };
+}
+
+export function uncreditedTreasuryFunds(
+  projection: ProtocolProjection,
+  treasuryBalance: Money,
+): bigint {
+  const program = projection.program;
+  if (!program) return 0n;
+  const paidAtomic = Object.values(projection.allocations).reduce(
+    (total, allocation) => total + BigInt(allocation.paid.atomicAmount),
+    0n,
+  );
+  const projectedUnspent =
+    BigInt(program.budget.atomicAmount) - paidAtomic;
+  return BigInt(treasuryBalance.atomicAmount) - projectedUnspent;
+}
+
 export async function findOrder(
   programId: string,
   orderId: string,

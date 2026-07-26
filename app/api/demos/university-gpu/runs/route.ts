@@ -2,6 +2,7 @@ import {
   createUniversityRun,
   getProgramTreasuryBalance,
   getProgramSession,
+  reconcileProgramTreasuryFunding,
   type LiveProgramSetup,
 } from "@/src/application/runtime";
 import {
@@ -26,12 +27,7 @@ export async function GET(request: Request) {
     session.projection,
   );
   if (ownershipDenied) return ownershipDenied;
-  return Response.json({
-    ...session,
-    treasuryBalance: await getProgramTreasuryBalance(
-      session.projection.program!,
-    ),
-  });
+  return Response.json(await reconcileProgramTreasuryFunding(session));
 }
 
 export async function POST(request: Request) {

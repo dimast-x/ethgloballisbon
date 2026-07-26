@@ -1,6 +1,7 @@
 import {
   getProgramTreasuryBalance,
   getProgramSession,
+  reconcileProgramTreasuryFunding,
   runProgramCommand,
 } from "@/src/application/runtime";
 import {
@@ -46,7 +47,7 @@ export async function POST(
     const denied = requireLiveMutationAdmin(request);
     if (denied) return denied;
 
-    const session = await getProgramSession(programId, mode);
+    let session = await getProgramSession(programId, mode);
     if (!session) {
       return Response.json({ error: "Program not found" }, { status: 404 });
     }
@@ -55,6 +56,7 @@ export async function POST(
       session.projection,
     );
     if (ownershipDenied) return ownershipDenied;
+    session = await reconcileProgramTreasuryFunding(session);
     const command = await authenticateApprovalCommand({
       command: body.command,
       projection: session.projection,
