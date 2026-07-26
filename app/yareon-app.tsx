@@ -69,7 +69,7 @@ const tabs = [
   "Activity",
 ] as const;
 type Tab = (typeof tabs)[number];
-const controlSections = ["Policy", "Buyers", "Suppliers", "Agent"] as const;
+const controlSections = ["Policy", "Members", "Suppliers", "Agent"] as const;
 type ControlSection = (typeof controlSections)[number];
 const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
 type PurchasingSection = (typeof purchasingSections)[number];
@@ -132,9 +132,9 @@ const eventLabels: Record<string, string> = {
   PROGRAM_CREATED: "Program created",
   PROGRAM_SETTLEMENT_CONFIGURED: "Program payments activated",
   PROGRAM_UPFUNDED: "Program deposit confirmed",
-  BUYER_ALLOCATED: "Buyer allocation granted",
-  BUYER_ALLOCATION_UPFUNDED: "Buyer allocation upfunded",
-  BUYER_PURCHASING_UPDATED: "Buyer purchasing access updated",
+  BUYER_ALLOCATED: "Member allocation granted",
+  BUYER_ALLOCATION_UPFUNDED: "Member allocation upfunded",
+  BUYER_PURCHASING_UPDATED: "Member purchasing access updated",
   VENDOR_APPROVED: "Vendor approved",
   OFFER_REGISTERED: "Offer registered",
   SUPPLIER_UPDATED: "Supplier updated",
@@ -901,7 +901,7 @@ export function YareonApp() {
     const value = allocationAmounts[buyerId]?.trim();
     if (!value || Number(value) <= 0) {
       setOperationState("failed");
-      setNotice("Enter a positive amount to append to this buyer.");
+      setNotice("Enter a positive amount to append to this member.");
       return;
     }
     await submitCommand(
@@ -1046,7 +1046,7 @@ export function YareonApp() {
     const value = newBuyerAmount.trim();
     if (!buyerId || !value || Number(value) <= 0) {
       setOperationState("failed");
-      setNotice("Enter a buyer ID and a positive initial allocation.");
+      setNotice("Enter a member ID and a positive initial allocation.");
       return;
     }
     const zero = fromDisplay("0", program.budget.asset, program.budget.decimals);
@@ -1416,7 +1416,7 @@ export function YareonApp() {
           {activeTab === "Controls" && controlSection === "Policy" && (
             <PolicyPanel program={program} />
           )}
-          {activeTab === "Controls" && controlSection === "Buyers" && (
+          {activeTab === "Controls" && controlSection === "Members" && (
             <BuyerPanel
               view="buyers"
               offers={offers}
@@ -1447,7 +1447,7 @@ export function YareonApp() {
               onActiveBuyer={setActiveBuyerId}
               onVerifyBuyer={() => {
                 setOperationState("failed");
-                setNotice("Human-buyer verification is outside this AgentKit flow.");
+                setNotice("Human-member verification is outside this AgentKit flow.");
               }}
               onUpfund={(buyerId) =>
                 void upfundBuyer(buyerId).catch((error) => {
@@ -1465,7 +1465,7 @@ export function YareonApp() {
                   setNotice(
                     error instanceof Error
                       ? error.message
-                      : "The buyer's purchasing access could not be updated.",
+                      : "The member's purchasing access could not be updated.",
                   );
                 })
               }
@@ -1475,7 +1475,7 @@ export function YareonApp() {
                   setNotice(
                     error instanceof Error
                       ? error.message
-                      : "The buyer could not be added.",
+                      : "The member could not be added.",
                   );
                 })
               }
@@ -1544,7 +1544,7 @@ export function YareonApp() {
               onActiveBuyer={setActiveBuyerId}
               onVerifyBuyer={() => {
                 setOperationState("failed");
-                setNotice("Human-buyer verification is outside this AgentKit flow.");
+                setNotice("Human-member verification is outside this AgentKit flow.");
               }}
               onUpfund={(buyerId) => void upfundBuyer(buyerId)}
               onSetPurchasing={(buyerId, active) =>
@@ -1711,19 +1711,12 @@ function ProgramOverviewPanel({
           eyebrow: "Funding required",
           title: "Deposit funds before allocating spend",
           description:
-            "The program treasury is empty. Add HBAR, then assign it to buyers.",
+            "The program treasury is empty. Add HBAR, then assign it to members.",
           label: "Fund the program",
           onClick: focusFunding,
         }
       : !order || order.status === "PAYMENT_EXECUTED"
-        ? {
-            eyebrow: order ? "Ready for another order" : "Ready to purchase",
-            title: "Choose from approved suppliers",
-            description:
-              "The catalog only shows offers that already match this program’s rules.",
-            label: "Open catalog",
-            onClick: () => onPurchasing("Catalog"),
-          }
+        ? null
         : needsSettlement
           ? {
               eyebrow: "Order needs attention",
@@ -1744,20 +1737,22 @@ function ProgramOverviewPanel({
 
   return (
     <div className="overview-dashboard">
-      <section className="next-action-rail" aria-label="Recommended next action">
-        <div className="next-action-marker">
-          <ArrowRight size={18} aria-hidden="true" />
-        </div>
-        <div>
-          <span>{nextAction.eyebrow}</span>
-          <strong>{nextAction.title}</strong>
-          <p>{nextAction.description}</p>
-        </div>
-        <button type="button" onClick={nextAction.onClick}>
-          {nextAction.label}
-          <ArrowRight size={15} />
-        </button>
-      </section>
+      {nextAction && (
+        <section className="next-action-rail" aria-label="Recommended next action">
+          <div className="next-action-marker">
+            <ArrowRight size={18} aria-hidden="true" />
+          </div>
+          <div>
+            <span>{nextAction.eyebrow}</span>
+            <strong>{nextAction.title}</strong>
+            <p>{nextAction.description}</p>
+          </div>
+          <button type="button" onClick={nextAction.onClick}>
+            {nextAction.label}
+            <ArrowRight size={15} />
+          </button>
+        </section>
+      )}
 
       <section
         className="overview-funding"
@@ -1810,15 +1805,15 @@ function ProgramOverviewPanel({
         </article>
         <article className="overview-metric">
           <Users size={18} />
-          <span>Buyer authority available</span>
+          <span>Member authority available</span>
           <strong>
             {toDisplay({
               ...program.budget,
               atomicAmount: buyerAuthority.toString(),
             })} {program.budget.asset}
           </strong>
-          <button type="button" onClick={() => onControls("Buyers")}>
-            View buyers
+          <button type="button" onClick={() => onControls("Members")}>
+            View members
           </button>
         </article>
         <article className="overview-metric">
@@ -2136,42 +2131,47 @@ function SuppliersPanel({
         description="Removal blocks future purchases immediately. Existing orders continue with their locked supplier, price, and settlement destination."
       />
       <div className="supplier-add-row">
-        <input
-          aria-label="Supplier name"
-          value={draft.name}
-          placeholder="Supplier name"
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, name: event.target.value }))
-          }
-        />
-        <input
-          aria-label="Offer title"
-          value={draft.title}
-          placeholder="Offer title"
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, title: event.target.value }))
-          }
-        />
-        <input
-          aria-label={`Price in ${asset}`}
-          value={draft.amount}
-          inputMode="decimal"
-          placeholder={`Price (${asset})`}
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, amount: event.target.value }))
-          }
-        />
-        <input
-          aria-label="Settlement account"
-          value={draft.settlementAccountId}
-          placeholder="Settlement account (0.0.x)"
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              settlementAccountId: event.target.value,
-            }))
-          }
-        />
+        <label>
+          <span>Supplier name</span>
+          <input
+            value={draft.name}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, name: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>Offer title</span>
+          <input
+            value={draft.title}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, title: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>Price ({asset})</span>
+          <input
+            value={draft.amount}
+            inputMode="decimal"
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, amount: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>Settlement account</span>
+          <input
+            value={draft.settlementAccountId}
+            placeholder="0.0.x"
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                settlementAccountId: event.target.value,
+              }))
+            }
+          />
+        </label>
         <button
           className="primary-action"
           disabled={adding}
@@ -2205,6 +2205,9 @@ function SuppliersPanel({
           {error}
         </p>
       )}
+      <div className="section-label supplier-section-label">
+        Current suppliers
+      </div>
       <div className="supplier-registry">
         {Object.values(vendors).map((vendor) => {
           const vendorOffers = Object.values(offers).filter(
@@ -2428,7 +2431,7 @@ function BuyerPanel({
 
   if (view === "marketplace" && activeAllocations.length === 0) {
     return (
-      <EmptyState text="No buyers currently have purchasing access. Add a buyer or restore access from Controls." />
+      <EmptyState text="No members currently have purchasing access. Add a member or restore access from Controls." />
     );
   }
 
@@ -2449,12 +2452,12 @@ function BuyerPanel({
       {view === "buyers" && <section className="buyer-brief">
         <PanelHeading
           kicker="Program members"
-          title="Buyers"
+          title="Members"
           description="Add people or teams, set their purchasing authority, and control who can create new orders."
         />
         <div className="allocation-manager">
           <div className="section-label allocation-section-label">
-            Current buyers
+            Current members
           </div>
           {Object.values(allocations).map((item) => (
             <div
@@ -2526,7 +2529,7 @@ function BuyerPanel({
           ))}
           <div className="allocation-manager-new">
             <label>
-              <span>Buyer or team ID</span>
+              <span>Member or team ID</span>
               <input
                 value={newBuyerId}
                 onChange={(event) => onNewBuyerId(event.target.value)}
@@ -2552,7 +2555,7 @@ function BuyerPanel({
               />
               Require human verification
             </label>
-            <button onClick={onAddBuyer}>Add buyer</button>
+            <button onClick={onAddBuyer}>Add member</button>
           </div>
         </div>
       </section>}

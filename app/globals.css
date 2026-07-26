@@ -3511,8 +3511,7 @@ button:not(:disabled):active {
   scroll-margin-top: 96px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background:
-    linear-gradient(105deg, #f5faf7 0%, #f5faf7 58%, #fbfaf6 58%, #fbfaf6 100%);
+  background: #f5faf7;
 }
 
 .overview-funding-balance {
@@ -4126,6 +4125,14 @@ button:not(:disabled):active {
   background: #fbfaf6;
 }
 
+.supplier-add-row label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .supplier-add-row input {
   min-height: 42px;
   border-color: var(--line-dark);
@@ -4142,15 +4149,57 @@ button:not(:disabled):active {
 }
 
 .supplier-registry {
-  gap: 12px;
-  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin-top: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
 }
 
 .supplier-registry-card {
-  gap: 15px;
-  padding: 18px;
-  border-radius: 9px;
+  min-height: 104px;
+  padding: 16px;
+  grid-template-columns: minmax(210px, 1fr) minmax(280px, 1.2fr) auto;
+  gap: 20px;
+  align-items: center;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   background: var(--panel);
+}
+
+.supplier-registry-card:last-child {
+  border-bottom: 0;
+}
+
+.supplier-registry-card h3 {
+  margin: 7px 0 4px;
+  font-size: 15px;
+}
+
+.supplier-registry-card code {
+  font-size: 10px;
+}
+
+.supplier-registry-card dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.supplier-registry-card dl > div {
+  display: grid;
+  gap: 4px;
+}
+
+.supplier-registry-card dd {
+  text-align: left;
+}
+
+.supplier-section-label {
+  margin: 24px 0 8px;
 }
 
 .supplier-registry-card .danger-action {
@@ -4193,6 +4242,15 @@ button:not(:disabled):active {
 
   .supplier-add-row button {
     grid-column: 1 / -1;
+  }
+
+  .supplier-registry-card {
+    grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.2fr);
+  }
+
+  .supplier-registry-card .danger-action {
+    grid-column: 1 / -1;
+    width: fit-content;
   }
 
   .offer-grid {
@@ -4338,8 +4396,13 @@ button:not(:disabled):active {
   .marketplace-layout.buyers .allocation-manager-new,
   .purchase-context-bar,
   .supplier-add-row,
+  .supplier-registry-card,
   .panel-grid,
   .approval-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-registry-card dl {
     grid-template-columns: 1fr;
   }
 

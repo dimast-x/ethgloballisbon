@@ -41,7 +41,7 @@ export function LandingPage({
           <span>Control at the core.</span>
         </h1>
         <p>
-          Create a procurement program, fund bounded buyer authority, and let
+          Create a procurement program, fund bounded member authority, and let
           members buy from approved suppliers within policy.
         </p>
         <div className="op-landing-actions">
@@ -67,7 +67,7 @@ export function LandingPage({
         </div>
         <div className="op-trust-line">
           <span>Creator-owned administration</span>
-          <span>Append-only buyer funding</span>
+          <span>Append-only member funding</span>
           <span>Policy-authorized payments</span>
         </div>
         {createError && <small role="alert">{createError}</small>}
