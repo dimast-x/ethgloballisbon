@@ -2,20 +2,19 @@
 
 Yareon is a policy-controlled procurement system running on Hedera testnet.
 The public product exposes only network-backed behavior: HCS program events,
-Mirror Node reconstruction, World human backing, native Hedera wallet
+Mirror Node reconstruction, World AgentKit human backing, native Hedera wallet
 approvals, scheduled HBAR settlement, and public explorer evidence.
 
 There is no guest sandbox, simulated workspace, or D1-backed product mode.
-Public visitors can inspect a completed verified program when
-`YAREON_SHOWCASE_PROGRAM_ID` is configured. Mutating a live program is limited
-to the Hedera wallet that created it.
+Mutating a live program is limited to the Hedera wallet that created it.
 
 ## Real product flow
 
 1. Create a funded procurement program on Hedera testnet.
 2. Append funds to the program, then grant or upfund one or more buyer allocations.
 3. Register approved suppliers and offers.
-4. Enforce buyer, category, program, and delegated-agent limits.
+4. Require a World AgentBook-registered agent signature, then enforce buyer,
+   category, program, and delegated-agent limits.
 5. Record delivery evidence by SHA-256 reference.
 6. Collect distinct verifier and finance wallet signatures.
 7. Execute the scheduled HBAR payment.
@@ -52,7 +51,7 @@ npm run test:site
 This is a native Next.js application and can be imported directly into Vercel.
 Use the default Next.js build settings and configure every value from
 `.env.example` in Project Settings → Environment Variables. Keep
-`HEDERA_OPERATOR_KEY`, `WORLD_RP_SIGNING_KEY`, `ENS_RPC_URL`, and
+`HEDERA_OPERATOR_KEY`, `WORLD_AGENT_PRIVATE_KEY`, `ENS_RPC_URL`, and
 `YAREON_AUTH_SECRET` server-only.
 
 Deploy from the project directory with:
@@ -75,11 +74,45 @@ HEDERA_OPERATOR_ID
 HEDERA_OPERATOR_KEY
 HEDERA_TOPIC_ID
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-WORLD_APP_ID
-WORLD_RP_ID
-WORLD_RP_SIGNING_KEY
-WORLD_ACTION
-YAREON_SHOWCASE_PROGRAM_ID
+WORLD_AGENT_PRIVATE_KEY
+WORLD_CHAIN_RPC_URL
+YAREON_PUBLIC_URL
+```
+
+## World AgentKit setup
+
+Yareon uses a dedicated EVM wallet as the procurement agent's World identity.
+The wallet signs short-lived AgentKit challenges; the server verifies the
+signature, checks the canonical AgentBook on World Chain, binds the address to
+the agent's Hedera execution account, and only then evaluates procurement
+policy.
+
+Generate a dedicated 32-byte key outside the repository, configure it as
+`WORLD_AGENT_PRIVATE_KEY`, and print its address:
+
+```bash
+openssl rand -hex 32
+npm run agentkit:address
+```
+
+Register that address once through World App:
+
+```bash
+npx @worldcoin/agentkit-cli register <agent-address>
+npm run agentkit:validate
+```
+
+The protected resource is
+`POST /api/agents/agentkit/procure?intent=<sha256>`. An unsigned request
+receives an AgentKit `402` challenge. A registered agent retries with an
+EIP-191 signature bound to the exact intent URL. Raw AgentBook human
+identifiers are never returned, logged, or written to HCS.
+
+Run the complete bot-rejection, AgentBook-verification, delegation-rejection,
+and valid-order sequence with:
+
+```bash
+npm run demo:agentkit -- <programId>
 ```
 
 Run `npm run setup:testnet` once to provision or validate the shared event
@@ -98,14 +131,14 @@ native transfer and `ScheduleSignTransaction` requests, and the server accepts
 funding or an approval only after Hedera and Mirror Node confirm the configured
 wallet, destination, amount, and successful transaction.
 
-## Public proof
+## Verification evidence
 
-The read-only showcase is served only when the configured program contains a
-complete, verifiable run:
+The live verifier confirms that a selected program contains a complete,
+verifiable run:
 
 - all protocol events have HCS topic and sequence references;
-- World human backing is recorded;
-- missing-backing and delegation-limit rejections are present;
+- World AgentKit access verification is recorded;
+- the AgentKit address is bound to the delegation and a limit rejection is present;
 - verifier and finance approvals come from distinct configured Hedera accounts;
 - the schedule executed; and
 - Mirror Node confirms the exact treasury-to-vendor transfer.
@@ -123,9 +156,13 @@ npm run audit:cli -- <programId> testnet
 - `src/application` — commands, authorization, and live orchestration.
 - `src/adapters` — Hedera, Mirror Node, World, and ENS integration boundaries.
 - `app/yareon-app.tsx` — Hedera-wallet-authenticated live workflow.
-- `app/api/showcase` — verified public read model.
 - `docs/protocol-v0.md` — protocol semantics.
 - `docs/protocol-event.schema.json` — event envelope schema.
 
 In-memory simulation remains limited to automated protocol tests and local
 developer tooling. It is not reachable from the public application or API.
+
+## Demo video
+
+Add the final ≤5-minute submission video URL here after recording the completed
+AgentKit and Hedera golden run.

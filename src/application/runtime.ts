@@ -14,13 +14,15 @@ import {
   parseHederaPrivateKey,
 } from "../adapters/hedera";
 import {
-  createWorldRpRequest,
   EnsPublicIdentityResolver,
   sha256,
   StaticPublicIdentityResolver,
-  WorldHumanBackingVerifier,
-  worldConfigFromEnv,
 } from "../adapters/identity";
+import {
+  agentkitConfigFromEnv,
+  configuredAgentkitAddress,
+  lookupConfiguredAgentHuman,
+} from "../adapters/agentkit";
 import type { EventStore, PaymentScheduler } from "../protocol/adapters";
 import { createEvent, type ProtocolEvent, type RecordedEvent } from "../protocol/events";
 import type { ProtocolProjection } from "../protocol/reducer";
@@ -569,9 +571,9 @@ export type IdentityReadiness = {
   publicConfig: {
     agentEnsName?: string;
     organizationEnsName?: string;
-    worldAppId?: string;
-    worldAction: string;
-    worldEnvironment: "staging" | "production";
+    agentAddress?: string;
+    agentBookRegistered?: boolean;
+    worldChain: "eip155:480";
     ensRpcConfigured: boolean;
     expectedDelegationHash: string;
   };
@@ -580,25 +582,21 @@ export type IdentityReadiness = {
 export async function getIdentityReadiness(
   probeNetwork = false,
 ): Promise<IdentityReadiness> {
-  void probeNetwork;
   const issues: string[] = [];
-  const required = [
-    "WORLD_RP_ID",
-    "WORLD_RP_SIGNING_KEY",
-  ] as const;
-  for (const name of required) {
-    if (!process.env[name]) issues.push(`Missing ${name}.`);
-  }
-  const worldAppId =
-    process.env.WORLD_APP_ID ?? process.env.NEXT_PUBLIC_WORLD_APP_ID;
-  if (!worldAppId) issues.push("Missing WORLD_APP_ID or NEXT_PUBLIC_WORLD_APP_ID.");
-  const environment =
-    process.env.WORLD_ENVIRONMENT === "staging" ? "staging" : "production";
-  if (
-    process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT &&
-    process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT !== environment
-  ) {
-    issues.push("World server and browser environments do not match.");
+  let agentAddress: string | undefined;
+  let agentBookRegistered: boolean | undefined;
+  try {
+    agentAddress = agentkitConfigFromEnv().agentAddress;
+    if (probeNetwork) {
+      agentBookRegistered = await lookupConfiguredAgentHuman();
+      if (!agentBookRegistered) {
+        issues.push("The configured agent is not registered in World AgentBook.");
+      }
+    }
+  } catch (error) {
+    issues.push(
+      error instanceof Error ? error.message : "AgentKit configuration is invalid.",
+    );
   }
   return {
     ready: issues.length === 0,
@@ -609,43 +607,18 @@ export async function getIdentityReadiness(
       organizationEnsName:
         process.env.YAREON_ORGANIZATION_ENS_NAME ??
         process.env.CHARTER_ORGANIZATION_ENS_NAME,
-      worldAppId,
-      worldAction:
-        process.env.WORLD_ACTION ?? "authorize-yareon-agent",
-      worldEnvironment: environment,
+      agentAddress,
+      agentBookRegistered,
+      worldChain: "eip155:480",
       ensRpcConfigured: Boolean(process.env.ENS_RPC_URL),
       expectedDelegationHash: delegationIntegrityHash(
-        universityGpuFixture.agent.delegation,
+        {
+          ...universityGpuFixture.agent.delegation,
+          worldAgentAddress: agentAddress,
+        },
       ),
     },
   };
-}
-
-export async function createAgentWorldRequest(
-  programId: string,
-  mode: ExecutionMode,
-  agentId: string,
-) {
-  const session = await getProgramSession(programId, mode);
-  if (!session) throw new Error("Program not found.");
-  const signal = humanVerificationSignal(session, agentId);
-  if (mode === "simulation") {
-    return {
-      appId: "app_simulation",
-      rpId: "rp_simulation",
-      action: "authorize-yareon-agent",
-      environment: "staging" as const,
-      signal,
-      rpContext: {
-        rp_id: "rp_simulation",
-        nonce: "simulation",
-        created_at: Math.floor(Date.now() / 1000),
-        expires_at: Math.floor(Date.now() / 1000) + 300,
-        signature: "simulation",
-      },
-    };
-  }
-  return createWorldRpRequest(worldConfigFromEnv(), signal);
 }
 
 export async function verifyAgentHumanBacking(input: {
@@ -657,28 +630,19 @@ export async function verifyAgentHumanBacking(input: {
 }): Promise<CommandResult> {
   const session = await getProgramSession(input.programId, input.mode);
   if (!session) throw new Error("Program not found.");
-  const signal = humanVerificationSignal(session, input.agentId);
-  const attestation =
-    input.mode === "simulation"
-      ? {
-          scheme: "world-id",
-          verificationReference: sha256(
-            `simulation:${input.programId}:${input.agentId}`,
-          ),
-          subjectReference: input.agentId,
-          verifiedAt: new Date().toISOString(),
-        }
-      : await new WorldHumanBackingVerifier(worldConfigFromEnv()).verify({
-          subjectReference: input.agentId,
-          action:
-            process.env.WORLD_ACTION ?? "authorize-yareon-agent",
-          environment:
-            process.env.WORLD_ENVIRONMENT === "staging"
-              ? "staging"
-              : "production",
-          signal,
-          proof: input.proof,
-        });
+  if (input.mode !== "simulation") {
+    throw new Error(
+      "Live agent backing must be verified through the AgentKit procurement endpoint.",
+    );
+  }
+  const attestation = {
+    scheme: "simulation",
+    verificationReference: sha256(
+      `simulation:${input.programId}:${input.agentId}`,
+    ),
+    subjectReference: input.agentId,
+    verifiedAt: new Date().toISOString(),
+  };
   const duplicate = Object.values(session.projection.humanBacking).find(
     (candidate) =>
       candidate.verificationReference === attestation.verificationReference,
@@ -922,6 +886,10 @@ function materializeFixture(
   );
   const delegation = {
     ...source.agent.delegation,
+    worldAgentAddress:
+      mode === "testnet"
+        ? configuredAgentkitAddress()
+        : source.agent.delegation.worldAgentAddress,
     integrityHash: "",
   };
   delegation.integrityHash = delegationIntegrityHash(delegation);
@@ -1075,6 +1043,7 @@ function delegationIntegrityHash(
     organizationId: delegation.organizationId,
     principalId: delegation.principalId,
     agentId: delegation.agentId,
+    worldAgentAddress: delegation.worldAgentAddress,
     humanVerificationRequired:
       delegation.humanVerificationRequired !== false,
     allowedPrograms: delegation.allowedPrograms,

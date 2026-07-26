@@ -10,9 +10,7 @@ import {
   ChevronDown,
   FileCheck2,
   Fingerprint,
-  Landmark,
   LayoutDashboard,
-  ListChecks,
   LockKeyhole,
   MapPin,
   Plus,
@@ -27,12 +25,6 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import {
-  IDKitRequestWidget,
-  proofOfHuman,
-  type IDKitResult,
-  type RpContext,
-} from "@worldcoin/idkit";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { fromDisplay, toDisplay } from "@/src/protocol/money";
@@ -64,66 +56,45 @@ import {
   ProgramCreatePage,
   ProgramSettlementSettings,
 } from "./landing-page";
+import {
+  controlPanelPreviewPrograms,
+  createControlPanelPreviewSession,
+} from "./control-panel-preview";
+import { AgentkitDemoPanel } from "./agentkit-demo-panel";
 
 const tabs = [
   "Overview",
-  "Agent",
-  "Policy",
-  "Buyers",
-  "Suppliers",
-  "Marketplace",
-  "Orders",
-  "Audit",
-  "Advanced",
+  "Controls",
+  "Purchasing",
+  "Activity",
 ] as const;
 type Tab = (typeof tabs)[number];
+const controlSections = ["Policy", "Buyers", "Suppliers", "Agent"] as const;
+type ControlSection = (typeof controlSections)[number];
+const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
+type PurchasingSection = (typeof purchasingSections)[number];
 const activeLiveRunKey = "yareon_active_live_program";
 
 const tabDetails: Record<Tab, { title: string; description: string }> = {
   Overview: {
     title: "Program overview",
     description:
-      "Funding, configuration, and the live ledger-backed sequence for this program.",
+      "See what is funded, what needs attention, and what happened most recently.",
   },
-  Agent: {
-    title: "Agent authority",
+  Controls: {
+    title: "Program controls",
     description:
-      "Verify human backing and exercise the agent’s bounded purchasing authority.",
+      "Manage policy, spending authority, approved suppliers, and delegated agents.",
   },
-  Policy: {
-    title: "Policy",
+  Purchasing: {
+    title: "Purchasing",
     description:
-      "The category, per-order limit, and spending rules applied to every purchase.",
+      "Shop the approved catalog and follow each order through settlement.",
   },
-  Buyers: {
-    title: "Buyers",
+  Activity: {
+    title: "Activity",
     description:
-      "Fund members and teams without approving each purchase individually.",
-  },
-  Suppliers: {
-    title: "Suppliers",
-    description:
-      "Manage eligibility for future purchases while preserving existing orders.",
-  },
-  Marketplace: {
-    title: "Marketplace",
-    description:
-      "Buy from policy-approved suppliers using an available allocation.",
-  },
-  Orders: {
-    title: "Orders",
-    description:
-      "Review locked supplier details and settlement status.",
-  },
-  Audit: {
-    title: "Program audit",
-    description:
-      "Inspect the event history reconstructed from Hedera Mirror Node.",
-  },
-  Advanced: {
-    title: "Advanced settlement proof",
-    description:
-      "Legacy delivery evidence and independent wallet approvals for programs that explicitly require them.",
+      "Review the complete ledger-backed history and open independent proof.",
   },
 };
 
@@ -131,22 +102,12 @@ function TabIcon({ tab }: { tab: Tab }) {
   switch (tab) {
     case "Overview":
       return <LayoutDashboard />;
-    case "Agent":
-      return <Cpu />;
-    case "Policy":
+    case "Controls":
       return <ShieldCheck />;
-    case "Buyers":
-      return <Users />;
-    case "Suppliers":
-      return <Store />;
-    case "Marketplace":
+    case "Purchasing":
       return <WalletCards />;
-    case "Orders":
-      return <ListChecks />;
-    case "Audit":
+    case "Activity":
       return <FileCheck2 />;
-    case "Advanced":
-      return <LockKeyhole />;
   }
 }
 
@@ -170,65 +131,19 @@ const eventLabels: Record<string, string> = {
   PAYMENT_EXECUTED: "Payment executed",
   AGENT_IDENTITY_RESOLVED: "Agent identity resolved",
   AGENT_HUMAN_BACKING_VERIFIED: "Human backing verified",
+  AGENTKIT_ACCESS_VERIFIED: "AgentKit access verified",
   AGENT_DELEGATION_GRANTED: "Agent delegation granted",
   AGENT_AUTHORIZATION_EVALUATED: "Agent authorization evaluated",
 };
-
-type WorldRequest = {
-  appId: string;
-  action: string;
-  environment: "staging" | "production";
-  signal: string;
-  rpContext: RpContext;
-};
-
-type PublicShowcase =
-  | {
-      available: false;
-      network: string;
-      integrations?: {
-        hedera?: boolean;
-        world?: boolean;
-        directWallets?: boolean;
-      };
-    }
-  | {
-      available: true;
-      network: string;
-      topicId: string;
-      projection: ProtocolProjection & {
-        program: NonNullable<ProtocolProjection["program"]>;
-      };
-      integrations: {
-        hedera: true;
-        world: true;
-        directWallets: true;
-      };
-      proof: {
-        world: {
-          scheme: string;
-          verificationReference: string;
-          verifiedAt: string;
-        };
-        rejections: {
-          missingBacking: boolean;
-          delegationLimit: boolean;
-        };
-        order: {
-          id: string;
-          status: Order["status"];
-          scheduleId?: string;
-          paymentTransactionId?: string;
-          approvals: Order["approvals"];
-        };
-        accounts: Record<string, string | undefined>;
-      };
-    };
 
 export function YareonApp() {
   const [session, setSession] = useState<ProgramSession | null>(null);
   const mode: ExecutionMode = "testnet";
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
+  const [controlSection, setControlSection] =
+    useState<ControlSection>("Policy");
+  const [purchasingSection, setPurchasingSection] =
+    useState<PurchasingSection>("Catalog");
   const [notice, setNotice] = useState(
     "Starting a fresh protocol run…",
   );
@@ -238,8 +153,6 @@ export function YareonApp() {
   const [readiness, setReadiness] = useState<TestnetReadiness | null>(null);
   const [identityReadiness, setIdentityReadiness] =
     useState<IdentityReadiness | null>(null);
-  const [worldRequest, setWorldRequest] = useState<WorldRequest | null>(null);
-  const [worldOpen, setWorldOpen] = useState(false);
   const [roleWallets, setRoleWallets] = useState<
     Partial<Record<"VERIFIER" | "FINANCE", string>>
   >({});
@@ -254,13 +167,7 @@ export function YareonApp() {
     useState(false);
   const [activeBuyerId, setActiveBuyerId] = useState("");
   const [activeOrderId, setActiveOrderId] = useState("");
-  const [worldSubjectId, setWorldSubjectId] = useState("");
   const [agentUpfundAmount, setAgentUpfundAmount] = useState("");
-  const [publicShowcase, setPublicShowcase] = useState<PublicShowcase | null>(
-    null,
-  );
-  const [publicShowcaseLoaded, setPublicShowcaseLoaded] = useState(false);
-  const [showPublicProgram, setShowPublicProgram] = useState(false);
   const [administratorSigningIn, setAdministratorSigningIn] = useState(false);
   const [administratorAuthenticated, setAdministratorAuthenticated] =
     useState(false);
@@ -277,8 +184,59 @@ export function YareonApp() {
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [programs, setPrograms] = useState<ProgramListItem[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
+  const [programPickerOpen, setProgramPickerOpen] = useState(false);
 
   useEffect(() => {
+    if (
+      process.env.NODE_ENV === "development" &&
+      new URLSearchParams(window.location.search).get("preview") ===
+        "control-panel"
+    ) {
+      const previewSession = createControlPanelPreviewSession();
+      const previewProgram = previewSession.projection.program!;
+      // The development-only preview is a URL-selected external mode.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSession(previewSession);
+      setActiveBuyerId(previewSession.buyerId);
+      setActiveOrderId(previewSession.orderId);
+      setPrograms(
+        controlPanelPreviewPrograms.map((item, index) => ({
+          ...item,
+          createdAt: `2026-07-${24 - index}T18:30:00.000Z`,
+          budget: previewProgram.budget,
+        })),
+      );
+      setReadiness({
+        ready: true,
+        authorized: true,
+        network: "testnet",
+        issues: [],
+        publicConfig: {
+          topicId: "0.0.4926017",
+          mirrorNodeUrl: "https://testnet.mirrornode.hedera.com",
+          walletConnectConfigured: true,
+        },
+      });
+      setIdentityReadiness({
+        ready: true,
+        issues: [],
+        publicConfig: {
+          agentEnsName: previewSession.agentIdentity.name,
+          organizationEnsName: "lisbon-university.eth",
+          agentAddress: "0x0000000000000000000000000000000000000001",
+          agentBookRegistered: true,
+          worldChain: "eip155:480",
+          ensRpcConfigured: true,
+          expectedDelegationHash:
+            previewSession.projection.agentDelegations[previewSession.agentId]
+              ?.integrityHash ?? "",
+        },
+      });
+      setAdministratorAuthenticated(true);
+      setOperationState("confirmed");
+      setNotice("Program state is current.");
+      return;
+    }
     void refreshReadiness().then((next) => {
       if (!authenticationAttemptStarted.current) {
         setAdministratorAuthenticated(Boolean(next.hedera.authorized));
@@ -291,28 +249,11 @@ export function YareonApp() {
         } else {
           setOperationState("idle");
         }
-      } else {
-        void loadPublicShowcase();
       }
     });
     // Initialization intentionally runs once; subsequent state comes from Mirror.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function loadPublicShowcase() {
-    try {
-      const response = await fetch("/api/showcase", { cache: "no-store" });
-      const body = (await response.json()) as PublicShowcase;
-      setPublicShowcase(body);
-    } catch {
-      setPublicShowcase({
-        available: false,
-        network: "Hedera testnet",
-      });
-    } finally {
-      setPublicShowcaseLoaded(true);
-    }
-  }
 
   async function loadPrograms(): Promise<ProgramListItem[]> {
     setProgramsLoading(true);
@@ -364,8 +305,7 @@ export function YareonApp() {
         ready: false,
         issues: ["Identity configuration status could not be loaded."],
         publicConfig: {
-          worldAction: "authorize-yareon-agent",
-          worldEnvironment: "production",
+          worldChain: "eip155:480",
           ensRpcConfigured: false,
           expectedDelegationHash: "",
         },
@@ -376,8 +316,7 @@ export function YareonApp() {
           ready: false,
           issues: ["Identity configuration status could not be loaded."],
           publicConfig: {
-            worldAction: "authorize-yareon-agent",
-            worldEnvironment: "production" as const,
+            worldChain: "eip155:480" as const,
             ensRpcConfigured: false,
             expectedDelegationHash: "",
           },
@@ -504,6 +443,16 @@ export function YareonApp() {
     setOperationState("pending");
     setNotice("Reconstructing the active run through Mirror Node…");
     try {
+      if (
+        process.env.NODE_ENV === "development" &&
+        new URLSearchParams(window.location.search).get("preview") ===
+          "control-panel"
+      ) {
+        hydrateSession(createControlPanelPreviewSession(programId));
+        setOperationState("confirmed");
+        setNotice("Program state is current.");
+        return;
+      }
       const response = await fetch(
         `/api/demos/university-gpu/runs?programId=${encodeURIComponent(programId)}`,
         { cache: "no-store" },
@@ -545,8 +494,6 @@ export function YareonApp() {
         unfinishedOrder?.id ??
           `order_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
       );
-      setWorldRequest(null);
-      setWorldOpen(false);
       setActiveTab("Overview");
   }
 
@@ -646,9 +593,6 @@ export function YareonApp() {
   }
 
   if (!session?.projection.program) {
-    if (publicShowcase?.available && showPublicProgram) {
-      return <VerifiedPublicProgram data={publicShowcase} />;
-    }
     const issues = [
       ...(readiness?.issues ?? []),
       ...(identityReadiness?.issues ?? []),
@@ -656,18 +600,11 @@ export function YareonApp() {
     if (!administratorAuthenticated || administratorSigningIn) {
       return (
         <LandingPage
-          showcaseAvailable={Boolean(publicShowcase?.available)}
-          showcaseLoading={!publicShowcaseLoaded}
           creating={administratorSigningIn}
           createError={administratorSignInError}
           onCreate={() => void authenticateAdministrator("create")}
           onControlPanel={() =>
             void authenticateAdministrator("control-panel")
-          }
-          onShowcase={
-            publicShowcase?.available
-              ? () => setShowPublicProgram(true)
-              : undefined
           }
         />
       );
@@ -714,40 +651,19 @@ export function YareonApp() {
     projection.vendors[requestedOffer.vendorId]?.status === "APPROVED"
       ? requestedOffer
       : offers[0] ?? requestedOffer ?? Object.values(projection.offers)[0];
-  const completed = order?.status === "PAYMENT_EXECUTED";
-  const visibleTabs = tabs.filter(
-    (tab) =>
-      tab !== "Advanced" ||
-      program.policy.requireDeliveryEvidence ||
-      program.policy.approvalRequirements.length > 0,
+  const visibleTabs = tabs;
+  const advancedSettlement =
+    program.policy.requireDeliveryEvidence ||
+    program.policy.approvalRequirements.length > 0;
+  const visiblePurchasingSections = purchasingSections.filter(
+    (section) => section !== "Settlement" || advancedSettlement,
   );
-  const progress = (() => {
-    const states = [
-      "CREATED",
-      "VENDOR_ACCEPTED",
-      "PAYMENT_SCHEDULED",
-      "DELIVERY_SUBMITTED",
-      "DELIVERY_APPROVED",
-      "PAYMENT_EXECUTED",
-    ];
-    return order ? Math.max(1, states.indexOf(order.status) + 1) : 0;
-  })();
+  const otherPrograms = programs.filter(
+    (item) => item.programId !== program.id,
+  );
 
   function actor(role: string, actorId: string) {
     return { actorId, role, actorType: "HUMAN" as const };
-  }
-
-  function agentActor() {
-    const resolvedIdentity =
-      projection.agentIdentities[activeSession.agentId];
-    return {
-      actorId: activeSession.agentId,
-      role: "PROCUREMENT_AGENT",
-      actorType: "AGENT" as const,
-      hederaAccountId:
-        resolvedIdentity?.executionAccountId ??
-        activeSession.agentExecutionAccountId,
-    };
   }
 
   function commandFor(
@@ -1195,94 +1111,6 @@ export function YareonApp() {
     );
   }
 
-  async function runAgentOrder(kind: "UNVERIFIED" | "OVER_LIMIT" | "VALID") {
-    const amount =
-      kind === "OVER_LIMIT"
-        ? { ...selectedOffer.amount, atomicAmount: "420000000" }
-        : selectedOffer.amount;
-    const command: ProtocolCommand = {
-      type: "CREATE_ORDER",
-      idempotencyKey: `${activeSession.runId}:${activeOrderId}:agent-order:${kind.toLowerCase()}`,
-      actor: agentActor(),
-      orderId: activeOrderId,
-      buyerId,
-      vendorId: selectedOffer.vendorId,
-      offerId: selectedOffer.id,
-      category: selectedOffer.category,
-      amount,
-    };
-    try {
-      await submitCommand(
-        command,
-        kind === "VALID"
-          ? `Agent authorization passed. The ${toDisplay(selectedOffer.amount)} HBAR order was created.`
-          : kind === "OVER_LIMIT"
-            ? "The 4.2 HBAR agent request was rejected by its 4 HBAR delegation."
-            : "The agent request was rejected because human backing is missing.",
-      );
-    } catch (error) {
-      setOperationState("failed");
-      setNotice(
-        error instanceof Error ? error.message : "Agent order could not complete.",
-      );
-    }
-  }
-
-  async function beginWorldVerification(
-    subjectId: string = activeSession.agentId,
-  ) {
-    if (mode === "testnet" && !identityReadiness?.ready) {
-      setOperationState("failed");
-      setNotice(identityReadiness?.issues.join(" ") || "Identity integrations are not ready.");
-      return;
-    }
-    const response = await fetch("/api/agents/world/request", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        mode,
-        programId: program.id,
-        agentId: subjectId,
-      }),
-    });
-    const request = (await response.json()) as WorldRequest & { error?: string };
-    if (!response.ok) {
-      setOperationState("failed");
-      setNotice(request.error ?? "World verification request failed.");
-      return;
-    }
-    setWorldRequest(request);
-    setWorldSubjectId(subjectId);
-    setWorldOpen(true);
-  }
-
-  async function recordWorldVerification(proof: IDKitResult | undefined) {
-    setOperationState("pending");
-    setNotice("Verifying the World proof on the server...");
-    const response = await fetch("/api/agents/world/verify", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        mode,
-        programId: program.id,
-        agentId: worldSubjectId || activeSession.agentId,
-        idempotencyKey: `${activeSession.runId}:world-verification:${worldSubjectId || activeSession.agentId}`,
-        proof,
-      }),
-    });
-    const result = (await response.json()) as CommandResult & { error?: string };
-    if (!response.ok || !result.projection) {
-      setOperationState("failed");
-      const message =
-        result.error?.toString() ?? result.error ?? "World verification failed.";
-      setNotice(message);
-      throw new Error(message);
-    }
-    setSession({ ...activeSession, projection: result.projection });
-    setOperationState("confirmed");
-    setNotice("World verified the required human backing.");
-  }
-
   return (
     <main className="program-cabinet">
       <aside className="op-program-sidebar">
@@ -1294,37 +1122,63 @@ export function YareonApp() {
           </span>
         </div>
 
-        <div className="op-program-identity">
-          <span className="cabinet-program-avatar">
-            {program.name.slice(0, 2).toUpperCase()}
-          </span>
-          <div>
-            <strong>{program.name}</strong>
-            <small>{program.hedera ? "Active program" : "Program draft"}</small>
-          </div>
-        </div>
-
-        <section className="cabinet-programs" aria-label="Existing programs">
+        <section className="cabinet-programs" aria-label="Program selector">
           <div className="cabinet-programs-heading">
-            <strong>Existing programs</strong>
-            <span>{programsLoading ? "…" : programs.length}</span>
+            <strong>Current program</strong>
+            <button
+              className="cabinet-program-switch-trigger"
+              type="button"
+              aria-expanded={programPickerOpen}
+              aria-controls="cabinet-program-options"
+              onClick={() => setProgramPickerOpen((open) => !open)}
+            >
+              Switch
+              <ChevronDown
+                className={programPickerOpen ? "rotate" : ""}
+                size={13}
+              />
+            </button>
           </div>
-          <div className="cabinet-program-list">
-            {programs.map((item) => (
-              <button
-                type="button"
-                className={item.programId === program.id ? "active" : ""}
-                key={item.programId}
-                onClick={() => void resumeRun(item.programId)}
-                disabled={operationState === "pending"}
-                title={item.name}
-              >
-                <span>{item.name.slice(0, 2).toUpperCase()}</span>
-                <strong>{item.name}</strong>
-                <small>{item.status === "ACTIVE" ? "Active" : "Draft"}</small>
-              </button>
-            ))}
+          <div className="cabinet-current-program">
+            <span>{program.name.slice(0, 2).toUpperCase()}</span>
+            <strong>{program.name}</strong>
+            <small>{program.status === "ACTIVE" ? "Active" : "Draft"}</small>
           </div>
+          {programPickerOpen && (
+            <div
+              className="cabinet-program-options"
+              id="cabinet-program-options"
+            >
+              <div className="cabinet-program-options-heading">
+                <span>Other programs</span>
+                <span>{programsLoading ? "…" : otherPrograms.length}</span>
+              </div>
+              {otherPrograms.length ? (
+                <div className="cabinet-program-list">
+                  {otherPrograms.map((item) => (
+                    <button
+                      type="button"
+                      key={item.programId}
+                      onClick={() => {
+                        setProgramPickerOpen(false);
+                        void resumeRun(item.programId);
+                      }}
+                      disabled={operationState === "pending"}
+                      title={item.name}
+                    >
+                      <span>{item.name.slice(0, 2).toUpperCase()}</span>
+                      <strong>{item.name}</strong>
+                      <small>
+                        {item.status === "ACTIVE" ? "Active" : "Draft"}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p>No other programs yet.</p>
+              )}
+            </div>
+          )}
         </section>
 
         <nav aria-label="Program workspace">
@@ -1336,7 +1190,7 @@ export function YareonApp() {
             >
               <TabIcon tab={tab} />
               {tab}
-              {tab === "Audit" && (
+              {tab === "Activity" && (
                 <span className="tab-count">{projection.timeline.length}</span>
               )}
             </button>
@@ -1346,10 +1200,8 @@ export function YareonApp() {
         <div className="op-sidebar-foot">
           <ShieldCheck size={17} />
           <span>
-            <strong>Hedera Testnet</strong>
-            <small>
-              Program state is reconstructed from the public consensus log.
-            </small>
+            <strong>Ledger synced</strong>
+            <small>Hedera Testnet · public consensus log</small>
           </span>
         </div>
       </aside>
@@ -1393,75 +1245,45 @@ export function YareonApp() {
             <p>{tabDetails[activeTab].description}</p>
           </div>
 
-          <div className="notice cabinet-notice" role="status">
-            <span>{notice}</span>
-            <span className="mirror-status">
-              <TimerReset size={14} />
-              {operationState === "pending"
-                ? "Pending confirmation"
-                : operationState === "failed"
-                  ? "Action needs attention"
-                  : "Mirror projection current"}
-            </span>
-            {operationState === "failed" && retryCommand && (
-              <button
-                className="retry-button"
-                onClick={() => {
-                  if (retryCommand.type === "APPROVE_DELIVERY") {
-                    void approve("VERIFIER");
-                  } else if (retryCommand.type === "APPROVE_FINANCE") {
-                    void approve("FINANCE");
-                  } else {
-                    void submitCommand(
-                      retryCommand,
-                      "Retry confirmed successfully.",
-                    );
-                  }
-                }}
-              >
-                Retry
-              </button>
-            )}
-          </div>
+          {(operationState !== "confirmed" ||
+            notice !== "Program state is current.") && (
+            <div
+              className={`notice cabinet-notice ${operationState}`}
+              role="status"
+            >
+              <span>{notice}</span>
+              <span className="mirror-status">
+                <TimerReset size={14} />
+                {operationState === "pending"
+                  ? "Confirming on Hedera"
+                  : operationState === "failed"
+                    ? "Action needed"
+                    : "Confirmed"}
+              </span>
+              {operationState === "failed" && retryCommand && (
+                <button
+                  className="retry-button"
+                  onClick={() => {
+                    if (retryCommand.type === "APPROVE_DELIVERY") {
+                      void approve("VERIFIER");
+                    } else if (retryCommand.type === "APPROVE_FINANCE") {
+                      void approve("FINANCE");
+                    } else {
+                      void submitCommand(
+                        retryCommand,
+                        "Retry confirmed successfully.",
+                      );
+                    }
+                  }}
+                >
+                  Retry action
+                </button>
+              )}
+            </div>
+          )}
 
           {activeTab === "Overview" && (
             <>
-              <section
-                className="cabinet-budget-rail program-funds-rail"
-                aria-label="Unspent program funds"
-              >
-                <Metric
-                  label="Unspent program funds"
-                  value={`${toDisplay(programFunds)} ${program.budget.asset}`}
-                  accent
-                />
-                <div className="cabinet-run-id">
-                  <span>Run</span>
-                  <code>{activeSession.runId}</code>
-                </div>
-              </section>
-
-              {program.hedera?.fundingMode === "USER_DEPOSIT" &&
-                BigInt(programFunds.atomicAmount) === 0n && (
-                  <section className="program-settings-callout">
-                    <div className="program-settings-callout-icon">
-                      <CircleDollarSign size={18} />
-                    </div>
-                    <div>
-                      <span>Deposit required</span>
-                      <strong>Fund this program from your wallet</strong>
-                      <p>
-                        The treasury starts at zero. Deposit HBAR from the
-                        administrator wallet before allocating buyer authority.
-                      </p>
-                    </div>
-                    <button type="button" onClick={() => setActiveTab("Buyers")}>
-                      Deposit HBAR
-                      <ArrowRight size={15} />
-                    </button>
-                  </section>
-                )}
-
               {!program.hedera && (
                 <ProgramSettlementSettings
                   programName={program.name}
@@ -1475,81 +1297,80 @@ export function YareonApp() {
                   onSave={() => void configureSettlement()}
                 />
               )}
-
-              <LiveRunGuide
-                projection={projection}
+              <ProgramOverviewPanel
+                program={program}
+                programFunds={programFunds}
+                allocations={projection.allocations}
+                vendors={projection.vendors}
                 order={order}
-                onNavigate={setActiveTab}
+                events={projection.timeline}
+                onControls={(section) => {
+                  setControlSection(section);
+                  setActiveTab("Controls");
+                }}
+                onPurchasing={(section) => {
+                  setPurchasingSection(section);
+                  setActiveTab("Purchasing");
+                }}
+                onActivity={() => setActiveTab("Activity")}
               />
-
-              <section className="settlement-rail">
-                <div>
-                  <span>Settlement state</span>
-                  <strong>{completed ? "Payment executed" : order?.status?.replaceAll("_", " ") ?? "No order"}</strong>
-                </div>
-                <div className="progress-track" aria-label={`${progress} of 6 settlement steps`}>
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <span key={index} className={index < progress ? "complete" : ""} />
-                  ))}
-                </div>
-                <div className="threshold">
-                  <LockKeyhole size={18} />
-                  <span>
-                    Settlement authority
-                    <strong>
-                      {program.policy.approvalRequirements.length
-                        ? `${order?.approvals.length ?? 0} / ${program.policy.approvalRequirements.length} signatures`
-                        : "Policy authorized"}
-                    </strong>
-                  </span>
-                </div>
-                {completed && (
-                  <div className="paid-badge">
-                    <Check size={17} />
-                    3.5 HBAR settled
-                  </div>
-                )}
-              </section>
             </>
           )}
 
           {activeTab !== "Overview" && (
             <section className="workspace cabinet-workspace">
-              <div className="workspace-body">
-          {activeTab === "Agent" && (
-            <AgentPanel
-              session={activeSession}
-              attestation={projection.humanBacking[activeSession.agentId]}
-              delegation={projection.agentDelegations[activeSession.agentId]}
-              decisions={projection.agentAuthorizationDecisions.filter(
-                (decision) => decision.agentId === activeSession.agentId,
+              {activeTab === "Controls" && (
+                <SecondaryNav
+                  label="Control sections"
+                  items={controlSections}
+                  active={controlSection}
+                  onChange={setControlSection}
+                />
               )}
-              offerAmount={selectedOffer.amount}
-              orderExists={Boolean(order)}
-              liveReady={Boolean(identityReadiness?.ready)}
-              liveIssues={identityReadiness?.issues ?? []}
-              upfundAmount={agentUpfundAmount}
-              onUpfundAmount={setAgentUpfundAmount}
-              onUpfund={() =>
-                void upfundAgent().catch((error) => {
-                  setOperationState("failed");
-                  setNotice(
-                    error instanceof Error
-                      ? error.message
-                      : "The agent authority could not be updated.",
-                  );
-                })
-              }
-              onUnverified={() => void runAgentOrder("UNVERIFIED")}
-              onVerify={() => void beginWorldVerification()}
-              onOverLimit={() => void runAgentOrder("OVER_LIMIT")}
-              onValid={() => void runAgentOrder("VALID")}
-            />
+              {activeTab === "Purchasing" && (
+                <SecondaryNav
+                  label="Purchasing sections"
+                  items={visiblePurchasingSections}
+                  active={purchasingSection}
+                  onChange={setPurchasingSection}
+                />
+              )}
+              <div className="workspace-body">
+          {activeTab === "Controls" && controlSection === "Agent" && (
+            <>
+              <AgentPanel
+                session={activeSession}
+                attestation={projection.humanBacking[activeSession.agentId]}
+                delegation={projection.agentDelegations[activeSession.agentId]}
+                liveReady={Boolean(identityReadiness?.ready)}
+                liveIssues={identityReadiness?.issues ?? []}
+                upfundAmount={agentUpfundAmount}
+                onUpfundAmount={setAgentUpfundAmount}
+                onUpfund={() =>
+                  void upfundAgent().catch((error) => {
+                    setOperationState("failed");
+                    setNotice(
+                      error instanceof Error
+                        ? error.message
+                        : "The agent authority could not be updated.",
+                    );
+                  })
+                }
+              />
+              <AgentkitDemoPanel
+                programId={program.id}
+                delegation={projection.agentDelegations[activeSession.agentId]}
+                decisions={projection.agentAuthorizationDecisions}
+                offerAmount={selectedOffer.amount}
+                orderExists={Boolean(order)}
+                liveReady={Boolean(identityReadiness?.ready)}
+              />
+            </>
           )}
-          {activeTab === "Policy" && (
+          {activeTab === "Controls" && controlSection === "Policy" && (
             <PolicyPanel program={program} />
           )}
-          {activeTab === "Buyers" && (
+          {activeTab === "Controls" && controlSection === "Buyers" && (
             <BuyerPanel
               view="buyers"
               offers={offers}
@@ -1569,9 +1390,6 @@ export function YareonApp() {
               selectedOfferId={selectedOffer.id}
               orderExists={Boolean(order)}
               orderCompleted={order?.status === "PAYMENT_EXECUTED"}
-              rejected={projection.timeline.some(
-                (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
-              )}
               onSelect={setChosenOfferId}
               onProgramUpfundAmount={setProgramUpfundAmount}
               onUpfundProgram={() =>
@@ -1594,9 +1412,10 @@ export function YareonApp() {
               onNewBuyerAmount={setNewBuyerAmount}
               onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
               onActiveBuyer={setActiveBuyerId}
-              onVerifyBuyer={(subjectId) =>
-                void beginWorldVerification(subjectId)
-              }
+              onVerifyBuyer={() => {
+                setOperationState("failed");
+                setNotice("Human-buyer verification is outside this AgentKit flow.");
+              }}
               onUpfund={(buyerId) =>
                 void upfundBuyer(buyerId).catch((error) => {
                   setOperationState("failed");
@@ -1617,12 +1436,6 @@ export function YareonApp() {
                   );
                 })
               }
-              onReject={() =>
-                run(
-                  "REJECT_OVER_LIMIT",
-                  "5.5 HBAR rejected: buyer allocation is limited to 5 HBAR.",
-                )
-              }
               onCreate={() =>
                 run(
                   "CREATE_ORDER",
@@ -1638,7 +1451,7 @@ export function YareonApp() {
               }}
             />
           )}
-          {activeTab === "Suppliers" && (
+          {activeTab === "Controls" && controlSection === "Suppliers" && (
             <SuppliersPanel
               vendors={projection.vendors}
               offers={projection.offers}
@@ -1657,7 +1470,7 @@ export function YareonApp() {
               }
             />
           )}
-          {activeTab === "Marketplace" && (
+          {activeTab === "Purchasing" && purchasingSection === "Catalog" && (
             <BuyerPanel
               view="marketplace"
               offers={offers}
@@ -1677,9 +1490,6 @@ export function YareonApp() {
               selectedOfferId={selectedOffer.id}
               orderExists={Boolean(order)}
               orderCompleted={order?.status === "PAYMENT_EXECUTED"}
-              rejected={projection.timeline.some(
-                (event) => event.eventType === "ORDER_REJECTED_BY_POLICY",
-              )}
               onSelect={setChosenOfferId}
               onProgramUpfundAmount={setProgramUpfundAmount}
               onUpfundProgram={() => void upfundProgram()}
@@ -1693,21 +1503,16 @@ export function YareonApp() {
               onNewBuyerAmount={setNewBuyerAmount}
               onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
               onActiveBuyer={setActiveBuyerId}
-              onVerifyBuyer={(subjectId) =>
-                void beginWorldVerification(subjectId)
-              }
+              onVerifyBuyer={() => {
+                setOperationState("failed");
+                setNotice("Human-buyer verification is outside this AgentKit flow.");
+              }}
               onUpfund={(buyerId) => void upfundBuyer(buyerId)}
               onAddBuyer={() => void addBuyerAllocation()}
-              onReject={() =>
-                run(
-                  "REJECT_OVER_LIMIT",
-                  "5.5 HBAR rejected: buyer allocation is limited to 5 HBAR.",
-                )
-              }
               onCreate={() =>
                 run(
                   "CREATE_ORDER",
-                  `${toDisplay(selectedOffer.amount)} HBAR purchase completed with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
+                  `${toDisplay(selectedOffer.amount)} HBAR order created with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
                 )
               }
               onNextPurchase={() => {
@@ -1719,10 +1524,10 @@ export function YareonApp() {
               }}
             />
           )}
-          {activeTab === "Orders" && (
+          {activeTab === "Purchasing" && purchasingSection === "Orders" && (
             <OrdersPanel order={order} vendors={projection.vendors} />
           )}
-          {activeTab === "Advanced" && (
+          {activeTab === "Purchasing" && purchasingSection === "Settlement" && (
             <div className="advanced-settlement-stack">
               <VendorPanel
                 order={order}
@@ -1739,8 +1544,8 @@ export function YareonApp() {
               />
               <ApprovalPanel
                 role="VERIFIER"
-                title="Independent delivery verification"
-                description="Optional legacy control for programs that require delivery evidence."
+                title="Verify the delivery"
+                description="The verifier confirms the submitted evidence before funds can move."
                 connected={Boolean(roleWallets.VERIFIER)}
                 accountId={roleWallets.VERIFIER}
                 order={order}
@@ -1750,7 +1555,7 @@ export function YareonApp() {
               <ApprovalPanel
                 role="FINANCE"
                 title="Treasury release"
-                description="Optional legacy control for programs that require a separate finance signature."
+                description="Finance adds the final wallet signature and releases payment."
                 connected={Boolean(roleWallets.FINANCE)}
                 accountId={roleWallets.FINANCE}
                 order={order}
@@ -1759,7 +1564,7 @@ export function YareonApp() {
               />
             </div>
           )}
-          {activeTab === "Audit" && (
+          {activeTab === "Activity" && (
             <AuditPanel
               events={projection.timeline}
               topicId={readiness?.publicConfig.topicId}
@@ -1774,272 +1579,222 @@ export function YareonApp() {
           )}
         </div>
       </div>
-      {worldRequest && (
-        <IDKitRequestWidget
-          open={worldOpen}
-          onOpenChange={setWorldOpen}
-          app_id={worldRequest.appId as `app_${string}`}
-          action={worldRequest.action}
-          rp_context={worldRequest.rpContext}
-          environment={worldRequest.environment}
-          allow_legacy_proofs={false}
-          preset={proofOfHuman({ signal: worldRequest.signal })}
-          handleVerify={recordWorldVerification}
-          onSuccess={() => setWorldOpen(false)}
-          onError={(errorCode) => {
-            setOperationState("failed");
-            setWorldOpen(false);
-            setNotice((current) =>
-              current === "Verifying the World proof on the server..."
-                ? `World verification did not complete (${errorCode}).`
-                : current,
-            );
-          }}
-        />
-      )}
-
     </main>
   );
 }
 
-function VerifiedPublicProgram({
-  data,
+function SecondaryNav<T extends string>({
+  label,
+  items,
+  active,
+  onChange,
 }: {
-  data: Extract<PublicShowcase, { available: true }>;
+  label: string;
+  items: readonly T[];
+  active: T;
+  onChange: (item: T) => void;
 }) {
-  const program = data.projection.program;
-  const order = Object.values(data.projection.orders).find(
-    (candidate) => candidate.id === data.proof.order.id,
+  return (
+    <nav className="secondary-nav" aria-label={label}>
+      {items.map((item) => (
+        <button
+          type="button"
+          key={item}
+          className={active === item ? "active" : ""}
+          aria-current={active === item ? "page" : undefined}
+          onClick={() => onChange(item)}
+        >
+          {item}
+        </button>
+      ))}
+    </nav>
   );
-  const allocations = Object.values(data.projection.allocations);
-  const allocated = allocations.reduce(
-    (total, item) => total + BigInt(item.totalLimit.atomicAmount),
+}
+
+function ProgramOverviewPanel({
+  program,
+  programFunds,
+  allocations,
+  vendors,
+  order,
+  events,
+  onControls,
+  onPurchasing,
+  onActivity,
+}: {
+  program: NonNullable<ProtocolProjection["program"]>;
+  programFunds: import("@/src/protocol/types").Money;
+  allocations: ProtocolProjection["allocations"];
+  vendors: ProtocolProjection["vendors"];
+  order?: Order;
+  events: import("@/src/protocol/events").RecordedEvent[];
+  onControls: (section: ControlSection) => void;
+  onPurchasing: (section: PurchasingSection) => void;
+  onActivity: () => void;
+}) {
+  const buyerAuthority = Object.values(allocations).reduce(
+    (total, allocation) =>
+      total +
+      BigInt(allocation.totalLimit.atomicAmount) -
+      BigInt(allocation.committed.atomicAmount) -
+      BigInt(allocation.paid.atomicAmount),
     0n,
   );
-  const allocatedMoney = {
-    ...program.budget,
-    atomicAmount: allocated.toString(),
-  };
+  const activeSuppliers = Object.values(vendors).filter(
+    (vendor) => vendor.status === "APPROVED",
+  ).length;
+  const recentEvents = [...events].reverse().slice(0, 4);
+  const needsSettlement =
+    order &&
+    order.status !== "PAYMENT_EXECUTED" &&
+    order.status !== "CANCELLED" &&
+    (program.policy.requireDeliveryEvidence ||
+      program.policy.approvalRequirements.length > 0);
+  const nextAction =
+    BigInt(programFunds.atomicAmount) === 0n
+      ? {
+          eyebrow: "Funding required",
+          title: "Deposit funds before allocating spend",
+          description:
+            "The program treasury is empty. Add HBAR, then assign it to buyers.",
+          label: "Fund the program",
+          onClick: () => onControls("Buyers"),
+        }
+      : !order || order.status === "PAYMENT_EXECUTED"
+        ? {
+            eyebrow: order ? "Ready for another order" : "Ready to purchase",
+            title: "Choose from approved suppliers",
+            description:
+              "The catalog only shows offers that already match this program’s rules.",
+            label: "Open catalog",
+            onClick: () => onPurchasing("Catalog"),
+          }
+        : needsSettlement
+          ? {
+              eyebrow: "Order needs attention",
+              title: "Complete the settlement checks",
+              description:
+                "Review delivery evidence and collect the required wallet approvals.",
+              label: "Continue settlement",
+              onClick: () => onPurchasing("Settlement"),
+            }
+          : {
+              eyebrow: "Order in progress",
+              title: "Track the current order",
+              description:
+                "Supplier terms are locked and the latest status is available now.",
+              label: "View order",
+              onClick: () => onPurchasing("Orders"),
+            };
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand live-brand" aria-label="Yareon">
-          <span className="brand-mark">CH</span>
-          <span>Yareon</span>
-          <small>Verified public program</small>
+    <div className="overview-dashboard">
+      <section className="next-action-rail" aria-label="Recommended next action">
+        <div className="next-action-marker">
+          <ArrowRight size={18} aria-hidden="true" />
         </div>
-        <div className="network-state">
-          <span className="network-dot" />
-          Hedera Testnet · read only
+        <div>
+          <span>{nextAction.eyebrow}</span>
+          <strong>{nextAction.title}</strong>
+          <p>{nextAction.description}</p>
         </div>
-        <a
-          className="reset-button"
-          href={`https://hashscan.io/testnet/topic/${data.topicId}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Inspect on HashScan <ArrowRight size={15} />
-        </a>
-      </header>
-
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow"><ShieldCheck size={15} /> Public ledger proof</div>
-          <h1>Real procurement state.<br /><span>Independently verifiable.</span></h1>
-          <p>
-            This completed program is reconstructed from Hedera Mirror Node.
-            Every displayed event, approval, and settlement reference belongs
-            to the published testnet run.
-          </p>
-        </div>
-        <div className="protocol-flow" aria-label="Verified integration status">
-          <FlowNode icon={<Fingerprint size={18} />} label="World proof" index="01" />
-          <FlowNode icon={<FileCheck2 size={18} />} label="HCS events" index="02" />
-          <FlowNode icon={<WalletCards size={18} />} label="Wallets" index="03" />
-          <FlowNode icon={<Landmark size={18} />} label="Settlement" index="04" />
-        </div>
+        <button type="button" onClick={nextAction.onClick}>
+          {nextAction.label}
+          <ArrowRight size={15} />
+        </button>
       </section>
 
-      <section className="program-strip">
-        <div className="program-title">
-          <span>Published program</span>
-          <h2>{program.name}</h2>
-          <p>{program.description}</p>
-        </div>
-        <Metric label="Program budget" value={`${toDisplay(program.budget)} ${program.budget.asset}`} />
-        <Metric label="Buyer allocations" value={`${toDisplay(allocatedMoney)} ${program.budget.asset}`} />
-        <Metric label="Settlement" value={order ? `${toDisplay(order.amount)} ${order.amount.asset}` : "Verified"} accent />
-        <div className="run-id"><span>Status</span><code>{data.proof.order.status}</code></div>
+      <section className="overview-metrics" aria-label="Program summary">
+        <article className="overview-metric balance">
+          <CircleDollarSign size={18} />
+          <span>Available program funds</span>
+          <strong>{toDisplay(programFunds)} {programFunds.asset}</strong>
+          <button type="button" onClick={() => onControls("Buyers")}>
+            Manage funding
+          </button>
+        </article>
+        <article className="overview-metric">
+          <Users size={18} />
+          <span>Buyer authority available</span>
+          <strong>
+            {toDisplay({
+              ...program.budget,
+              atomicAmount: buyerAuthority.toString(),
+            })} {program.budget.asset}
+          </strong>
+          <button type="button" onClick={() => onControls("Buyers")}>
+            View buyers
+          </button>
+        </article>
+        <article className="overview-metric">
+          <Store size={18} />
+          <span>Approved suppliers</span>
+          <strong>{activeSuppliers}</strong>
+          <button type="button" onClick={() => onControls("Suppliers")}>
+            Manage suppliers
+          </button>
+        </article>
       </section>
 
-      <div className="notice" role="status">
-        <span>Mirror Node confirms the published program and settlement evidence.</span>
-        <span className="mirror-status"><Check size={14} /> Public projection current</span>
+      <div className="overview-detail-grid">
+        <section className="overview-card">
+          <div className="overview-card-heading">
+            <div>
+              <span>Active rules</span>
+              <h2>Purchase policy</h2>
+            </div>
+            <button type="button" onClick={() => onControls("Policy")}>
+              Edit controls
+            </button>
+          </div>
+          <dl className="overview-policy-list">
+            <div>
+              <dt>Per-order limit</dt>
+              <dd>{toDisplay(program.policy.maxOrderAmount)} {program.budget.asset}</dd>
+            </div>
+            <div>
+              <dt>Delivery evidence</dt>
+              <dd>{program.policy.requireDeliveryEvidence ? "Required" : "Not required"}</dd>
+            </div>
+            <div>
+              <dt>Payment approvals</dt>
+              <dd>
+                {program.policy.approvalRequirements.length
+                  ? `${program.policy.approvalRequirements.length} required`
+                  : "Automatic"}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="overview-card">
+          <div className="overview-card-heading">
+            <div>
+              <span>Ledger history</span>
+              <h2>Recent activity</h2>
+            </div>
+            <button type="button" onClick={onActivity}>
+              View all
+            </button>
+          </div>
+          <ol className="recent-activity">
+            {recentEvents.map((event) => (
+              <li key={event.eventId}>
+                <span
+                  className={`activity-mark ${eventRejected(event) ? "rejected" : ""}`}
+                >
+                  {eventRejected(event) ? <X size={12} /> : <Check size={12} />}
+                </span>
+                <div>
+                  <strong>{eventLabels[event.eventType] ?? event.eventType}</strong>
+                  <small>{event.actor.role.replaceAll("_", " ").toLowerCase()}</small>
+                </div>
+                <time>{formatTime(event.ledgerReference?.consensusTimestamp)}</time>
+              </li>
+            ))}
+          </ol>
+        </section>
       </div>
-
-      <div className="audit-links public-account-links">
-        <span>Verified Hedera accounts</span>
-        {Object.entries(data.proof.accounts).map(([role, accountId]) =>
-          accountId ? (
-            <a
-              href={`https://hashscan.io/testnet/account/${accountId}`}
-              target="_blank"
-              rel="noreferrer"
-              key={role}
-            >
-              {role} ↗
-            </a>
-          ) : null,
-        )}
-      </div>
-
-      <section className="workspace">
-        <nav className="tabs" aria-label="Public proof sections">
-          <button className="active">Audit <span className="tab-count">{data.projection.timeline.length}</span></button>
-        </nav>
-        <div className="workspace-body">
-          <AuditPanel
-            events={data.projection.timeline}
-            topicId={data.topicId}
-            order={order}
-            agentIdentity={Object.values(data.projection.agentIdentities)[0]}
-            agentAttestation={Object.values(data.projection.humanBacking)[0]}
-            delegation={Object.values(data.projection.agentDelegations)[0]}
-          />
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function LiveRunGuide({
-  projection,
-  order,
-  onNavigate,
-}: {
-  projection: import("@/src/protocol/reducer").ProtocolProjection;
-  order?: Order;
-  onNavigate: (tab: Tab) => void;
-}) {
-  const commonComplete = [
-    Boolean(
-      projection.program &&
-        projection.timeline.some(
-          (event) =>
-            event.eventType === "PROGRAM_CREATED" &&
-            typeof event.ledgerReference?.sequenceNumber === "number",
-        ),
-    ),
-    projection.agentAuthorizationDecisions.some(
-      (decision) => decision.code === "HUMAN_BACKING_REQUIRED",
-    ),
-    Object.keys(projection.humanBacking).length > 0,
-    projection.agentAuthorizationDecisions.some(
-      (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
-    ),
-    Boolean(order),
-  ];
-  const commonSteps: Array<{ label: string; tab: Tab }> = [
-    { label: "Program on HCS", tab: "Audit" },
-    { label: "Backing rejection", tab: "Agent" },
-    { label: "World proof", tab: "Agent" },
-    { label: "Limit rejection", tab: "Agent" },
-    { label: "Policy-authorized order", tab: "Marketplace" },
-  ];
-  const advanced =
-    Boolean(projection.program?.policy.requireDeliveryEvidence) ||
-    Boolean(projection.program?.policy.approvalRequirements.length);
-  const complete = advanced
-    ? [
-        ...commonComplete,
-        Boolean(order?.scheduleId),
-        Boolean(order?.evidence),
-        Boolean(
-          order?.approvals.some(
-            (approval) => approval.role === "DELIVERY_VERIFIER",
-          ),
-        ),
-        Boolean(order?.approvals.some((approval) => approval.role === "FINANCE")),
-        order?.status === "PAYMENT_EXECUTED",
-      ]
-    : [...commonComplete, order?.status === "PAYMENT_EXECUTED"];
-  const steps: Array<{ label: string; tab: Tab }> = advanced
-    ? [
-        ...commonSteps,
-        { label: "Schedule created", tab: "Orders" },
-        { label: "Evidence hashed", tab: "Advanced" },
-        { label: "Verifier wallet", tab: "Advanced" },
-        { label: "Finance wallet", tab: "Advanced" },
-        { label: "Mirror proof", tab: "Audit" },
-      ]
-    : [
-        ...commonSteps,
-        { label: "Payment executed", tab: "Orders" },
-      ];
-  const current = complete.findIndex((value) => !value);
-
-  return (
-    <section className="live-run-guide" aria-label="Guided live integration run">
-      <div className="live-run-guide-heading">
-        <span>Resumable live sequence</span>
-        <strong>
-          {complete.filter(Boolean).length} / {steps.length} ledger-backed steps
-        </strong>
-      </div>
-      <ol>
-        {steps.map((step, index) => {
-          const state = complete[index]
-            ? "complete"
-            : index === current
-              ? "current"
-              : "locked";
-          return (
-            <li className={state} key={step.label}>
-              <button onClick={() => onNavigate(step.tab)}>
-                <span>{complete[index] ? <Check size={13} /> : index + 1}</span>
-                {step.label}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
-}
-
-function FlowNode({
-  icon,
-  label,
-  index,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  index: string;
-}) {
-  return (
-    <div className="flow-node">
-      <span className="flow-index">{index}</span>
-      <span className="flow-icon">{icon}</span>
-      <strong>{label}</strong>
-      {index !== "04" && <ArrowRight className="flow-arrow" size={16} />}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className={`metric ${accent ? "accent" : ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -2048,57 +1803,55 @@ function AgentPanel({
   session,
   attestation,
   delegation,
-  decisions,
-  offerAmount,
-  orderExists,
   liveReady,
   liveIssues,
   upfundAmount,
   onUpfundAmount,
   onUpfund,
-  onUnverified,
-  onVerify,
-  onOverLimit,
-  onValid,
 }: {
   session: ProgramSession;
   attestation?: import("@/src/protocol/types").HumanBackingAttestation;
   delegation?: import("@/src/protocol/types").AgentDelegation;
-  decisions: import("@/src/protocol/types").AgentAuthorizationDecision[];
-  offerAmount: import("@/src/protocol/types").Money;
-  orderExists: boolean;
   liveReady: boolean;
   liveIssues: string[];
   upfundAmount: string;
   onUpfundAmount: (value: string) => void;
   onUpfund: () => void;
-  onUnverified: () => void;
-  onVerify: () => void;
-  onOverLimit: () => void;
-  onValid: () => void;
 }) {
-  const offerAmountLabel = `${toDisplay(offerAmount)} ${offerAmount.asset}`;
-  const missingHumanRejected = decisions.some(
-    (decision) => decision.code === "HUMAN_BACKING_REQUIRED",
-  );
-  const limitRejected = decisions.some(
-    (decision) => decision.code === "AGENT_ORDER_LIMIT_EXCEEDED",
-  );
-  const verified = Boolean(attestation);
-
+  const verified = attestation?.scheme === "world-agentkit";
   return (
-    <div className="agent-layout">
-      <div className="agent-intro">
-        <PanelHeading
-          kicker="Delegated agent authority"
-          title="Prove human backing before execution"
-          description="World proof and organizational delegation are independent checks. ENS portability is intentionally deferred to the next iteration."
-        />
-        <div className="agent-identity-card">
+    <div className="agent-management">
+      <PanelHeading
+        kicker="Delegated automation"
+        title="Agent authority"
+        description="Review who backs this agent and the exact spending boundary it must follow."
+      />
+
+      <div className={`agent-status-banner ${verified ? "verified" : "attention"}`}>
+        <span className="agent-status-icon">
+          {verified ? <Check size={17} /> : <Fingerprint size={17} />}
+        </span>
+        <div>
+          <strong>
+            {verified ? "Human backing verified" : "Human backing required"}
+          </strong>
+          <p>
+            {verified
+              ? "World AgentKit has linked this agent to a unique human."
+              : "Verify the agent before it can exercise delegated spending authority."}
+          </p>
+        </div>
+        <span className="agent-status-label">
+          {verified ? "Verified" : "Needs attention"}
+        </span>
+      </div>
+
+      <div className="agent-management-grid">
+        <section className="agent-identity-card">
           <div className="agent-name">
             <Fingerprint size={21} />
             <div>
-              <span>Organization-issued agent</span>
+              <span>Agent identity</span>
               <strong>{session.agentId}</strong>
             </div>
           </div>
@@ -2116,118 +1869,86 @@ function AgentPanel({
               <dd>{delegation?.principalId ?? "Not available"}</dd>
             </div>
             <div>
-              <dt>World verification</dt>
+              <dt>Execution account</dt>
+              <dd>{session.agentExecutionAccountId}</dd>
+            </div>
+            <div>
+              <dt>World agent address</dt>
+              <dd>{delegation?.worldAgentAddress ?? "Not configured"}</dd>
+            </div>
+            <div>
+              <dt>AgentBook</dt>
+              <dd>{verified ? "Verified" : "Not verified"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="agent-delegation-card">
+          <div className="overview-card-heading">
+            <div>
+              <span>Spending boundary</span>
+              <h2>Delegation</h2>
+            </div>
+            <span className="agent-status-label">
+              {delegation ? "Active" : "Not configured"}
+            </span>
+          </div>
+          <dl>
+            <div>
+              <dt>Per-order limit</dt>
               <dd>
-                {delegation?.humanVerificationRequired === false
-                  ? "Not required"
-                  : "Required"}
+                {delegation
+                  ? `${toDisplay(delegation.maxPerOrder)} ${delegation.maxPerOrder.asset}`
+                  : "Not available"}
               </dd>
             </div>
             <div>
-              <dt>Identity boundary</dt>
-              <dd>Organization record · ENS deferred</dd>
+              <dt>Total authority</dt>
+              <dd>
+                {delegation
+                  ? `${toDisplay(delegation.maxTotalSpend)} ${delegation.maxTotalSpend.asset}`
+                  : "Not available"}
+              </dd>
+            </div>
+            <div>
+              <dt>Categories</dt>
+              <dd>{delegation?.allowedCategories.join(", ") ?? "None"}</dd>
+            </div>
+            <div>
+              <dt>Valid until</dt>
+              <dd>
+                {delegation
+                  ? new Date(delegation.validUntil).toLocaleDateString()
+                  : "Not available"}
+              </dd>
             </div>
           </dl>
-          <div className="allocation-manager-new">
-            <input
-              inputMode="decimal"
-              value={upfundAmount}
-              onChange={(event) => onUpfundAmount(event.target.value)}
-              placeholder={`Add ${delegation?.maxTotalSpend.asset ?? "HBAR"}`}
-            />
-            <button onClick={onUpfund}>Append agent points</button>
+          <div className="agent-funding-form">
+            <label htmlFor="agent-budget-increase">
+              Increase total authority
+            </label>
+            <div>
+              <input
+                id="agent-budget-increase"
+                inputMode="decimal"
+                value={upfundAmount}
+                onChange={(event) => onUpfundAmount(event.target.value)}
+                placeholder={`Amount in ${delegation?.maxTotalSpend.asset ?? "HBAR"}`}
+              />
+              <button type="button" onClick={onUpfund}>
+                Add authority
+              </button>
+            </div>
           </div>
-        </div>
-        {!liveReady && (
-          <p className="identity-readiness">
-            World production configuration is incomplete. {liveIssues[0] ?? ""}
-          </p>
-        )}
+        </section>
       </div>
 
-      <div className="authority-sequence">
-        <AuthorityStep
-          number="1"
-          title="Reject unverified authority"
-          description={`Attempt the selected ${offerAmountLabel} order before World verification.`}
-          state={missingHumanRejected ? "complete" : "ready"}
-          actionLabel={
-            missingHumanRejected ? "Rejection audited" : "Test without human backing"
-          }
-          onAction={onUnverified}
-          disabled={missingHumanRejected}
-          destructive
-        />
-        <AuthorityStep
-          number="2"
-          title="Verify human backing"
-          description="Use World ID to prove a unique human stands behind this agent."
-          state={verified ? "complete" : missingHumanRejected ? "ready" : "locked"}
-          actionLabel={verified ? "Human verified" : "Verify with World"}
-          onAction={onVerify}
-          disabled={!missingHumanRejected || verified}
-        />
-        <AuthorityStep
-          number="3"
-          title="Enforce the delegation"
-          description={`The active delegation permits ${delegation ? toDisplay(delegation.maxPerOrder) : "4"} HBAR per order.`}
-          state={limitRejected ? "complete" : verified ? "ready" : "locked"}
-          actionLabel={limitRejected ? "Limit rejection audited" : "Test 4.2 HBAR request"}
-          onAction={onOverLimit}
-          disabled={!verified || limitRejected}
-          destructive
-        />
-        <AuthorityStep
-          number="4"
-          title="Create the valid order"
-          description={`Authorize the selected ${offerAmountLabel} offer through the same protocol service.`}
-          state={orderExists ? "complete" : limitRejected ? "ready" : "locked"}
-          actionLabel={
-            orderExists ? "Order created" : `Authorize ${offerAmountLabel} order`
-          }
-          onAction={onValid}
-          disabled={!limitRejected || orderExists}
-        />
-      </div>
+      {!liveReady && (
+        <p className="identity-readiness">
+          Agent verification is not fully configured. {liveIssues[0] ?? ""}
+        </p>
+      )}
     </div>
-  );
-}
-
-function AuthorityStep({
-  number,
-  title,
-  description,
-  state,
-  actionLabel,
-  onAction,
-  disabled,
-  destructive = false,
-}: {
-  number: string;
-  title: string;
-  description: string;
-  state: "locked" | "ready" | "complete";
-  actionLabel: string;
-  onAction: () => void;
-  disabled: boolean;
-  destructive?: boolean;
-}) {
-  return (
-    <section className={`authority-step ${state}`}>
-      <span className="authority-number">{number}</span>
-      <div>
-        <h4>{title}</h4>
-        <p>{description}</p>
-      </div>
-      <button
-        className={destructive ? "danger-action" : "primary-action"}
-        onClick={onAction}
-        disabled={disabled}
-      >
-        {state === "complete" ? <Check size={16} /> : <ArrowRight size={16} />}
-        {actionLabel}
-      </button>
-    </section>
   );
 }
 
@@ -2308,6 +2029,7 @@ function SuppliersPanel({
     settlementAccountId: "",
   });
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const activeSupplierCount = Object.values(vendors).filter(
     (vendor) => vendor.status === "APPROVED",
   ).length;
@@ -2320,6 +2042,7 @@ function SuppliersPanel({
       />
       <div className="supplier-add-row">
         <input
+          aria-label="Supplier name"
           value={draft.name}
           placeholder="Supplier name"
           onChange={(event) =>
@@ -2327,6 +2050,7 @@ function SuppliersPanel({
           }
         />
         <input
+          aria-label="Offer title"
           value={draft.title}
           placeholder="Offer title"
           onChange={(event) =>
@@ -2334,6 +2058,7 @@ function SuppliersPanel({
           }
         />
         <input
+          aria-label={`Price in ${asset}`}
           value={draft.amount}
           inputMode="decimal"
           placeholder={`Price (${asset})`}
@@ -2342,6 +2067,7 @@ function SuppliersPanel({
           }
         />
         <input
+          aria-label="Settlement account"
           value={draft.settlementAccountId}
           placeholder="Settlement account (0.0.x)"
           onChange={(event) =>
@@ -2355,6 +2081,7 @@ function SuppliersPanel({
           className="primary-action"
           disabled={adding}
           onClick={() => {
+            setError(null);
             setAdding(true);
             void onAdd(draft)
               .then(() =>
@@ -2365,13 +2092,24 @@ function SuppliersPanel({
                   settlementAccountId: "",
                 }),
               )
-              .catch(() => undefined)
+              .catch((cause) =>
+                setError(
+                  cause instanceof Error
+                    ? cause.message
+                    : "The supplier could not be added.",
+                ),
+              )
               .finally(() => setAdding(false));
           }}
         >
           {adding ? "Adding…" : "Add supplier"}
         </button>
       </div>
+      {error && (
+        <p className="supplier-form-error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="supplier-registry">
         {Object.values(vendors).map((vendor) => {
           const vendorOffers = Object.values(offers).filter(
@@ -2411,7 +2149,7 @@ function SuppliersPanel({
                   <X size={15} />
                   {activeSupplierCount === 1
                     ? "Last active supplier"
-                    : "Remove from future purchases"}
+                    : "Remove supplier"}
                 </button>
               )}
             </article>
@@ -2434,35 +2172,67 @@ function OrdersPanel({
   }
   const supplierName =
     order.supplierName ?? vendors[order.vendorId]?.name ?? order.vendorId;
+  const journey = [
+    { status: "CREATED", label: "Created" },
+    { status: "VENDOR_ACCEPTED", label: "Accepted" },
+    { status: "PAYMENT_SCHEDULED", label: "Payment prepared" },
+    { status: "DELIVERY_SUBMITTED", label: "Delivery submitted" },
+    { status: "DELIVERY_APPROVED", label: "Delivery approved" },
+    { status: "PAYMENT_EXECUTED", label: "Paid" },
+  ] as const;
+  const currentStep = journey.findIndex((item) => item.status === order.status);
   return (
-    <div className="panel-grid">
-      <div>
-        <PanelHeading
-          kicker="Purchase record"
-          title={order.id}
-          description="Supplier terms are copied onto the order when it is created."
-        />
-        <div className="order-card">
-          <span>Supplier</span>
-          <strong>{supplierName}</strong>
-          <code>{order.supplierSettlementAccountId ?? vendors[order.vendorId]?.settlementAccountId}</code>
-          <div className="order-status">{order.status.replaceAll("_", " ")}</div>
+    <div className="orders-view">
+      <div className="panel-grid">
+        <div>
+          <PanelHeading
+            kicker="Current purchase"
+            title="Order details"
+            description="The supplier, price, and settlement account were locked when this order was created."
+          />
+          <div className="order-card">
+            <span>Supplier</span>
+            <strong>{supplierName}</strong>
+            <code>{order.supplierSettlementAccountId ?? vendors[order.vendorId]?.settlementAccountId}</code>
+            <div className="order-status">{order.status.replaceAll("_", " ")}</div>
+          </div>
+          <div className="order-reference">
+            <span>Order ID</span>
+            <code>{order.id}</code>
+          </div>
+        </div>
+        <div className="approval-card">
+          <div className="approval-top">
+            <span>Settlement</span>
+            <span className={order.status === "PAYMENT_EXECUTED" ? "ready" : "waiting"}>
+              {order.status === "PAYMENT_EXECUTED" ? "Complete" : "In progress"}
+            </span>
+          </div>
+          <dl>
+            <div><dt>Amount</dt><dd>{toDisplay(order.amount)} {order.amount.asset}</dd></div>
+            <div><dt>Category</dt><dd>{order.category}</dd></div>
+            <div><dt>Schedule</dt><dd>{order.scheduleId ?? "Not created"}</dd></div>
+            <div><dt>Payment</dt><dd>{order.paymentTransactionId ?? "Pending"}</dd></div>
+          </dl>
         </div>
       </div>
-      <div className="approval-card">
-        <div className="approval-top">
-          <span>Settlement</span>
-          <span className={order.status === "PAYMENT_EXECUTED" ? "ready" : "waiting"}>
-            {order.status === "PAYMENT_EXECUTED" ? "Complete" : "In progress"}
-          </span>
-        </div>
-        <dl>
-          <div><dt>Amount</dt><dd>{toDisplay(order.amount)} {order.amount.asset}</dd></div>
-          <div><dt>Category</dt><dd>{order.category}</dd></div>
-          <div><dt>Schedule</dt><dd>{order.scheduleId ?? "Not created"}</dd></div>
-          <div><dt>Payment</dt><dd>{order.paymentTransactionId ?? "Pending"}</dd></div>
-        </dl>
-      </div>
+      <section className="order-journey" aria-label="Order progress">
+        {journey.map((item, index) => (
+          <div
+            key={item.status}
+            className={
+              index < currentStep
+                ? "complete"
+                : index === currentStep
+                  ? "current"
+                  : ""
+            }
+          >
+            <span>{index < currentStep ? <Check size={12} /> : index + 1}</span>
+            <strong>{item.label}</strong>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
@@ -2486,7 +2256,6 @@ function BuyerPanel({
   selectedOfferId,
   orderExists,
   orderCompleted,
-  rejected,
   onSelect,
   onProgramUpfundAmount,
   onUpfundProgram,
@@ -2498,7 +2267,6 @@ function BuyerPanel({
   onVerifyBuyer,
   onUpfund,
   onAddBuyer,
-  onReject,
   onCreate,
   onNextPurchase,
 }: {
@@ -2523,7 +2291,6 @@ function BuyerPanel({
   selectedOfferId: string;
   orderExists: boolean;
   orderCompleted: boolean;
-  rejected: boolean;
   onSelect: (offerId: string) => void;
   onProgramUpfundAmount: (value: string) => void;
   onUpfundProgram: () => void;
@@ -2535,7 +2302,6 @@ function BuyerPanel({
   onVerifyBuyer: (buyerId: string) => void;
   onUpfund: (buyerId: string) => void;
   onAddBuyer: () => void;
-  onReject: () => void;
   onCreate: () => void;
   onNextPurchase: () => void;
 }) {
@@ -2618,39 +2384,29 @@ function BuyerPanel({
       : "";
 
   return (
-    <div className="marketplace-layout">
-      <aside className="buyer-brief">
+    <div className={`marketplace-layout ${view}`}>
+      {view === "buyers" && <section className="buyer-brief">
         <PanelHeading
-          kicker={view === "buyers" ? "Spending authority" : "Buyer marketplace"}
-          title={view === "buyers" ? "Fund buyers" : "Shop approved compute"}
-          description={
-            view === "buyers"
-              ? "Members may use their allocation freely as long as each purchase stays within policy."
-              : "Every visible listing has already passed the program’s supplier and category rules."
-          }
+          kicker="Spending authority"
+          title="Buyer allocations"
+          description="Give each member or team a clear budget. Purchases still have to pass the program policy."
         />
-        {view === "marketplace" && <div className="policy-card">
-          <div><span>Category</span><strong>GPU_COMPUTE</strong></div>
-          <div><span>Maximum order</span><strong>5 HBAR</strong></div>
-          <div><span>Delivery confirmation</span><strong>{policy.requireDeliveryEvidence ? "Required" : "Not required"}</strong></div>
-          <div><span>Extra approval</span><strong>{policy.approvalRequirements.length ? "Required" : "Not required"}</strong></div>
-        </div>}
-        {view === "buyers" && <div className="allocation-manager">
+        <div className="allocation-manager">
           <div className="program-funding-row">
             <div>
-              <span className="section-label">Unspent program funds</span>
+              <span className="section-label">Program wallet</span>
               <strong>{toDisplay(programFunds)} {programFunds.asset}</strong>
               <small>
                 {treasuryAccountId
-                  ? `Wallet deposits go directly to treasury ${shortHederaAccount(treasuryAccountId)}.`
+                  ? `Treasury ${shortHederaAccount(treasuryAccountId)}`
                   : "Configure a treasury before depositing funds."}
               </small>
             </div>
             <label>
-              <span className="sr-only">Amount to append to this program</span>
+              <span>Deposit amount</span>
               <input
                 inputMode="decimal"
-                placeholder={`Deposit ${asset}`}
+                placeholder={`0 ${asset}`}
                 value={programUpfundAmount}
                 onChange={(event) => onProgramUpfundAmount(event.target.value)}
               />
@@ -2659,11 +2415,11 @@ function BuyerPanel({
               onClick={onUpfundProgram}
               disabled={!treasuryAccountId}
             >
-              Deposit HBAR
+              Deposit funds
             </button>
           </div>
           <div className="section-label allocation-section-label">
-            Live buyer allocations
+            Current buyers
           </div>
           {Object.values(allocations).map((item) => (
             <div className="allocation-manager-row" key={item.buyerId}>
@@ -2673,23 +2429,23 @@ function BuyerPanel({
                 <small>
                   {item.humanVerificationRequired
                     ? humanBacking[item.buyerId]
-                      ? "World verified"
-                      : "World verification required"
-                    : "World verification not required"}
+                      ? "Identity verified"
+                      : "Human verification required"
+                    : "Human verification not required"}
                 </small>
               </div>
               <label>
-                <span className="sr-only">Amount to append for {item.buyerId}</span>
+                <span className="sr-only">Increase allocation for {item.buyerId}</span>
                 <input
                   inputMode="decimal"
-                  placeholder={`Add ${asset}`}
+                  placeholder={`Amount in ${asset}`}
                   value={allocationAmounts[item.buyerId] ?? ""}
                   onChange={(event) =>
                     onAllocationAmount(item.buyerId, event.target.value)
                   }
                 />
               </label>
-              <button onClick={() => onUpfund(item.buyerId)}>Append</button>
+              <button onClick={() => onUpfund(item.buyerId)}>Add funds</button>
               {item.humanVerificationRequired &&
                 !humanBacking[item.buyerId] && (
                   <button onClick={() => onVerifyBuyer(item.buyerId)}>
@@ -2699,17 +2455,23 @@ function BuyerPanel({
             </div>
           ))}
           <div className="allocation-manager-new">
-            <input
-              value={newBuyerId}
-              onChange={(event) => onNewBuyerId(event.target.value)}
-              placeholder="New buyer ID"
-            />
-            <input
-              inputMode="decimal"
-              value={newBuyerAmount}
-              onChange={(event) => onNewBuyerAmount(event.target.value)}
-              placeholder={`Initial ${asset}`}
-            />
+            <label>
+              <span>Buyer or team ID</span>
+              <input
+                value={newBuyerId}
+                onChange={(event) => onNewBuyerId(event.target.value)}
+                placeholder="e.g. robotics_lab"
+              />
+            </label>
+            <label>
+              <span>Initial allocation</span>
+              <input
+                inputMode="decimal"
+                value={newBuyerAmount}
+                onChange={(event) => onNewBuyerAmount(event.target.value)}
+                placeholder={`0 ${asset}`}
+              />
+            </label>
             <label className="verification-requirement">
               <input
                 type="checkbox"
@@ -2718,18 +2480,53 @@ function BuyerPanel({
                   onNewBuyerRequiresVerification(event.target.checked)
                 }
               />
-              Require World human verification
+              Require human verification
             </label>
             <button onClick={onAddBuyer}>Add buyer</button>
           </div>
-        </div>}
-        {view === "marketplace" && <button className="danger-action" onClick={onReject} disabled={rejected}>
-          {rejected ? <Check size={17} /> : <X size={17} />}
-          {rejected ? "Rejection recorded" : "Test 5.5 HBAR request"}
-        </button>}
-      </aside>
+        </div>
+      </section>}
 
       {view === "marketplace" && <div className="marketplace">
+        <div className="purchase-context-bar">
+          <div>
+            <span>Approved catalog</span>
+            <strong>Choose an offer within policy</strong>
+          </div>
+          <label className="marketplace-buyer">
+            <span>Purchasing as</span>
+            <select
+              value={activeBuyerId}
+              onChange={(event) => onActiveBuyer(event.target.value)}
+              disabled={Boolean(orderExists)}
+            >
+              {Object.values(allocations).map((allocation) => (
+                <option key={allocation.buyerId} value={allocation.buyerId}>
+                  {allocation.buyerId} · {toDisplay({
+                    ...allocation.totalLimit,
+                    atomicAmount: (
+                      BigInt(allocation.totalLimit.atomicAmount) -
+                      BigInt(allocation.committed.atomicAmount) -
+                      BigInt(allocation.paid.atomicAmount)
+                    ).toString(),
+                  })} {allocation.totalLimit.asset} available
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="purchase-policy-fact">
+            <span>Per-order limit</span>
+            <strong>{toDisplay(policy.maxOrderAmount)} {policy.maxOrderAmount.asset}</strong>
+          </div>
+          <div className="purchase-policy-fact">
+            <span>Settlement</span>
+            <strong>
+              {policy.approvalRequirements.length
+                ? `${policy.approvalRequirements.length} approvals`
+                : "Automatic"}
+            </strong>
+          </div>
+        </div>
         <div className="marketplace-header">
           <div>
             <span className="section-label">Approved marketplace</span>
@@ -2761,28 +2558,6 @@ function BuyerPanel({
             </label>
           </div>
         </div>
-
-        <label className="marketplace-buyer">
-          <span>Purchasing as</span>
-          <select
-            value={activeBuyerId}
-            onChange={(event) => onActiveBuyer(event.target.value)}
-            disabled={Boolean(orderExists)}
-          >
-            {Object.values(allocations).map((allocation) => (
-              <option key={allocation.buyerId} value={allocation.buyerId}>
-                {allocation.buyerId} · {toDisplay({
-                  ...allocation.totalLimit,
-                  atomicAmount: (
-                    BigInt(allocation.totalLimit.atomicAmount) -
-                    BigInt(allocation.committed.atomicAmount) -
-                    BigInt(allocation.paid.atomicAmount)
-                  ).toString(),
-                })} {allocation.totalLimit.asset} available
-              </option>
-            ))}
-          </select>
-        </label>
 
         <div className="filter-row" aria-label="Delivery filters">
           <button
@@ -2829,7 +2604,7 @@ function BuyerPanel({
                 </div>
                 <div className="product-content">
                   <div className="product-vendor">{vendorName}</div>
-                  <h4>A100 research cluster</h4>
+                  <h4>{offer.title ?? "A100 research cluster"}</h4>
                   <p>{meta.configuration} with {meta.memory}</p>
                   <div className="product-facts">
                     {offer.deliveryDays !== undefined && (
@@ -2911,7 +2686,7 @@ function BuyerPanel({
               ? "Start another purchase"
               : orderExists
                 ? "Purchase in progress"
-                : "Buy now"}
+                : "Create order"}
             {!orderExists && <ArrowRight size={17} />}
           </button>
         </div>
@@ -2944,12 +2719,12 @@ function VendorPanel({
     <div className="panel-grid">
       <div>
         <PanelHeading
-          kicker="Vendor workspace"
-          title="Fulfil against a locked order"
-          description="The amount and settlement destination cannot change after acceptance."
+          kicker="Order settlement"
+          title="Delivery evidence"
+          description="Review the locked order and submit evidence without exposing the original file."
         />
         {!typedOrder ? (
-          <EmptyState text="No active order yet. Create one from the Buyer tab." />
+          <EmptyState text="No active order yet. Create one from the Catalog tab." />
         ) : (
           <div className="order-card">
             <span>Active order</span>
@@ -3106,9 +2881,9 @@ function AuditPanel({
   return (
     <div>
       <PanelHeading
-        kicker="Mirror Node projection"
-        title="One lifecycle, independently reconstructable"
-        description="Application state is derived from the ordered protocol event stream. Rejections remain as visible as successful actions."
+        kicker="Hedera consensus log"
+        title="Ledger activity"
+        description="Every accepted and rejected action appears here in the order confirmed by Hedera."
       />
       <div className="audit-links">
         <span>Source: Hedera Mirror Node</span>
@@ -3153,8 +2928,8 @@ function AuditPanel({
             <code>{agentIdentity?.resolutionHash ?? "Not required for this run"}</code>
           </div>
           <div>
-            <span>Human backing</span>
-            <strong>{agentAttestation ? "World verified" : "Not verified"}</strong>
+            <span>AgentKit backing</span>
+            <strong>{agentAttestation?.scheme === "world-agentkit" ? "AgentBook verified" : "Not verified"}</strong>
             <code>
               {agentAttestation?.verificationReference ?? "No verification reference"}
             </code>

@@ -133,6 +133,8 @@ export type HumanBackingAttestation = {
   subjectReference: string;
   verifiedAt: string;
   expiresAt?: string;
+  agentAddress?: string;
+  verificationMethod?: string;
 };
 
 export type AgentDelegation = {
@@ -140,6 +142,7 @@ export type AgentDelegation = {
   organizationId: string;
   principalId: string;
   agentId: string;
+  worldAgentAddress?: string;
   humanVerificationRequired?: boolean;
   allowedPrograms: string[];
   allowedActions: string[];
@@ -156,14 +159,6 @@ export type AgentAuthorizationDecision = PolicyDecision & {
   agentId: string;
   action: string;
   delegationId?: string;
-};
-
-export type HumanBackingRequest = {
-  subjectReference: string;
-  action: string;
-  environment: string;
-  signal: string;
-  proof: unknown;
 };
 
 export type Actor = {

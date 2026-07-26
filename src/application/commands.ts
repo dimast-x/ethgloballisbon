@@ -36,6 +36,10 @@ export type ProtocolCommand =
       attestation: HumanBackingAttestation;
     })
   | (CommandEnvelope & {
+      type: "RECORD_AGENTKIT_ACCESS";
+      attestation: HumanBackingAttestation;
+    })
+  | (CommandEnvelope & {
       type: "AUTHORIZE_AGENT_ACTION";
       action: string;
       category: string;

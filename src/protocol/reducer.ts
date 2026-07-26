@@ -239,7 +239,8 @@ export function applyProtocolEvent(
       next.agentIdentities[identity.agentId] = identity;
       break;
     }
-    case "AGENT_HUMAN_BACKING_VERIFIED": {
+    case "AGENT_HUMAN_BACKING_VERIFIED":
+    case "AGENTKIT_ACCESS_VERIFIED": {
       const attestation = (
         event.data as { attestation: HumanBackingAttestation }
       ).attestation;

@@ -61,7 +61,7 @@ test("server-renders the Yareon landing page and metadata", async () => {
   assert.match(html, /\/og\.png/);
   assert.doesNotMatch(
     html,
-    /HEDERA_OPERATOR_KEY|WORLD_RP_SIGNING_KEY/,
+    /HEDERA_OPERATOR_KEY|WORLD_AGENT_PRIVATE_KEY/,
   );
 });
 
@@ -76,13 +76,12 @@ test("keeps private Hedera and identity configuration out of browser assets", as
   const browserCode = contents.join("\n");
   assert.doesNotMatch(browserCode, /HEDERA_OPERATOR_KEY/);
   assert.doesNotMatch(browserCode, /operatorPrivateKey/);
-  assert.doesNotMatch(browserCode, /WORLD_RP_SIGNING_KEY/);
-  assert.doesNotMatch(browserCode, /WORLD_RP_ID/);
+  assert.doesNotMatch(browserCode, /WORLD_AGENT_PRIVATE_KEY/);
   assert.doesNotMatch(browserCode, /ENS_RPC_URL/);
   assert.doesNotMatch(browserCode, /YAREON_AUTH_SECRET/);
 });
 
-test("ships the resumable direct-wallet live flow and explorer proof links", async () => {
+test("ships the authenticated AgentKit flow and transaction proof links", async () => {
   const assetRoot = new URL("../.next/static/", import.meta.url);
   const javascriptAssets = (await filesRecursively(assetRoot)).filter((file) =>
     file.pathname.endsWith(".js"),
@@ -91,9 +90,10 @@ test("ships the resumable direct-wallet live flow and explorer proof links", asy
     javascriptAssets.map((file) => readFile(file, "utf8")),
   );
   const browserCode = contents.join("\n");
-  assert.match(browserCode, /Guided live integration run/);
-  assert.match(browserCode, /Test without human backing/);
-  assert.match(browserCode, /Test 4\.2 HBAR request/);
+  assert.match(browserCode, /World AgentKit execution gate/);
+  assert.match(browserCode, /Test unsigned bot/);
+  assert.match(browserCode, /Run signed over-limit intent/);
+  assert.match(browserCode, /\/api\/agents\/agentkit\/run/);
   assert.match(browserCode, /Hedera WalletConnect/);
   assert.match(browserCode, /Authenticating wallet/);
   assert.match(browserCode, /Open control panel/);
@@ -104,7 +104,6 @@ test("ships the resumable direct-wallet live flow and explorer proof links", asy
   assert.match(browserCode, /hashscan\.io\/testnet\/topic/);
   assert.match(browserCode, /hashscan\.io\/testnet\/schedule/);
   assert.match(browserCode, /hashscan\.io\/testnet\/transaction/);
-  assert.match(browserCode, /hashscan\.io\/testnet\/account/);
   assert.doesNotMatch(
     browserCode,
     /sandbox simulation|guest workspace|D1 sandbox|Connect MetaMask/i,

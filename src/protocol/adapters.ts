@@ -1,8 +1,6 @@
 import type { ProtocolEvent, RecordedEvent } from "./events";
 import type {
   Approval,
-  HumanBackingAttestation,
-  HumanBackingRequest,
   LedgerReference,
   PaymentStatus,
   PublicIdentity,
@@ -24,8 +22,4 @@ export interface PaymentScheduler {
 
 export interface PublicIdentityResolver {
   resolve(identity: PublicIdentity): Promise<ResolvedAgentIdentity>;
-}
-
-export interface HumanBackingVerifier {
-  verify(request: HumanBackingRequest): Promise<HumanBackingAttestation>;
 }

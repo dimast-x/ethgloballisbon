@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yareon Agent"
+  short_description: "Operate policy-controlled Yareon procurement"
+  default_prompt: "Use $yareon-agent to inspect eligible offers and place a policy-compliant Yareon order."

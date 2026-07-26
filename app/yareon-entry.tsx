@@ -7,7 +7,7 @@ const YareonApp = dynamic(
   () => import("./yareon-app").then((module) => module.YareonApp),
   {
     ssr: false,
-    loading: () => <LandingPage showcaseLoading />,
+    loading: () => <LandingPage />,
   },
 );
 

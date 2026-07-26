@@ -210,6 +210,20 @@ export class ProtocolApplicationService {
             }),
           ),
         ];
+      case "RECORD_AGENTKIT_ACCESS":
+        return [
+          await this.appendOnce(
+            createEvent({
+              ...base,
+              eventId: eventId(
+                command.idempotencyKey,
+                "AGENTKIT_ACCESS_VERIFIED",
+              ),
+              eventType: "AGENTKIT_ACCESS_VERIFIED",
+              data: { attestation: command.attestation },
+            }),
+          ),
+        ];
       case "AUTHORIZE_AGENT_ACTION": {
         const decision = agentDecision(
           projection,
@@ -1062,8 +1076,12 @@ function commandComplete(
           event.eventType === "AGENT_DELEGATION_UPFUNDED",
       );
     case "RECORD_HUMAN_BACKING":
-      return Boolean(
-        projection.humanBacking[command.attestation.subjectReference],
+    case "RECORD_AGENTKIT_ACCESS":
+      return projection.timeline.some(
+        (event) =>
+          event.correlationId === command.idempotencyKey &&
+          (event.eventType === "AGENT_HUMAN_BACKING_VERIFIED" ||
+            event.eventType === "AGENTKIT_ACCESS_VERIFIED"),
       );
     case "AUTHORIZE_AGENT_ACTION":
       return projection.timeline.some(

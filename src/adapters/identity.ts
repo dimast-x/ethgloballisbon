@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { signRequest } from "@worldcoin/idkit/signing";
-import { hashSignal } from "@worldcoin/idkit/hashing";
 import {
   createPublicClient,
   http,
@@ -9,12 +7,9 @@ import {
 import { mainnet } from "viem/chains";
 import { normalize } from "viem/ens";
 import type {
-  HumanBackingVerifier,
   PublicIdentityResolver,
 } from "../protocol/adapters";
 import type {
-  HumanBackingAttestation,
-  HumanBackingRequest,
   PublicIdentity,
   ResolvedAgentIdentity,
 } from "../protocol/types";
@@ -25,7 +20,6 @@ const agentRecordKeys = {
   organization: "com.yareon.organization",
   account: "com.yareon.hedera-account",
   delegation: "com.yareon.delegation",
-  worldReference: "com.yareon.world-reference",
   version: "com.yareon.protocol-version",
   endpoint: "url",
 } as const;
@@ -69,7 +63,6 @@ export class EnsPublicIdentityResolver implements PublicIdentityResolver {
       "organization",
       "account",
       "delegation",
-      "worldReference",
       "version",
     ] as const;
     for (const key of required) {
@@ -101,7 +94,6 @@ export class EnsPublicIdentityResolver implements PublicIdentityResolver {
       role: records.role,
       executionAccountId: records.account,
       delegationHash: records.delegation,
-      worldReference: records.worldReference,
       protocolVersion: records.version,
       endpoint: records.endpoint || undefined,
     };
@@ -130,204 +122,10 @@ export class StaticPublicIdentityResolver implements PublicIdentityResolver {
   }
 }
 
-export type WorldIdentityConfig = {
-  appId: string;
-  rpId: string;
-  signingKey: string;
-  action: string;
-  environment: "staging" | "production";
-};
-
-export type WorldRpRequest = {
-  appId: string;
-  rpId: string;
-  action: string;
-  environment: "staging" | "production";
-  signal: string;
-  rpContext: {
-    rp_id: string;
-    nonce: string;
-    created_at: number;
-    expires_at: number;
-    signature: string;
-  };
-};
-
-export function createWorldRpRequest(
-  config: WorldIdentityConfig,
-  signal: string,
-): WorldRpRequest {
-  const signature = signRequest({
-    signingKeyHex: config.signingKey,
-    action: config.action,
-    ttl: 300,
-  });
-  return {
-    appId: config.appId,
-    rpId: config.rpId,
-    action: config.action,
-    environment: config.environment,
-    signal,
-    rpContext: {
-      rp_id: config.rpId,
-      nonce: signature.nonce,
-      created_at: signature.createdAt,
-      expires_at: signature.expiresAt,
-      signature: signature.sig,
-    },
-  };
-}
-
-export class WorldHumanBackingVerifier implements HumanBackingVerifier {
-  constructor(
-    private config: WorldIdentityConfig,
-    private fetchImpl: typeof fetch = fetch,
-  ) {}
-
-  async verify(
-    request: HumanBackingRequest,
-  ): Promise<HumanBackingAttestation> {
-    const proof = requireWorldProof(request.proof);
-    if (proof.protocol_version !== "4.0") {
-      throw new Error("The live World proof must use protocol version 4.0.");
-    }
-    if (request.action !== this.config.action || proof.action !== request.action) {
-      throw new Error("The World proof action does not match the request.");
-    }
-    if (
-      request.environment !== this.config.environment ||
-      proof.environment !== request.environment
-    ) {
-      throw new Error("The World proof environment does not match the request.");
-    }
-    const responseItem = proof.responses[0];
-    if (
-      responseItem?.identifier !== "proof_of_human" ||
-      !responseItem.nullifier
-    ) {
-      throw new Error("The World proof does not contain proofOfHuman.");
-    }
-    if (!responseItem.signal_hash) {
-      throw new Error("The World proof does not contain the authorization signal.");
-    }
-    if (
-      responseItem.signal_hash.toLowerCase() !==
-        hashSignal(request.signal).toLowerCase()
-    ) {
-      throw new Error("The World proof signal does not match the authorization.");
-    }
-    const response = await this.fetchImpl(
-      `https://developer.world.org/api/v4/verify/${this.config.rpId}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(proof),
-      },
-    );
-    const verification = (await response.json().catch(() => ({}))) as {
-      success?: boolean;
-      message?: string;
-      results?: Array<{
-        identifier?: string;
-        success?: boolean;
-        code?: string;
-        detail?: string;
-      }>;
-    };
-    if (!response.ok) {
-      const rejection =
-        verification.results?.find((result) => result.success === false) ??
-        verification.results?.[0];
-      const detail =
-        rejection?.detail ?? rejection?.code ?? verification.message;
-      throw new Error(
-        detail
-          ? `World verification rejected the proof: ${detail}`
-          : `World verification failed with status ${response.status}.`,
-      );
-    }
-    if (
-      verification.success !== true ||
-      !verification.results?.some(
-        (result) =>
-          result.identifier === "proof_of_human" && result.success === true,
-      )
-    ) {
-      throw new Error("World did not verify the proofOfHuman response.");
-    }
-    return {
-      scheme: "world-id",
-      verificationReference: sha256(
-        `${request.action}:${responseItem.nullifier.toLowerCase()}`,
-      ),
-      subjectReference: request.subjectReference,
-      verifiedAt: new Date().toISOString(),
-    };
-  }
-}
-
-export function worldConfigFromEnv(): WorldIdentityConfig {
-  const values = {
-    appId: process.env.WORLD_APP_ID ?? process.env.NEXT_PUBLIC_WORLD_APP_ID,
-    rpId: process.env.WORLD_RP_ID,
-    signingKey: process.env.WORLD_RP_SIGNING_KEY,
-    action: process.env.WORLD_ACTION ?? "authorize-yareon-agent",
-    environment:
-      process.env.WORLD_ENVIRONMENT === "staging"
-        ? ("staging" as const)
-        : ("production" as const),
-  };
-  for (const [key, value] of Object.entries(values)) {
-    if (!value) throw new Error(`Missing World configuration: ${key}.`);
-  }
-  return values as WorldIdentityConfig;
-}
-
 export function sha256(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function identityKey(identity: PublicIdentity): string {
   return `${identity.scheme.toLowerCase()}:${identity.name.toLowerCase()}`;
-}
-
-function requireWorldProof(value: unknown): {
-  protocol_version: string;
-  action: string;
-  environment: string;
-  responses: Array<{
-    identifier?: string;
-    nullifier?: string;
-    signal_hash?: string;
-    expires_at_min?: number;
-  }>;
-} {
-  if (!value || typeof value !== "object") {
-    throw new Error("A World proof payload is required.");
-  }
-  const proof = value as {
-    protocol_version?: unknown;
-    action?: unknown;
-    environment?: unknown;
-    responses?: unknown;
-  };
-  if (
-    proof.protocol_version !== "4.0" ||
-    typeof proof.action !== "string" ||
-    typeof proof.environment !== "string" ||
-    !Array.isArray(proof.responses)
-  ) {
-    throw new Error("The World proof payload is malformed.");
-  }
-  return proof as {
-    protocol_version: string;
-    action: string;
-    environment: string;
-    responses: Array<{
-      identifier?: string;
-      nullifier?: string;
-      signal_hash?: string;
-      expires_at_min?: number;
-    }>;
-  };
 }

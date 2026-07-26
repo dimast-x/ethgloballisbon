@@ -32,6 +32,16 @@ export async function POST(
       { status: 400 },
     );
   }
+  if (body.command.actor.actorType === "AGENT") {
+    return Response.json(
+      {
+        error:
+          "Agent commands must pass through the World AgentKit procurement endpoint.",
+        code: "AGENTKIT_REQUIRED",
+      },
+      { status: 403 },
+    );
+  }
   if (body.command.type === "UPFUND_PROGRAM") {
     return Response.json(
       {

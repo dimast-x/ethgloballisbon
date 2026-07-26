@@ -18,6 +18,58 @@ import {
 } from "../src/wallet/approval";
 
 describe("mode-aware application service", () => {
+  it("records replay-safe AgentKit access without raw human identity material", async () => {
+    const session = await createUniversityRun("simulation");
+    const command: ProtocolCommand = {
+      type: "RECORD_AGENTKIT_ACCESS",
+      idempotencyKey: `${session.runId}:agentkit:sha256:test`,
+      actor: {
+        actorId: "yareon",
+        role: "SYSTEM",
+        actorType: "SYSTEM",
+      },
+      attestation: {
+        scheme: "world-agentkit",
+        verificationReference: `sha256:${"a".repeat(64)}`,
+        subjectReference: session.agentId,
+        verifiedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        agentAddress: "0x0000000000000000000000000000000000000001",
+        verificationMethod: "agentbook",
+      },
+    };
+    const recorded = await runProgramCommand(
+      session.programId,
+      "simulation",
+      command,
+    );
+    expect(recorded.status).toBe("CONFIRMED");
+    expect(
+      recorded.projection?.timeline.filter(
+        (event) => event.eventType === "AGENTKIT_ACCESS_VERIFIED",
+      ),
+    ).toHaveLength(1);
+    expect(recorded.projection?.humanBacking[session.agentId]).toMatchObject({
+      scheme: "world-agentkit",
+      agentAddress: command.attestation.agentAddress,
+      verificationMethod: "agentbook",
+    });
+    expect(JSON.stringify(recorded.projection?.timeline ?? [])).not.toMatch(
+      /humanId|nullifier|merkle_root/i,
+    );
+
+    const duplicate = await runProgramCommand(
+      session.programId,
+      "simulation",
+      command,
+    );
+    expect(
+      duplicate.projection?.timeline.filter(
+        (event) => event.eventType === "AGENTKIT_ACCESS_VERIFIED",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("binds World authority to the exact run, program, agent, principal, and delegation", async () => {
     const session = await createUniversityRun("simulation");
     const agentId = Object.keys(session.projection.agentDelegations)[0];

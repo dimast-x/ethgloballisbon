@@ -10,21 +10,15 @@ import {
 } from "lucide-react";
 
 export function LandingPage({
-  showcaseAvailable = false,
-  showcaseLoading = false,
   creating = false,
   createError,
   onCreate,
   onControlPanel,
-  onShowcase,
 }: {
-  showcaseAvailable?: boolean;
-  showcaseLoading?: boolean;
   creating?: boolean;
   createError?: string | null;
   onCreate?: () => void;
   onControlPanel?: () => void;
-  onShowcase?: () => void;
 }) {
   return (
     <main className="shell op-app landing-center-shell">
@@ -69,31 +63,13 @@ export function LandingPage({
               Open control panel
             </button>
           )}
-          {showcaseAvailable && onShowcase && (
-            <button
-              className="op-secondary"
-              type="button"
-              disabled={creating}
-              onClick={onShowcase}
-            >
-              View live proof
-            </button>
-          )}
         </div>
         <div className="op-trust-line">
           <span>Creator-owned administration</span>
           <span>Append-only buyer funding</span>
           <span>Policy-authorized payments</span>
         </div>
-        {createError ? (
-          <small role="alert">{createError}</small>
-        ) : (
-          !showcaseAvailable && <small>
-            {showcaseLoading
-              ? "Checking public ledger proof…"
-              : "No simulated data is shown publicly."}
-          </small>
-        )}
+        {createError && <small role="alert">{createError}</small>}
       </section>
     </main>
   );
@@ -142,8 +118,8 @@ export function ProgramCreatePage({
             <span>One-minute setup</span>
             <h1>Start with a name.</h1>
             <p>
-              That&apos;s enough to create your program and open the workspace.
-              Supplier settlement details can be added later from its settings.
+              Yareon will create the program, validate its approved suppliers,
+              and activate supplier payments in one operation.
             </p>
           </div>
           <div className="program-create-form">

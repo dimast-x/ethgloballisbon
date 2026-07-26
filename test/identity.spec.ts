@@ -1,10 +1,16 @@
-import { hashSignal } from "@worldcoin/idkit/hashing";
-import type { PublicClient } from "viem";
+import { AGENTKIT, createAgentkitClient } from "@worldcoin/agentkit";
+import type { Hex, PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it, vi } from "vitest";
 import {
   EnsPublicIdentityResolver,
-  WorldHumanBackingVerifier,
 } from "../src/adapters/identity";
+import {
+  agentkitVerificationReference,
+  createAgentkitChallenge,
+  verifyAgentkitRequest,
+  WORLD_AGENT_CHAIN_ID,
+} from "../src/adapters/agentkit";
 
 describe("ENS public identity adapter", () => {
   it("normalizes and validates the required agent and organization records", async () => {
@@ -14,7 +20,6 @@ describe("ENS public identity adapter", () => {
       "com.yareon.organization": "lisbon-university.eth",
       "com.yareon.hedera-account": "0.0.4859221",
       "com.yareon.delegation": "sha256:delegation",
-      "com.yareon.world-reference": "world:proof-of-human",
       "com.yareon.protocol-version": "0.2",
       url: "https://example.test/agents/1",
       "com.yareon.organization-id": "org_lisbon_university",
@@ -52,149 +57,102 @@ describe("ENS public identity adapter", () => {
   });
 });
 
-describe("World human-backing adapter", () => {
-  const config = {
-    appId: "app_test",
-    rpId: "rp_test",
-    signingKey: "0x01",
-    action: "authorize-yareon-agent",
-    environment: "staging" as const,
-  };
+describe("World AgentKit adapter", () => {
+  const privateKey =
+    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as Hex;
+  const account = privateKeyToAccount(privateKey);
+  const resource =
+    "https://yareon.example/api/agents/agentkit/procure?intent=sha256%3Atest";
 
-  it("binds the proof to action, environment, and signal", async () => {
-    const signal = "sha256:program-agent-delegation";
-    const fetchMock = vi.fn(
-      async () =>
-        Response.json({
-          success: true,
-          results: [{ identifier: "proof_of_human", success: true }],
-        }),
-    );
-    const verifier = new WorldHumanBackingVerifier(config, fetchMock);
-    const attestation = await verifier.verify({
-      subjectReference: "agent_1",
-      action: config.action,
-      environment: config.environment,
-      signal,
-      proof: {
-        protocol_version: "4.0",
-        action: config.action,
-        environment: config.environment,
-        responses: [
-          {
-            identifier: "proof_of_human",
-            nullifier: "0x1234",
-            signal_hash: hashSignal(signal),
-            expires_at_min: Math.floor(Date.now() / 1000) + 300,
-          },
-        ],
+  async function signedRequest(
+    url = resource,
+    expirationTime?: string,
+  ) {
+    const challenge = createAgentkitChallenge(resource);
+    const extension = challenge.extensions[AGENTKIT];
+    if (expirationTime) {
+      extension.info.expirationTime = expirationTime;
+      extension.info.issuedAt = new Date(
+        new Date(expirationTime).getTime() - 5 * 60 * 1_000,
+      ).toISOString();
+    }
+    const client = createAgentkitClient({
+      signer: {
+        address: account.address,
+        chainId: WORLD_AGENT_CHAIN_ID,
+        type: "eip191",
+        signMessage: (message) => account.signMessage({ message }),
       },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(attestation.verificationReference).toMatch(
-      /^sha256:[a-f0-9]{64}$/,
-    );
-    expect(JSON.stringify(attestation)).not.toContain("0x1234");
+    const header = await client.createHeader(extension);
+    return new Request(url, { headers: { [AGENTKIT]: header } });
+  }
+
+  it("verifies a signed intent against the configured wallet and AgentBook", async () => {
+    const access = await verifyAgentkitRequest(await signedRequest(), {
+      expectedAddress: account.address,
+      agentBook: {
+        lookupHuman: vi.fn(async () => "private-human-id"),
+      },
+    });
+    expect(access.agentAddress).toBe(account.address);
+    expect(access.humanId).toBe("private-human-id");
+    const reference = agentkitVerificationReference(access);
+    expect(reference).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(reference).not.toContain(access.humanId);
   });
 
-  it("rejects a changed action before contacting World", async () => {
-    const fetchMock = vi.fn();
-    const verifier = new WorldHumanBackingVerifier(config, fetchMock);
+  it("rejects URI tampering and an unexpected configured signer", async () => {
     await expect(
-      verifier.verify({
-        subjectReference: "agent_1",
-        action: config.action,
-        environment: config.environment,
-        signal: "signal",
-        proof: {
-          protocol_version: "4.0",
-          action: "different-action",
-          environment: config.environment,
-          responses: [{ nullifier: "0x1234" }],
+      verifyAgentkitRequest(
+        await signedRequest(`${resource}&changed=true`),
+        {
+          expectedAddress: account.address,
+          agentBook: { lookupHuman: vi.fn(async () => "human") },
         },
+      ),
+    ).rejects.toThrow("validation");
+    await expect(
+      verifyAgentkitRequest(await signedRequest(), {
+        expectedAddress: "0x0000000000000000000000000000000000000001",
+        agentBook: { lookupHuman: vi.fn(async () => "human") },
       }),
-    ).rejects.toThrow("action");
-    expect(fetchMock).not.toHaveBeenCalled();
+    ).rejects.toThrow("not bound");
   });
 
-  it("rejects environment and signal mismatches before contacting World", async () => {
-    const fetchMock = vi.fn();
-    const verifier = new WorldHumanBackingVerifier(config, fetchMock);
+  it("rejects a valid signer that is absent from AgentBook", async () => {
     await expect(
-      verifier.verify({
-        subjectReference: "agent_1",
-        action: config.action,
-        environment: config.environment,
-        signal: "expected",
-        proof: {
-          protocol_version: "4.0",
-          action: config.action,
-          environment: "production",
-          responses: [
-            {
-              identifier: "proof_of_human",
-              nullifier: "0x1234",
-              signal_hash: hashSignal("expected"),
-              expires_at_min: Math.floor(Date.now() / 1000) + 300,
-            },
-          ],
-        },
+      verifyAgentkitRequest(await signedRequest(), {
+        expectedAddress: account.address,
+        agentBook: { lookupHuman: vi.fn(async () => null) },
       }),
-    ).rejects.toThrow("environment");
-    await expect(
-      verifier.verify({
-        subjectReference: "agent_1",
-        action: config.action,
-        environment: config.environment,
-        signal: "expected",
-        proof: {
-          protocol_version: "4.0",
-          action: config.action,
-          environment: config.environment,
-          responses: [
-            {
-              identifier: "proof_of_human",
-              nullifier: "0x1234",
-              signal_hash: hashSignal("changed"),
-              expires_at_min: Math.floor(Date.now() / 1000) + 300,
-            },
-          ],
-        },
-      }),
-    ).rejects.toThrow("signal");
-    expect(fetchMock).not.toHaveBeenCalled();
+    ).rejects.toThrow("not registered");
   });
 
-  it("forwards expires_at_min to World without treating it as local proof expiry", async () => {
-    const fetchMock = vi.fn(
-      async () =>
-        Response.json({
-          success: true,
-          results: [{ identifier: "proof_of_human", success: true }],
+  it("rejects malformed headers and expired signed challenges", async () => {
+    await expect(
+      verifyAgentkitRequest(
+        new Request(resource, {
+          headers: { [AGENTKIT]: "not-an-agentkit-header" },
         }),
-    );
-    const verifier = new WorldHumanBackingVerifier(config, fetchMock);
-    await expect(
-      verifier.verify({
-        subjectReference: "agent_1",
-        action: config.action,
-        environment: config.environment,
-        signal: "expected",
-        proof: {
-          protocol_version: "4.0",
-          action: config.action,
-          environment: config.environment,
-          responses: [
-            {
-              identifier: "proof_of_human",
-              nullifier: "0x1234",
-              signal_hash: hashSignal("expected"),
-              expires_at_min: 0,
-            },
-          ],
+        {
+          expectedAddress: account.address,
+          agentBook: { lookupHuman: vi.fn(async () => "human") },
         },
-      }),
-    ).resolves.toMatchObject({ scheme: "world-id" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      verifyAgentkitRequest(
+        await signedRequest(
+          resource,
+          new Date(Date.now() - 60_000).toISOString(),
+        ),
+        {
+          expectedAddress: account.address,
+          agentBook: { lookupHuman: vi.fn(async () => "human") },
+        },
+      ),
+    ).rejects.toThrow("validation");
   });
 });

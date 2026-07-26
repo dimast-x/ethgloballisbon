@@ -6,6 +6,13 @@
 **Status:** Hackathon execution brief — three-partner strategy committed  
 **Last updated:** 24 July 2026
 
+> **Implementation update — 26 July 2026:** The agent-facing World integration
+> now uses `@worldcoin/agentkit` and the canonical AgentBook, not IDKit. A
+> dedicated EVM agent wallet signs each intent, is verified against AgentBook,
+> and is bound to the agent's Hedera account and Yareon delegation before
+> procurement execution. Historical IDKit-oriented design notes below are
+> superseded by `docs/world-agentkit.md`.
+
 ---
 
 # 1. Executive Summary

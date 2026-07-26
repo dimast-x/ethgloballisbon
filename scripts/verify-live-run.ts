@@ -13,12 +13,9 @@ try {
   // Hosted or invoking environments may provide the same variables directly.
 }
 
-const programId =
-  process.argv[2] ?? process.env.YAREON_SHOWCASE_PROGRAM_ID;
+const programId = process.argv[2];
 if (!programId) {
-  throw new Error(
-    "Pass a program ID or configure YAREON_SHOWCASE_PROGRAM_ID.",
-  );
+  throw new Error("Pass a program ID.");
 }
 
 const config = hederaConfigFromEnv();
@@ -58,10 +55,10 @@ assert.equal(
   "Settlement must be recorded exactly once.",
 );
 assert(
-  projection.agentAuthorizationDecisions.some(
-    (decision) => decision.code === "HUMAN_BACKING_REQUIRED",
+  projection.timeline.some(
+    (event) => event.eventType === "AGENTKIT_ACCESS_VERIFIED",
   ),
-  "The missing-human-backing rejection is absent.",
+  "A World AgentKit access-verification event is absent.",
 );
 assert(
   projection.agentAuthorizationDecisions.some(
@@ -69,16 +66,30 @@ assert(
   ),
   "The delegation-limit rejection is absent.",
 );
-const attestation = Object.values(projection.humanBacking)[0];
+const attestation = Object.values(projection.humanBacking).find(
+  (candidate) => candidate.scheme === "world-agentkit",
+);
 assert(attestation, "A World human-backing attestation is absent.");
+assert.equal(
+  attestation.scheme,
+  "world-agentkit",
+  "The human-backing attestation was not produced by World AgentKit.",
+);
+assert.match(
+  attestation.agentAddress ?? "",
+  /^0x[a-fA-F0-9]{40}$/,
+  "The AgentKit EVM address is absent.",
+);
 assert.match(
   attestation.verificationReference,
   /^sha256:[a-f0-9]{64}$/,
   "World verification must be stored only as a SHA-256 reference.",
 );
 assert(
-  !/nullifier|responses|merkle_root/i.test(JSON.stringify(projection.timeline)),
-  "Raw World proof material must not be present in HCS events.",
+  !/humanId|nullifier|responses|merkle_root/i.test(
+    JSON.stringify(projection.timeline),
+  ),
+  "Private World identity material must not be present in HCS events.",
 );
 for (const role of ["DELIVERY_VERIFIER", "FINANCE"]) {
   assert(
