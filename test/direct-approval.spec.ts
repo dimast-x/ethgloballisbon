@@ -192,7 +192,6 @@ function approvalProjection(configuredFinanceAccountId = financeAccountId) {
     budget: money,
     policy: {
       allowedCategories: ["GPU_COMPUTE"],
-      maxOrderAmount: money,
       requireDeliveryEvidence: true,
       approvalRequirements: [
         { role: "DELIVERY_VERIFIER", count: 1 },

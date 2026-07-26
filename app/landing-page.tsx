@@ -42,7 +42,7 @@ export function LandingPage({
         </h1>
         <p>
           Create a procurement program, fund bounded member authority, and let
-          members buy from approved suppliers within policy.
+          members buy from approved suppliers within their available budget.
         </p>
         <div className="op-landing-actions">
           <button
@@ -236,7 +236,7 @@ export function ProgramSettlementSettings({
       </div>
       <div className="program-setup-actions">
         <span>
-          Purchases that pass policy settle without delivery confirmation or
+          Eligible purchases settle without delivery confirmation or
           a separate finance approval.
         </span>
         <button

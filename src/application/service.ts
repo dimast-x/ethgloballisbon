@@ -988,7 +988,8 @@ function validateSupplierUpdate(
     );
   }
   if (
-    !program.policy.allowedCategories.includes(offer.category) ||
+    (program.policy.allowedCategories.length > 0 &&
+      !program.policy.allowedCategories.includes(offer.category)) ||
     !vendor.approvedCategories.includes(offer.category)
   ) {
     throw new CommandError(

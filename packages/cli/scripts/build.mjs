@@ -9,12 +9,13 @@ const packageRoot = path.resolve(
 );
 const repositoryRoot = path.resolve(packageRoot, "../..");
 const outputDirectory = path.join(packageRoot, "dist");
-const skillDirectory = path.join(packageRoot, "skill", "yareon-agent");
+const skillDirectory = path.join(packageRoot, "skill");
+const skillNames = ["yareon-agent", "yareon-governor"];
 
 await rm(outputDirectory, { recursive: true, force: true });
 await rm(skillDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
-await mkdir(path.dirname(skillDirectory), { recursive: true });
+await mkdir(skillDirectory, { recursive: true });
 
 await build({
   entryPoints: [path.join(packageRoot, "src/main.ts")],
@@ -28,8 +29,10 @@ await build({
 });
 
 await chmod(path.join(outputDirectory, "cli.cjs"), 0o755);
-await cp(
-  path.join(repositoryRoot, "agent-skills/yareon-agent"),
-  skillDirectory,
-  { recursive: true },
-);
+for (const skillName of skillNames) {
+  await cp(
+    path.join(repositoryRoot, "agent-skills", skillName),
+    path.join(skillDirectory, skillName),
+    { recursive: true },
+  );
+}

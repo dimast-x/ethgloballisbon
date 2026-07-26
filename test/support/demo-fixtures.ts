@@ -45,7 +45,6 @@ export const universityGpuTestFixture: DemoFixture = {
     status: "ACTIVE",
     policy: {
       allowedCategories: ["GPU_COMPUTE"],
-      maxOrderAmount: fromDisplay("5"),
       requireDeliveryEvidence: true,
       approvalRequirements: [
         { role: "DELIVERY_VERIFIER", count: 1 },
@@ -157,7 +156,6 @@ export const medicalSupplyFixture: DemoFixture = {
     status: "ACTIVE",
     policy: {
       allowedCategories: ["MEDICAL_SUPPLIES"],
-      maxOrderAmount: fromDisplay("8"),
       requireDeliveryEvidence: true,
       approvalRequirements: [{ role: "FIELD_VERIFIER", count: 1 }],
     },

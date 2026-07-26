@@ -3569,6 +3569,10 @@ button:not(:disabled):active {
   gap: 18px;
 }
 
+.overview-detail-grid.activity-only {
+  grid-template-columns: 1fr;
+}
+
 .overview-card {
   min-width: 0;
   padding: 22px;
@@ -3943,7 +3947,7 @@ button:not(:disabled):active {
   margin-bottom: 22px;
   padding: 14px 16px;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.2fr) minmax(115px, auto) minmax(115px, auto);
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.2fr) minmax(115px, auto);
   gap: 18px;
   align-items: center;
   border: 1px solid var(--line);
@@ -4747,7 +4751,7 @@ button:not(:disabled):active {
   margin-bottom: 18px;
   padding: 14px 16px;
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(170px, 1fr) minmax(220px, 1.2fr);
+  grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.2fr);
   gap: 18px;
   align-items: center;
   border: 1px solid var(--line);

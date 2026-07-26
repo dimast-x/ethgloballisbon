@@ -45,7 +45,6 @@ export async function getMemberProcurementContext(
   const spendableAtomic = [
     remainingAtomic,
     BigInt(programFunds.atomicAmount),
-    BigInt(program.policy.maxOrderAmount.atomicAmount),
   ].reduce((lowest, value) => (value < lowest ? value : lowest));
 
   const offers = Object.values(session.projection.offers)
@@ -58,8 +57,10 @@ export async function getMemberProcurementContext(
         vendor?.status === "APPROVED" &&
         Boolean(vendor.settlementAccountId) &&
         vendor.approvedCategories.includes(offer.category) &&
-        program.policy.allowedCategories.includes(offer.category) &&
-        allocation.allowedCategories.includes(offer.category) &&
+        (program.policy.allowedCategories.length === 0 ||
+          program.policy.allowedCategories.includes(offer.category)) &&
+        (allocation.allowedCategories.length === 0 ||
+          allocation.allowedCategories.includes(offer.category)) &&
         amount <= spendableAtomic
       );
     })

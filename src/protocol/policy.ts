@@ -38,8 +38,10 @@ export function validatePurchase(context: PurchaseContext): PolicyDecision {
 
   rules.push("CATEGORY_ALLOWED");
   if (
-    !context.program.policy.allowedCategories.includes(context.category) ||
-    !context.allocation.allowedCategories.includes(context.category)
+    (context.program.policy.allowedCategories.length > 0 &&
+      !context.program.policy.allowedCategories.includes(context.category)) ||
+    (context.allocation.allowedCategories.length > 0 &&
+      !context.allocation.allowedCategories.includes(context.category))
   ) {
     failures.push({
       code: "CATEGORY_NOT_ALLOWED",
@@ -55,14 +57,6 @@ export function validatePurchase(context: PurchaseContext): PolicyDecision {
     failures.push({
       code: "VENDOR_NOT_APPROVED",
       reason: `${context.vendor.name} is not approved for this category.`,
-    });
-  }
-
-  rules.push("MAX_ORDER_AMOUNT");
-  if (!lte(context.amount, context.program.policy.maxOrderAmount)) {
-    failures.push({
-      code: "MAX_ORDER_AMOUNT_EXCEEDED",
-      reason: "Order exceeds the program per-order maximum.",
     });
   }
 

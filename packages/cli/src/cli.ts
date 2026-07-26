@@ -631,33 +631,36 @@ async function installSkill(parsed: ParsedArguments): Promise<void> {
       `Unsupported skill target "${target}". Currently supported: codex.`,
     );
   }
-  const source = path.resolve(
-    __dirname,
-    "../skill/yareon-agent",
-  );
+  const skillNames = ["yareon-agent", "yareon-governor"];
   const root =
     process.env.CODEX_HOME ?? path.join(homedir(), ".codex");
-  const destination = path.join(root, "skills", "yareon-agent");
-  const exists = await pathExists(destination);
-  if (exists && !flag(parsed.options, "force")) {
-    throw new CliError(
-      "SKILL_ALREADY_INSTALLED",
-      `The skill already exists at ${destination}. Pass --force to replace it.`,
-    );
+  const destinations: string[] = [];
+  const skipped: string[] = [];
+  for (const skillName of skillNames) {
+    const source = path.resolve(__dirname, "../skill", skillName);
+    const destination = path.join(root, "skills", skillName);
+    const exists = await pathExists(destination);
+    if (exists && !flag(parsed.options, "force")) {
+      skipped.push(destination);
+      continue;
+    }
+    if (exists) {
+      await rm(destination, { recursive: true, force: true });
+    }
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(source, destination, {
+      recursive: true,
+      force: flag(parsed.options, "force"),
+    });
+    destinations.push(destination);
   }
-  if (exists) {
-    await rm(destination, { recursive: true, force: true });
-  }
-  await mkdir(path.dirname(destination), { recursive: true });
-  await cp(source, destination, {
-    recursive: true,
-    force: flag(parsed.options, "force"),
-  });
   printSuccess("skill install", {
     installed: true,
     target,
-    destination,
-    next: "Restart or open a new agent session, then invoke $yareon-agent.",
+    destinations,
+    skipped,
+    next:
+      "Restart or open a new agent session, then invoke $yareon-agent or $yareon-governor.",
   });
 }
 

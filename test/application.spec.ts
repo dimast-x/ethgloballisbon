@@ -23,7 +23,6 @@ describe("program creation", () => {
       budget: { atomicAmount: "0" },
       policy: {
         allowedCategories: [],
-        maxOrderAmount: { atomicAmount: "0" },
         requireDeliveryEvidence: false,
         approvalRequirements: [],
       },

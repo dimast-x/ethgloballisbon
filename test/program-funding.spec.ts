@@ -35,7 +35,6 @@ describe("user-funded programs", () => {
             status: "ACTIVE",
             policy: {
               allowedCategories: ["GPU_COMPUTE"],
-              maxOrderAmount: amount,
               requireDeliveryEvidence: false,
               approvalRequirements: [],
             },
@@ -130,7 +129,6 @@ describe("user-funded programs", () => {
       status: "DRAFT",
       policy: {
         allowedCategories: ["GPU_COMPUTE"],
-        maxOrderAmount: amount,
         requireDeliveryEvidence: false,
         approvalRequirements: [],
       },

@@ -11,7 +11,6 @@ export type ApprovalRequirement = {
 
 export type ProgramPolicy = {
   allowedCategories: string[];
-  maxOrderAmount: Money;
   requireDeliveryEvidence: boolean;
   approvalRequirements: ApprovalRequirement[];
 };

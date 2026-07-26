@@ -446,13 +446,6 @@ export function MemberApp() {
                     {context.member.remaining.asset}
                   </strong>
                 </div>
-                <div>
-                  <span>Per-order limit</span>
-                  <strong>
-                    {toDisplay(context.program.policy.maxOrderAmount)}{" "}
-                    {context.program.policy.maxOrderAmount.asset}
-                  </strong>
-                </div>
                 <label className="market-search">
                   <Search size={15} aria-hidden="true" />
                   <span className="sr-only">Search eligible offers</span>
@@ -514,7 +507,7 @@ export function MemberApp() {
 
               {!visibleOffers.length && (
                 <div className="market-empty">
-                  No offers fit your policy and remaining balance.
+                  No offers fit your available budget and supplier access.
                 </div>
               )}
 
@@ -666,18 +659,11 @@ function MemberHome({
         <section className="overview-card">
           <div className="overview-card-heading">
             <div>
-              <span>Your guardrails</span>
-              <h2>Program rules</h2>
+              <span>Your access</span>
+              <h2>What you can purchase</h2>
             </div>
           </div>
           <dl className="overview-policy-list">
-            <div>
-              <dt>Per-order limit</dt>
-              <dd>
-                {toDisplay(context.program.policy.maxOrderAmount)}{" "}
-                {context.program.policy.maxOrderAmount.asset}
-              </dd>
-            </div>
             <div>
               <dt>Allowed category</dt>
               <dd>
@@ -715,8 +701,8 @@ function MemberHome({
             </div>
           ) : (
             <p className="member-empty-copy">
-              Choose any eligible offer. Yareon checks policy before the order is
-              created.
+              Choose any offer from an approved supplier within your available
+              budget.
             </p>
           )}
         </section>

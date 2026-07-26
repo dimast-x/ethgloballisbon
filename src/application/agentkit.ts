@@ -67,9 +67,9 @@ export async function getAgentkitProcurementContext(programId: string) {
         vendor?.status === "APPROVED" &&
         Boolean(vendor.settlementAccountId) &&
         vendor.approvedCategories.includes(offer.category) &&
-        program.policy.allowedCategories.includes(offer.category) &&
+        (program.policy.allowedCategories.length === 0 ||
+          program.policy.allowedCategories.includes(offer.category)) &&
         delegation.allowedCategories.includes(offer.category) &&
-        amount <= BigInt(program.policy.maxOrderAmount.atomicAmount) &&
         amount <= BigInt(delegation.maxPerOrder.atomicAmount) &&
         amount <= remainingDelegation &&
         amount <= remainingAllocation &&

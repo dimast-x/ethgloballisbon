@@ -41,8 +41,8 @@ export function RoleSelection() {
             <span className="role-entry-kicker">For program owners</span>
             <strong>Governor console</strong>
             <p>
-              Create a live program, set policy, approve suppliers, fund member
-              authority, and monitor the ledger.
+              Create a live program, approve suppliers, fund member budgets,
+              and monitor the ledger.
             </p>
             <span className="role-entry-action">
               Open governor console

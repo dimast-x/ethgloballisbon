@@ -65,7 +65,7 @@ const tabs = [
   "Activity",
 ] as const;
 type Tab = (typeof tabs)[number];
-const controlSections = ["Policy", "Members", "Suppliers"] as const;
+const controlSections = ["Members", "Suppliers"] as const;
 type ControlSection = (typeof controlSections)[number];
 const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
 type PurchasingSection = (typeof purchasingSections)[number];
@@ -97,7 +97,7 @@ const tabDetails: Record<Tab, { title: string; description: string }> = {
   Controls: {
     title: "Governor controls",
     description:
-      "Manage policy, spending authority, approved suppliers, and delegated agents.",
+      "Manage member budgets and approved suppliers.",
   },
   Purchasing: {
     title: "Purchasing",
@@ -155,7 +155,7 @@ export function YareonApp() {
   const mode: ExecutionMode = "testnet";
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [controlSection, setControlSection] =
-    useState<ControlSection>("Policy");
+    useState<ControlSection>("Members");
   const [purchasingSection, setPurchasingSection] =
     useState<PurchasingSection>("Catalog");
   const [notice, setNotice] = useState(
@@ -417,7 +417,7 @@ export function YareonApp() {
     if (!session) return;
     setSettlementError(null);
     setOperationState("pending");
-    setNotice("Activating policy-authorized supplier payments on Hedera testnet…");
+    setNotice("Activating supplier payments on Hedera testnet…");
     try {
       const response = await fetch(
         `/api/programs/${encodeURIComponent(session.programId)}/settlement`,
@@ -982,7 +982,13 @@ export function YareonApp() {
     amount: string;
     settlementAccountId: string;
   }) {
-    const category = program.policy.allowedCategories[0];
+    const category =
+      program.policy.allowedCategories[0] ??
+      input.title
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
     if (
       !category ||
       !input.name.trim() ||
@@ -1258,9 +1264,6 @@ export function YareonApp() {
                 />
               )}
               <div className="workspace-body">
-          {activeTab === "Controls" && controlSection === "Policy" && (
-            <PolicyPanel program={program} />
-          )}
           {activeTab === "Controls" && controlSection === "Members" && (
             <BuyerPanel
               view="buyers"
@@ -1655,37 +1658,7 @@ function ProgramOverviewPanel({
         </article>
       </section>
 
-      <div className="overview-detail-grid">
-        <section className="overview-card">
-          <div className="overview-card-heading">
-            <div>
-              <span>Active rules</span>
-              <h2>Purchase policy</h2>
-            </div>
-            <button type="button" onClick={() => onControls("Policy")}>
-              Edit controls
-            </button>
-          </div>
-          <dl className="overview-policy-list">
-            <div>
-              <dt>Per-order limit</dt>
-              <dd>{toDisplay(program.policy.maxOrderAmount)} {program.budget.asset}</dd>
-            </div>
-            <div>
-              <dt>Delivery evidence</dt>
-              <dd>{program.policy.requireDeliveryEvidence ? "Required" : "Not required"}</dd>
-            </div>
-            <div>
-              <dt>Payment approvals</dt>
-              <dd>
-                {program.policy.approvalRequirements.length
-                  ? `${program.policy.approvalRequirements.length} required`
-                  : "Automatic"}
-              </dd>
-            </div>
-          </dl>
-        </section>
-
+      <div className="overview-detail-grid activity-only">
         <section className="overview-card">
           <div className="overview-card-heading">
             <div>
@@ -1713,56 +1686,6 @@ function ProgramOverviewPanel({
             ))}
           </ol>
         </section>
-      </div>
-    </div>
-  );
-}
-
-function PolicyPanel({
-  program,
-}: {
-  program: NonNullable<ProtocolProjection["program"]>;
-}) {
-  return (
-    <div className="panel-grid">
-      <div>
-        <PanelHeading
-          kicker="Active purchase policy"
-          title="Rules before review"
-          description="A member purchase proceeds automatically only when all of these rules pass."
-        />
-        <div className="policy-card">
-          <div>
-            <span>Allowed categories</span>
-            <strong>{program.policy.allowedCategories.join(", ")}</strong>
-          </div>
-          <div>
-            <span>Maximum order</span>
-            <strong>{toDisplay(program.policy.maxOrderAmount)} {program.budget.asset}</strong>
-          </div>
-          <div>
-            <span>Delivery confirmation</span>
-            <strong>{program.policy.requireDeliveryEvidence ? "Required" : "Not required"}</strong>
-          </div>
-          <div>
-            <span>Independent payment approval</span>
-            <strong>{program.policy.approvalRequirements.length ? "Enabled" : "Not required"}</strong>
-          </div>
-        </div>
-      </div>
-      <div className="approval-card">
-        <div className="approval-top">
-          <span>Member authority</span>
-          <span className="ready">Active</span>
-        </div>
-        <p>
-          Members choose any approved supplier and spend their own available
-          allocation. There is no case-by-case purchasing decision by finance.
-        </p>
-        <dl>
-          <div><dt>Supplier rule</dt><dd>Must be active when ordered</dd></div>
-          <div><dt>Audit</dt><dd>Every decision is recorded</dd></div>
-        </dl>
       </div>
     </div>
   );
@@ -2280,7 +2203,7 @@ function BuyerPanel({
         <div className="purchase-context-bar">
           <div>
             <span>Approved catalog</span>
-            <strong>Choose an offer within policy</strong>
+            <strong>Choose from approved suppliers</strong>
           </div>
           <label className="marketplace-buyer">
             <span>Purchasing as</span>
@@ -2306,10 +2229,6 @@ function BuyerPanel({
               ))}
             </select>
           </label>
-          <div className="purchase-policy-fact">
-            <span>Per-order limit</span>
-            <strong>{toDisplay(policy.maxOrderAmount)} {policy.maxOrderAmount.asset}</strong>
-          </div>
           <div className="purchase-policy-fact">
             <span>Settlement</span>
             <strong>
@@ -2465,9 +2384,7 @@ function BuyerPanel({
           <div className="summary-price">
             <span>Order total</span>
             <strong>{toDisplay(selectedOffer.amount)} {selectedOffer.amount.asset}</strong>
-            <small>
-              Within {toDisplay(policy.maxOrderAmount)} {policy.maxOrderAmount.asset} limit
-            </small>
+            <small>Uses the member&apos;s available budget</small>
           </div>
           <button
             className="primary-action"

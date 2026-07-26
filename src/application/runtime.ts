@@ -142,7 +142,6 @@ export async function createProgramRun(
     status: "DRAFT",
     policy: {
       allowedCategories: [],
-      maxOrderAmount: atomic(0n, asset, decimals),
       requireDeliveryEvidence: false,
       approvalRequirements: [],
     },
