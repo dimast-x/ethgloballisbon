@@ -3755,74 +3755,6 @@ button:not(:disabled):active {
   background: #f5f3ef;
 }
 
-.allocation-manager-row .buyer-access-status {
-  width: fit-content;
-  margin: 0 0 0 8px;
-  padding: 3px 6px;
-  display: inline-block;
-  border-radius: 999px;
-  background: var(--green-soft);
-  color: var(--green);
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.allocation-manager-row .buyer-type-badge {
-  width: fit-content;
-  margin: 0 0 0 8px;
-  padding: 3px 6px;
-  display: inline-block;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #f4f1ea;
-  color: var(--ink-soft);
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.allocation-manager-row .member-verification-status,
-.member-verification-status {
-  width: fit-content;
-  margin: 0 0 0 8px;
-  padding: 3px 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.member-verification-status.verified {
-  border-color: color-mix(in srgb, var(--green) 28%, var(--line));
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.member-verification-status.pending {
-  border-color: #dec7aa;
-  background: #fff4e3;
-  color: #915112;
-}
-
-.member-verification-status.not-required {
-  border-color: var(--line);
-  background: #f4f1ea;
-  color: var(--ink-soft);
-}
-
-.allocation-manager-row.disabled .buyer-access-status {
-  background: var(--orange-soft);
-  color: #9b3f1c;
-}
-
 .allocation-manager-row .danger-action,
 .allocation-manager-row .restore-action {
   width: auto;
@@ -4797,94 +4729,6 @@ button:not(:disabled):active {
   gap: 18px;
 }
 
-.member-self-verification {
-  min-height: 92px;
-  margin-bottom: 18px;
-  padding: 18px 20px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  border: 1px solid #dec7aa;
-  border-radius: 9px;
-  background: #fff8ed;
-}
-
-.member-self-verification.verified {
-  border-color: color-mix(in srgb, var(--green) 30%, var(--line));
-  background: #f5faf7;
-}
-
-.member-self-verification-icon {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #fff0d9;
-  color: #915112;
-}
-
-.member-self-verification.verified .member-self-verification-icon {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.member-self-verification > div:nth-child(2) {
-  display: grid;
-  gap: 4px;
-}
-
-.member-self-verification > div:nth-child(2) > span {
-  color: var(--ink-soft);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.member-self-verification strong {
-  font-size: 13px;
-}
-
-.member-self-verification p {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 10px;
-  line-height: 1.45;
-}
-
-.member-self-verification button {
-  min-height: 40px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 5px;
-  background: var(--green);
-  color: white;
-  font-size: 10px;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.member-self-verification button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
-.member-self-verification-status {
-  padding: 7px 9px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 999px;
-  background: var(--green-soft);
-  color: var(--green);
-  font-size: 9px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .member-hero-balance {
   min-height: 180px;
   padding: 30px;
@@ -5113,6 +4957,265 @@ button:not(:disabled):active {
   font-size: 11px;
 }
 
+/* Keep the governor workspace in the same visual family as the member portal. */
+.governor-console .op-program-topbar {
+  justify-content: space-between;
+}
+
+.governor-program-chip {
+  min-height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 7px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 10px;
+}
+
+.governor-program-chip strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.governor-console .cabinet-current-program {
+  min-height: 64px;
+  padding: 11px;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(36, 45, 41, 0.05);
+}
+
+.governor-console .cabinet-current-program > span {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+}
+
+.governor-console .cabinet-current-program strong {
+  font-size: 11px;
+}
+
+.governor-console .overview-dashboard {
+  gap: 18px;
+}
+
+.governor-console .overview-funding {
+  min-height: 180px;
+  padding: 28px 30px;
+  grid-template-columns: minmax(320px, 1fr) minmax(190px, 0.42fr) auto;
+  gap: 22px;
+  align-items: end;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ink);
+  color: white;
+  box-shadow: 0 22px 54px rgba(18, 35, 31, 0.14);
+}
+
+.governor-console .overview-funding-balance {
+  align-items: flex-end;
+}
+
+.governor-console .overview-funding-balance > svg {
+  margin-bottom: 5px;
+  background: var(--green-bright);
+  color: #092119;
+}
+
+.governor-console .overview-funding span {
+  color: #98b4aa;
+}
+
+.governor-console .overview-funding strong {
+  margin-top: 7px;
+  color: white;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.governor-console .overview-funding small {
+  margin-top: 9px;
+  color: #c5d5cf;
+  font-size: 10px;
+}
+
+.governor-console .overview-funding > label > div {
+  border-color: rgba(255, 255, 255, 0.22);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.governor-console .overview-funding input {
+  color: white;
+}
+
+.governor-console .overview-funding input::placeholder {
+  color: #9db0aa;
+}
+
+.governor-console .overview-funding > button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--green-bright);
+  color: #092119;
+  font-size: 11px;
+}
+
+.governor-console .overview-metrics {
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.governor-console .overview-metric {
+  min-height: 130px;
+  padding: 22px;
+}
+
+.governor-console .overview-metric > svg {
+  margin-bottom: 13px;
+}
+
+.governor-console .overview-metric > strong {
+  font-size: 24px;
+}
+
+.governor-console .overview-card {
+  border-radius: 12px;
+}
+
+.governor-console .cabinet-workspace {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.governor-console .workspace-body {
+  min-height: 0;
+  padding: 0;
+}
+
+.governor-console .secondary-nav {
+  min-height: 50px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.governor-console .allocation-section-label {
+  margin: 0 0 10px;
+}
+
+.governor-console .allocation-manager-row {
+  min-height: 88px;
+  margin-bottom: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.governor-console .allocation-manager-row:first-of-type {
+  border-radius: 10px;
+}
+
+.governor-console .allocation-manager-row:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-dark);
+  box-shadow: 0 10px 28px rgba(36, 45, 41, 0.07);
+}
+
+.governor-console .allocation-manager-row.disabled {
+  background: #f3f1eb;
+}
+
+.governor-console .allocation-manager-new {
+  margin-top: 4px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #eef6f1;
+}
+
+.buyer-manager-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.buyer-manager-title .buyer-type-status,
+.buyer-manager-title .buyer-access-status,
+.supplier-manager-row .buyer-access-status {
+  width: fit-content;
+  margin: 0;
+  padding: 4px 7px;
+  display: inline-flex;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.buyer-manager-title .buyer-type-status {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.allocation-manager-row.disabled .buyer-manager-title .buyer-access-status {
+  background: var(--orange-soft);
+  color: #9b3f1c;
+}
+
+.governor-console .supplier-manager-row,
+.governor-console .governor-order-row {
+  min-height: 96px;
+}
+
+.governor-console .governor-order-manager {
+  display: grid;
+  gap: 0;
+}
+
+.governor-console .governor-order-status {
+  padding: 6px 9px;
+}
+
+.governor-console .empty-state {
+  min-height: 220px;
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.55);
+}
+
+.governor-console .audit-table {
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.governor-console .audit-head {
+  min-height: 40px;
+}
+
+.governor-console .audit-row {
+  min-height: 62px;
+  padding-inline: 16px;
+}
+
 @media (max-width: 1100px) {
   .overview-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5224,6 +5327,14 @@ button:not(:disabled):active {
     grid-column: 2;
   }
 
+  .governor-console .overview-funding {
+    grid-template-columns: minmax(260px, 1fr) minmax(190px, 0.7fr);
+  }
+
+  .governor-console .overview-funding > button {
+    grid-column: 2;
+  }
+
   .marketplace-layout.buyers .allocation-manager-new {
     grid-template-columns: 1fr 1fr;
   }
@@ -5327,17 +5438,6 @@ button:not(:disabled):active {
     justify-items: start;
   }
 
-  .member-self-verification {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .member-self-verification > button,
-  .member-self-verification > .member-self-verification-status {
-    grid-column: 1 / -1;
-    width: 100%;
-    justify-content: center;
-  }
-
   .program-cabinet .op-program-content {
     width: min(100% - 24px, 760px);
     padding-top: 24px;
@@ -5408,6 +5508,25 @@ button:not(:disabled):active {
   .overview-funding {
     align-items: stretch;
     background: #f5faf7;
+  }
+
+  .governor-console .overview-funding {
+    grid-template-columns: 1fr;
+    padding: 24px;
+    background: var(--ink);
+  }
+
+  .governor-console .overview-funding > button {
+    width: 100%;
+    grid-column: auto;
+  }
+
+  .governor-program-chip span {
+    display: none;
+  }
+
+  .governor-console .workspace-body {
+    padding: 0;
   }
 
   .overview-funding > button {

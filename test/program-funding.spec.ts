@@ -119,6 +119,37 @@ describe("user-funded programs", () => {
     ).rejects.toThrow("exact wallet deposit");
   });
 
+  it("accepts current Mirror payloads that identify the payer in transaction_id", async () => {
+    await expect(
+      verifyHederaProgramDeposit({
+        transactionId: "0.0.1001@1750000000.123456789",
+        depositorAccountId: "0.0.1001",
+        treasuryAccountId: "0.0.9001",
+        programId: "program_deposit",
+        amount,
+        mirrorFetch: vi.fn(async () =>
+          Response.json({
+            transactions: [
+              {
+                name: "CRYPTOTRANSFER",
+                result: "SUCCESS",
+                transaction_id: "0.0.1001-1750000000-123456789",
+                memo_base64: Buffer.from(
+                  "yareon:deposit:program_deposit",
+                ).toString("base64"),
+                transfers: [
+                  { account: "0.0.1001", amount: -250100000 },
+                  { account: "0.0.9001", amount: 250000000 },
+                ],
+              },
+            ],
+          }),
+        ),
+        attempts: 1,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("activates and upfunds the program without silently changing an allocation", () => {
     const program: Program = {
       id: "program_deposit",

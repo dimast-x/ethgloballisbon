@@ -4,10 +4,12 @@ import {
 } from "@hashgraph/sdk";
 import { describe, expect, it } from "vitest";
 
-try {
-  process.loadEnvFile?.(".env.local");
-} catch {
-  // The opt-in test remains skipped without local credentials.
+for (const path of [".env.local", ".env"]) {
+  try {
+    process.loadEnvFile?.(path);
+  } catch {
+    // Continue to the next local environment file.
+  }
 }
 
 const enabled = process.env.RUN_HEDERA_TESTNET === "1";
@@ -29,11 +31,16 @@ describe.skipIf(!enabled)("completed Hedera testnet lifecycle", () => {
       const eventStore = new adapter.HederaEventStore(config);
       const events = await eventStore.read(programId);
       const rebuilt = reduceProtocolEvents(events);
+      const program = rebuilt.program;
       const order = Object.values(rebuilt.orders).find(
         (candidate) => candidate.status === "PAYMENT_EXECUTED",
       );
 
+      expect(program?.hedera?.treasuryAccountId).toBeTruthy();
+      expect(program?.hedera?.verifierAccountId).toBeTruthy();
+      expect(program?.hedera?.financeAccountId).toBeTruthy();
       expect(order?.scheduleId).toBeTruthy();
+      expect(order?.supplierSettlementAccountId).toBeTruthy();
       expect(
         events.some((event) => event.eventType === "PAYMENT_SCHEDULE_CREATED"),
       ).toBe(true);
@@ -42,13 +49,15 @@ describe.skipIf(!enabled)("completed Hedera testnet lifecycle", () => {
       ).toHaveLength(1);
 
       const client = adapter.createHederaClient(config);
+      const verifierAccountId = program!.hedera!.verifierAccountId!;
+      const financeAccountId = program!.hedera!.financeAccountId!;
       const [schedule, verifier, finance] = await Promise.all([
         new ScheduleInfoQuery().setScheduleId(order!.scheduleId!).execute(client),
         new AccountInfoQuery()
-          .setAccountId(config.verifierAccountId!)
+          .setAccountId(verifierAccountId)
           .execute(client),
         new AccountInfoQuery()
-          .setAccountId(config.financeAccountId!)
+          .setAccountId(financeAccountId)
           .execute(client),
       ]);
       expect(schedule.executed).toBeTruthy();
@@ -84,7 +93,9 @@ describe.skipIf(!enabled)("completed Hedera testnet lifecycle", () => {
       const mirrorNodeUrl =
         config.mirrorNodeUrl ?? "https://testnet.mirrornode.hedera.com";
       const response = await fetch(
-        `${mirrorNodeUrl}/api/v1/transactions/${encodeURIComponent(order!.paymentTransactionId!)}`,
+        `${mirrorNodeUrl}/api/v1/transactions/${encodeURIComponent(
+          adapter.hederaTransactionIdForMirror(order!.paymentTransactionId!),
+        )}`,
       );
       expect(response.ok).toBe(true);
       const body = (await response.json()) as {
@@ -94,18 +105,24 @@ describe.skipIf(!enabled)("completed Hedera testnet lifecycle", () => {
         }>;
       };
       const payment = body.transactions?.find(
-        (transaction) => transaction.result === "SUCCESS",
+        (transaction) =>
+          transaction.result === "SUCCESS" &&
+          transaction.transfers?.some(
+            (transfer) =>
+              transfer.account === order!.supplierSettlementAccountId &&
+              transfer.amount === Number(order!.amount.atomicAmount),
+          ),
       );
       expect(payment?.transfers).toEqual(
         expect.arrayContaining([
-          {
-            account: config.treasuryAccountId,
+          expect.objectContaining({
+            account: program!.hedera!.treasuryAccountId,
             amount: -Number(order!.amount.atomicAmount),
-          },
-          {
-            account: config.vendorAccountId,
+          }),
+          expect.objectContaining({
+            account: order!.supplierSettlementAccountId,
             amount: Number(order!.amount.atomicAmount),
-          },
+          }),
         ]),
       );
       client.close();

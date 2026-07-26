@@ -97,12 +97,12 @@ const tabDetails: Record<Tab, { title: string; description: string }> = {
   Members: {
     title: "Members",
     description:
-      "Manage member budgets and purchasing access.",
+      "Add people or teams, set their purchasing authority, and control who can create new orders.",
   },
   Suppliers: {
     title: "Suppliers",
     description:
-      "Manage approved suppliers, offers, and settlement accounts.",
+      "Add suppliers and their first offer, or remove future purchasing access. Existing orders keep their locked supplier and settlement details.",
   },
   Purchasing: {
     title: "Purchasing",
@@ -1137,7 +1137,7 @@ export function YareonApp() {
   }
 
   return (
-    <main className="program-cabinet">
+    <main className="program-cabinet governor-console">
       <aside className="op-program-sidebar">
         <div className="cabinet-brand" aria-label="Yareon">
           <BrandLogo className="brand-mark" />
@@ -1246,6 +1246,13 @@ export function YareonApp() {
 
       <div className="op-program-main">
         <header className="op-program-topbar">
+          <div className="governor-program-chip" aria-label="Available treasury balance">
+            <CircleDollarSign size={15} aria-hidden="true" />
+            <span>Treasury</span>
+            <strong>
+              {toDisplay(programFunds)} {programFunds.asset}
+            </strong>
+          </div>
           <div className="cabinet-topbar-actions">
             <div className="cabinet-member-actions">
               <Link
@@ -1842,11 +1849,6 @@ function SuppliersPanel({
   return (
     <div className="marketplace-layout suppliers">
       <section className="supplier-brief">
-        <PanelHeading
-          kicker="Approved registry"
-          title="Suppliers"
-          description="Add suppliers and their first offer, or remove future purchasing access. Existing orders keep their locked supplier and settlement details."
-        />
         <div className="allocation-manager supplier-manager">
           <div className="section-label allocation-section-label">
             Current suppliers
@@ -2277,11 +2279,6 @@ function BuyerPanel({
   return (
     <div className={`marketplace-layout ${view}`}>
       {view === "buyers" && <section className="buyer-brief">
-        <PanelHeading
-          kicker="Program members"
-          title="Members"
-          description="Add people or teams, set their purchasing authority, and control who can create new orders."
-        />
         <div className="allocation-manager">
           <div className="section-label allocation-section-label">
             Current members
@@ -2291,31 +2288,16 @@ function BuyerPanel({
               className={`allocation-manager-row${item.purchasingStatus === "DISABLED" ? " disabled" : ""}`}
               key={item.buyerId}
             >
-              <div>
-                <strong>
-                  {item.buyerId}
-                  <span className="buyer-type-badge">
+              <div className="buyer-manager-identity">
+                <div className="buyer-manager-title">
+                  <strong>{item.buyerId}</strong>
+                  <span className="buyer-type-status">
                     {item.participantType === "AGENT" ? "Agent" : "Human"}
                   </span>
                   <span className="buyer-access-status">
-                    {item.purchasingStatus === "DISABLED" ? "Access removed" : "Active"}
+                    {item.purchasingStatus === "DISABLED" ? "Paused" : "Active"}
                   </span>
-                  <span
-                    className={`member-verification-status ${
-                      humanBacking[item.buyerId]
-                        ? "verified"
-                        : item.humanVerificationRequired
-                          ? "pending"
-                          : "not-required"
-                    }`}
-                  >
-                    {humanBacking[item.buyerId]
-                      ? "Verified"
-                      : item.humanVerificationRequired
-                        ? "Not verified"
-                        : "Verification not required"}
-                  </span>
-                </strong>
+                </div>
                 <span>{toDisplay(item.totalLimit)} {item.totalLimit.asset}</span>
                 <small>
                   {item.walletAccountId

@@ -43,6 +43,15 @@ export function parseHederaPrivateKey(value: string): PrivateKey {
     : PrivateKey.fromString(value);
 }
 
+export function hederaTransactionIdForMirror(transactionId: string): string {
+  const [accountId, timestampWithSuffix] = transactionId.split("@");
+  const timestamp = timestampWithSuffix?.split("?")[0];
+  if (!accountId || !timestamp) return transactionId;
+  const separator = timestamp.indexOf(".");
+  if (separator < 0) return transactionId;
+  return `${accountId}-${timestamp.slice(0, separator)}-${timestamp.slice(separator + 1)}`;
+}
+
 export class HederaEventStore implements EventStore {
   private client: Client;
   private mirrorNodeUrl: string;
@@ -75,6 +84,10 @@ export class HederaEventStore implements EventStore {
 
   async readAll(): Promise<RecordedEvent[]> {
     return this.readEvents();
+  }
+
+  close(): void {
+    this.client.close();
   }
 
   private async readEvents(programId?: string): Promise<RecordedEvent[]> {
@@ -279,8 +292,7 @@ export class HederaPaymentScheduler implements PaymentScheduler {
         request.payeeAccountId,
         Hbar.fromTinybars(request.amount.atomicAmount),
       )
-      .setTransactionMemo(request.memo)
-      .freezeWith(this.client);
+      .setTransactionMemo(request.memo);
     if (request.executeImmediately) {
       const response = await transfer.execute(this.client);
       await response.getReceipt(this.client);
@@ -355,7 +367,9 @@ export class HederaPaymentScheduler implements PaymentScheduler {
     result: string;
   }> {
     const url = new URL(
-      `/api/v1/transactions/${encodeURIComponent(transactionId)}`,
+      `/api/v1/transactions/${encodeURIComponent(
+        hederaTransactionIdForMirror(transactionId),
+      )}`,
       this.mirrorNodeUrl,
     );
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -367,6 +381,7 @@ export class HederaPaymentScheduler implements PaymentScheduler {
             entity_id?: string;
             name?: string;
             result?: string;
+            transaction_id?: string;
           }>;
         };
         const transaction = body.transactions?.find(
@@ -376,7 +391,10 @@ export class HederaPaymentScheduler implements PaymentScheduler {
         );
         if (transaction) {
           return {
-            payerAccountId: transaction.payer_account_id ?? "",
+            payerAccountId:
+              transaction.payer_account_id ??
+              transaction.transaction_id?.match(/^(\d+\.\d+\.\d+)-/)?.[1] ??
+              "",
             scheduleId: transaction.entity_id ?? "",
             name: transaction.name ?? "",
             result: transaction.result ?? "",

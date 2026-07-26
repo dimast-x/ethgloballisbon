@@ -5,8 +5,8 @@ import {
   parseAgentkitProcurementIntent,
 } from "@/src/application/agentkit";
 import {
-  agentkitVerifierConfigFromEnv,
   createAgentkitChallenge,
+  validateAgentAddress,
   verifyAgentkitRequest,
 } from "@/src/adapters/agentkit";
 import { getProgramSession } from "@/src/application/runtime";
@@ -42,7 +42,6 @@ export async function POST(request: Request) {
         { status: 404 },
       );
     }
-    const config = agentkitVerifierConfigFromEnv();
     if (!delegation.worldAgentAddress) {
       return Response.json(
         {
@@ -54,8 +53,14 @@ export async function POST(request: Request) {
       );
     }
     const access = await verifyAgentkitRequest(request, {
-      expectedAddress: config.agentAddress,
-      worldChainRpcUrl: config.worldChainRpcUrl,
+      expectedAddress: delegation.worldAgentAddress,
+      worldChainRpcUrl: process.env.WORLD_CHAIN_RPC_URL,
+      agentBookRpcUrl: process.env.AGENTBOOK_RPC_URL,
+      agentBookContractAddress: process.env.AGENTBOOK_CONTRACT_ADDRESS
+        ? (validateAgentAddress(
+            process.env.AGENTBOOK_CONTRACT_ADDRESS,
+          ) as `0x${string}`)
+        : undefined,
     });
     const execution = await executeAgentkitProcurementIntent(intent, access);
     return Response.json(

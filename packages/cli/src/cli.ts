@@ -23,10 +23,12 @@ const READ_TIMEOUT_MS = 15_000;
 const MUTATION_TIMEOUT_MS = 30_000;
 const FLAG_OPTIONS = new Set(["execute", "force", "help", "summary"]);
 
-try {
-  process.loadEnvFile?.(".env.local");
-} catch {
-  // Published clients normally receive secrets from their environment.
+for (const path of [".env.local", ".env.agent.local"]) {
+  try {
+    process.loadEnvFile?.(path);
+  } catch {
+    // Published clients normally receive secrets from their environment.
+  }
 }
 
 type JsonObject = Record<string, unknown>;
@@ -119,6 +121,8 @@ Environment:
   YAREON_PROGRAM_ID        Override the connected program
   WORLD_AGENT_PRIVATE_KEY  Required only for execution
   WORLD_CHAIN_RPC_URL      Optional AgentBook RPC override
+  AGENTBOOK_RPC_URL        Optional dedicated AgentBook registry RPC
+  AGENTBOOK_CONTRACT_ADDRESS Optional custom AgentBook deployment
   YAREON_CONFIG_HOME       Override the public configuration directory
 
 All results are JSON. Secrets are never accepted as command arguments.`;
@@ -427,11 +431,14 @@ async function doctor(connection: StoredConfig) {
     getAddress(expectedAddress) === getAddress(signerAddress)
   ) {
     try {
-      const verifier = createAgentBookVerifier(
-        process.env.WORLD_CHAIN_RPC_URL
-          ? { rpcUrl: process.env.WORLD_CHAIN_RPC_URL }
+      const verifier = createAgentBookVerifier({
+        rpcUrl:
+          process.env.AGENTBOOK_RPC_URL ??
+          process.env.WORLD_CHAIN_RPC_URL,
+        contractAddress: process.env.AGENTBOOK_CONTRACT_ADDRESS
+          ? getAddress(process.env.AGENTBOOK_CONTRACT_ADDRESS)
           : undefined,
-      );
+      });
       const registered = Boolean(
         await withTimeout(
           verifier.lookupHuman(signerAddress),

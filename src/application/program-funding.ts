@@ -60,7 +60,10 @@ export async function verifyHederaProgramDeposit(input: {
         (transaction) =>
           transaction.name === "CRYPTOTRANSFER" &&
           transaction.result === "SUCCESS" &&
-          transaction.payer_account_id === input.depositorAccountId &&
+          (transaction.payer_account_id === input.depositorAccountId ||
+            transaction.transaction_id?.startsWith(
+              `${input.depositorAccountId}-`,
+            )) &&
           transaction.memo_base64 &&
           Buffer.from(transaction.memo_base64, "base64").toString("utf8") ===
             `yareon:deposit:${input.programId}` &&

@@ -36,6 +36,8 @@ export type VerifiedAgentkitAccess = {
 export type AgentkitVerifierConfig = {
   agentAddress: string;
   worldChainRpcUrl?: string;
+  agentBookRpcUrl?: string;
+  agentBookContractAddress?: `0x${string}`;
 };
 
 export type AgentkitSignerConfig = AgentkitVerifierConfig & {
@@ -52,6 +54,12 @@ export function agentkitVerifierConfigFromEnv(): AgentkitVerifierConfig {
   return {
     agentAddress: validateAgentAddress(raw),
     worldChainRpcUrl: process.env.WORLD_CHAIN_RPC_URL,
+    agentBookRpcUrl: process.env.AGENTBOOK_RPC_URL,
+    agentBookContractAddress: process.env.AGENTBOOK_CONTRACT_ADDRESS
+      ? (validateAgentAddress(
+          process.env.AGENTBOOK_CONTRACT_ADDRESS,
+        ) as `0x${string}`)
+      : undefined,
   };
 }
 
@@ -87,11 +95,10 @@ export function configuredAgentkitAddress(): string | undefined {
 
 export async function lookupConfiguredAgentHuman(): Promise<boolean> {
   const config = agentkitVerifierConfigFromEnv();
-  const agentBook = createAgentBookVerifier(
-    config.worldChainRpcUrl
-      ? { rpcUrl: config.worldChainRpcUrl }
-      : undefined,
-  );
+  const agentBook = createAgentBookVerifier({
+    rpcUrl: config.agentBookRpcUrl ?? config.worldChainRpcUrl,
+    contractAddress: config.agentBookContractAddress,
+  });
   return Boolean(await agentBook.lookupHuman(config.agentAddress));
 }
 
@@ -168,6 +175,8 @@ export async function verifyAgentkitRequest(
   options: {
     expectedAddress?: string;
     worldChainRpcUrl?: string;
+    agentBookRpcUrl?: string;
+    agentBookContractAddress?: `0x${string}`;
     agentBook?: AgentBookLookup;
   } = {},
 ): Promise<VerifiedAgentkitAccess> {
@@ -205,11 +214,10 @@ export async function verifyAgentkitRequest(
   }
   const agentBook =
     options.agentBook ??
-    createAgentBookVerifier(
-      options.worldChainRpcUrl
-        ? { rpcUrl: options.worldChainRpcUrl }
-        : undefined,
-    );
+    createAgentBookVerifier({
+      rpcUrl: options.agentBookRpcUrl ?? options.worldChainRpcUrl,
+      contractAddress: options.agentBookContractAddress,
+    });
   const humanId = await agentBook.lookupHuman(recovered);
   if (!humanId) {
     throw new Error("The signing agent is not registered in World AgentBook.");

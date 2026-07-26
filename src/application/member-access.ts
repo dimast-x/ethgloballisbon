@@ -1,7 +1,6 @@
 import { authenticatedAdministratorAccountId } from "./wallet-auth";
 import {
   getProgramSession,
-  humanVerificationSignal,
   reconcileProgramTreasuryFunding,
   runProgramCommand,
 } from "./runtime";
@@ -43,13 +42,6 @@ export async function getMemberProcurementContext(
     BigInt(allocation.committed.atomicAmount) -
     BigInt(allocation.paid.atomicAmount);
   const programFunds = session.treasuryBalance ?? program.budget;
-  const humanBacking =
-    session.projection.humanBacking[allocation.buyerId];
-  const humanVerified = Boolean(
-    humanBacking &&
-      (!humanBacking.expiresAt ||
-        new Date(humanBacking.expiresAt).getTime() > Date.now()),
-  );
   const spendableAtomic = [
     remainingAtomic,
     BigInt(programFunds.atomicAmount),
@@ -116,72 +108,11 @@ export async function getMemberProcurementContext(
         atomicAmount: (remainingAtomic > 0n ? remainingAtomic : 0n).toString(),
       },
       allowedCategories: allocation.allowedCategories,
-      humanVerificationRequired: Boolean(
-        allocation.humanVerificationRequired,
-      ),
-      humanVerified,
-      humanVerifiedAt: humanBacking?.verifiedAt,
     },
     offers,
     recommendedOfferId: offers[0]?.id,
     orders,
   };
-}
-
-export async function verifyMemberIdentity(input: {
-  programId: string;
-  accountId: string;
-}) {
-  const session = await getProgramSession(input.programId, "testnet");
-  if (!session?.projection.program) throw new Error("Program not found.");
-  const allocation = memberAllocationForAccount(
-    session.projection,
-    input.accountId,
-  );
-  if (!allocation) {
-    throw new Error(
-      "This wallet does not have member purchasing access to the program.",
-    );
-  }
-  if (!allocation.humanVerificationRequired) {
-    return getMemberProcurementContext(input.programId, input.accountId);
-  }
-
-  const current = session.projection.humanBacking[allocation.buyerId];
-  if (
-    current &&
-    (!current.expiresAt ||
-      new Date(current.expiresAt).getTime() > Date.now())
-  ) {
-    return getMemberProcurementContext(input.programId, input.accountId);
-  }
-
-  const result = await runProgramCommand(input.programId, "testnet", {
-    type: "RECORD_HUMAN_BACKING",
-    idempotencyKey: `${session.runId}:member-verification:${allocation.buyerId}`,
-    actor: {
-      actorId: allocation.buyerId,
-      role: "BUYER",
-      actorType: "HUMAN",
-      hederaAccountId: input.accountId,
-    },
-    attestation: {
-      scheme: "authenticated-member-wallet",
-      verificationReference: humanVerificationSignal(
-        session,
-        allocation.buyerId,
-      ),
-      subjectReference: allocation.buyerId,
-      verifiedAt: new Date().toISOString(),
-      verificationMethod: "hedera-wallet-session",
-    },
-  });
-  if (result.status === "FAILED") {
-    throw new Error(
-      result.error?.message ?? "Member identity verification failed.",
-    );
-  }
-  return getMemberProcurementContext(input.programId, input.accountId);
 }
 
 export async function createMemberOrder(input: {

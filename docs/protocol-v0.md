@@ -46,12 +46,11 @@ human-readable reasons, and every evaluated rule. Rejections are first-class
 audit events.
 
 Agent actions add human-backing and bounded delegation checks before purchase
-policy. External public-identity resolution is an explicit policy switch:
-deployments may require it, but the live v0.2 testnet path temporarily leaves it
-optional while still binding the exact agent, principal, program, action,
-category, limits, and delegation integrity hash. Identity and humanity adapters
-are provider-independent protocol boundaries. World is the current
-implementation, not a protocol requirement.
+policy. Live agent execution requires a valid World AgentKit challenge,
+configured signer, and AgentBook registration. Ledger reconstruction replays
+the recorded public identity and verification-reference events without
+re-querying private identity material. Identity and humanity adapters are
+provider-independent protocol boundaries; World is the current implementation.
 
 Protocol v0.2 adds `AGENT_IDENTITY_RESOLVED`,
 `AGENT_HUMAN_BACKING_VERIFIED`, `AGENTKIT_ACCESS_VERIFIED`, `AGENT_DELEGATION_GRANTED`,

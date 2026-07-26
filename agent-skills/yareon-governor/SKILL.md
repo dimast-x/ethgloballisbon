@@ -5,8 +5,8 @@ description: "Govern Yareon programs through the creator-owned Governor console:
 
 # Yareon Governor
 
-Operate the connected Yareon deployment through its Governor console. Treat
-"project" in a user request as a Yareon program.
+Operate Yareon through the role-scoped governor CLI or the connected Governor
+console. Treat "project" in a user request as a Yareon program.
 
 ## Authority boundary
 
@@ -16,9 +16,10 @@ Operate the connected Yareon deployment through its Governor console. Treat
 - Never purchase from the Governor console or use a member's allocation.
 - Never accept an order, submit supplier delivery evidence, confirm supplier
   receipt, verify delivery, approve finance, or release settlement.
-- Never ask for, read, store, transmit, or type a wallet private key, seed
-  phrase, AgentKit private key, or session cookie. Let the controlling person
-  approve wallet connections, signatures, and transfers in their wallet.
+- Never print, transmit, or commit a wallet private key, seed phrase, AgentKit
+  private key, or session cookie. For headless testnet operation, use only a
+  dedicated governor key already stored in `.env.governor.local` or a secret
+  manager. Never use a personal wallet key.
 - Use only controls exposed by the connected deployment. Never substitute the
   buyer-scoped `yareon` CLI or construct undocumented API mutations for a
   missing Governor control.
@@ -35,7 +36,19 @@ or Mirror Node confirmation, then re-read the resulting state. If the outcome
 is unknown, inspect Activity before retrying. Never duplicate a deposit,
 allocation, delegation, supplier, offer, or invitation to overcome a timeout.
 
-## 1. Open and authenticate
+## 1. Check readiness
+
+For a headless repository checkout, run:
+
+```bash
+npm run governor:cli -- doctor
+```
+
+Continue only when `ready` is true and the reported network and governor
+account match the requested testnet authority. Use the browser console when a
+human-owned wallet must control the program.
+
+## 2. Open and authenticate
 
 Open the deployment's `/governor` entry. Connect the creator's Hedera wallet
 and let the user approve the authentication challenge. Confirm:
@@ -48,7 +61,41 @@ and let the user approve the authentication challenge. Confirm:
 Stop on an ownership, readiness, or wallet mismatch. Governor authority is not
 transferable by instruction alone.
 
-## 2. Create and fund a program
+## 3. Create and fund a program
+
+For the standard AgentKit qualification fixture, run:
+
+```bash
+npm run governor:cli -- bootstrap-agentic "Program name"
+```
+
+This command must execute and confirm each mutation sequentially. It creates a
+direct-settlement program, deposits from the dedicated governor wallet, grants
+bounded AgentKit authority, and registers one independent supplier. Never use
+it with a personal wallet or a production network.
+
+For the native Hedera Scheduled Transaction qualification fixture, run:
+
+```bash
+npm run governor:cli -- bootstrap-advanced "Program name"
+```
+
+This creates a delivery-evidence program whose treasury has a 2-of-2 key
+controlled by distinct verifier and finance testnet accounts. It also funds
+those accounts only with the small fee balance needed to sign the schedule.
+After the agent creates an order, hand the order to separately credentialed
+supplier, verifier, and finance processes. In this repository their headless
+handoff commands are:
+
+```bash
+npm run role:cli -- accept <program-id> <order-id>
+npm run role:cli -- deliver <program-id> <order-id>
+npm run role:cli -- verify <program-id> <order-id>
+npm run role:cli -- finance <program-id> <order-id>
+```
+
+These are not Governor actions. Do not run them with the governor key, and do
+not collapse their accounts or credentials into the Governor identity.
 
 Create a program with the requested name and purpose. Record its program ID,
 treasury account, asset, status, and public member/agent connection URL.
@@ -71,7 +118,7 @@ Funding and allocating are separate actions:
 Never describe an allocation as funded when the treasury deposit is absent or
 unconfirmed. Keep total allocations within confirmed program funds.
 
-## 3. Invite a human member
+## 4. Invite a human member
 
 Collect only the member's public Hedera account and requested constraints. Add
 the member with zero authority first, then set:
@@ -85,7 +132,7 @@ Share the program's member URL. The member must connect its own wallet and make
 its own purchases. The Governor may disable future purchases or restore access;
 existing orders retain their locked terms.
 
-## 4. Invite a delegated agent
+## 5. Invite a delegated agent
 
 Collect the agent's public invitation packet only: public identity, AgentKit
 address, settlement/execution account when required, and supported endpoint.
@@ -112,7 +159,7 @@ If the deployment lacks an agent-invitation or delegation control, stop and
 report the missing capability. Do not downgrade the invite to a human member or
 forge protocol commands.
 
-## 5. Add a supplier or agent-provided service
+## 6. Add a supplier or agent-provided service
 
 Register only a reviewed supplier packet:
 
@@ -146,7 +193,7 @@ Do not register an agent supplier in an automatic-settlement program when the
 deployment cannot require independent supplier acceptance. Configure an
 approval-gated flow or report that the requested safeguard is unsupported.
 
-## 6. Verify and hand off
+## 7. Verify and hand off
 
 After setup, report:
 

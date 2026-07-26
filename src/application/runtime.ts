@@ -111,6 +111,7 @@ export type CreateProgramInput = {
   description?: string;
   asset?: string;
   decimals?: number;
+  policy?: Program["policy"];
 };
 
 export async function createProgramRun(
@@ -140,11 +141,12 @@ export async function createProgramRun(
     description: input.description?.trim() ?? "",
     budget: atomic(0n, asset, decimals),
     status: "DRAFT",
-    policy: {
-      allowedCategories: [],
-      requireDeliveryEvidence: false,
-      approvalRequirements: [],
-    },
+    policy:
+      input.policy ?? {
+        allowedCategories: [],
+        requireDeliveryEvidence: false,
+        approvalRequirements: [],
+      },
   };
   const service = serviceFor(mode, program);
   const projection = await service.appendInitialEvents([
@@ -278,6 +280,16 @@ export async function createProgram(
   };
   runtime().runs.set(program.id, metadata);
   return { ...metadata, projection };
+}
+
+export function registerRuntimeAgentIdentity(
+  identity: ResolvedAgentIdentity,
+): void {
+  runtime().identities.set(
+    `${identity.publicIdentity.scheme.toLowerCase()}:${identity.publicIdentity.name.toLowerCase()}`,
+    identity,
+  );
+  runtime().testnetServices.clear();
 }
 
 export async function getProgramSession(
@@ -842,6 +854,10 @@ function serviceFor(
     return new ProtocolApplicationService({
       eventStore: testnetEventStore(),
       paymentScheduler: runtime().memoryPayments,
+      identityResolver:
+        runtime().identities.size > 0
+          ? new StaticPublicIdentityResolver(runtime().identities)
+          : undefined,
       requireResolvedAgentIdentity: false,
       settlement: { payerAccountId: hederaConfigFromEnv().operatorAccountId },
     });
@@ -855,6 +871,10 @@ function serviceFor(
   const service = new ProtocolApplicationService({
     eventStore: testnetEventStore(),
     paymentScheduler: new HederaPaymentScheduler(config),
+    identityResolver:
+      runtime().identities.size > 0
+        ? new StaticPublicIdentityResolver(runtime().identities)
+        : undefined,
     requireResolvedAgentIdentity: false,
     settlement: { payerAccountId: config.treasuryAccountId },
   });

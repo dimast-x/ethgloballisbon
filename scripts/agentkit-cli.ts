@@ -10,10 +10,12 @@ import {
   type AgentkitProcurementIntent,
 } from "../src/application/agentkit";
 
-try {
-  process.loadEnvFile?.(".env.local");
-} catch {
-  // Hosted and CI environments may provide variables directly.
+for (const path of [".env", ".env.local", ".env.agent.local"]) {
+  try {
+    process.loadEnvFile?.(path);
+  } catch {
+    // Hosted and CI environments may provide variables directly.
+  }
 }
 
 const command = process.argv[2] ?? "address";
@@ -28,7 +30,11 @@ if (command === "address") {
       {
         ready: registered,
         agentAddress: config.agentAddress,
-        worldChain: "eip155:480",
+        signerChain: "eip155:480",
+        agentBookNetwork: process.env.AGENTBOOK_NETWORK ?? "world",
+        agentBookContractAddress:
+          config.agentBookContractAddress ??
+          "0xA23aB2712eA7BBa896930544C7d6636a96b944dA",
         agentBookRegistered: registered,
       },
       null,

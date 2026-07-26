@@ -2,8 +2,13 @@
 
 Yareon grants procurement execution rights only to the dedicated EVM agent
 wallet whose public `WORLD_AGENT_ADDRESS` is configured on the server and
-registered in the canonical World AgentBook. Keep `WORLD_AGENT_PRIVATE_KEY`
-only in the agent CLI environment.
+registered in the configured World AgentBook deployment. Keep
+`WORLD_AGENT_PRIVATE_KEY` only in the agent CLI environment.
+
+For staging and simulator demonstrations, configure `AGENTBOOK_RPC_URL` and
+`AGENTBOOK_CONTRACT_ADDRESS` to use the Base Sepolia AgentBook deployment.
+This keeps registry lookup separate from the RPC used for AgentKit signature
+verification and avoids sending staging proofs to the production registry.
 
 ## Request flow
 

@@ -1,6 +1,9 @@
 import { PrivateKey } from "@hashgraph/sdk";
 import { describe, expect, it } from "vitest";
-import { HederaPaymentScheduler } from "../src/adapters/hedera";
+import {
+  HederaPaymentScheduler,
+  hederaTransactionIdForMirror,
+} from "../src/adapters/hedera";
 import { authenticateApprovalCommand } from "../src/application/approval-auth";
 import { initialProjection } from "../src/protocol/reducer";
 import type { Program, Order } from "../src/protocol/types";
@@ -45,6 +48,12 @@ function scheduler(
 }
 
 describe("direct Hedera wallet approval confirmation", () => {
+  it("formats SDK transaction IDs for Mirror Node lookups", () => {
+    expect(hederaTransactionIdForMirror(transactionId)).toBe(
+      "0.0.71001-1785000000-123456789",
+    );
+  });
+
   it("confirms only after the configured role key appears on the schedule", async () => {
     await expect(
       scheduler(["verifier-key"]).confirmApproval(scheduleId, {
