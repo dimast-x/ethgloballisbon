@@ -41,7 +41,7 @@ async function connector(): Promise<DAppConnector> {
         name: "Yareon",
         description: "Direct Hedera approval for Yareon scheduled payments",
         url: origin,
-        icons: [`${origin}/og.png`],
+        icons: [`${origin}/icon.svg`],
       },
       LedgerId.TESTNET,
       projectId,

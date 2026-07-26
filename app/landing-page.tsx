@@ -8,6 +8,7 @@ import {
   Settings2,
   ShieldCheck,
 } from "lucide-react";
+import { BrandLogo } from "./brand-logo";
 
 export function LandingPage({
   creating = false,
@@ -24,7 +25,7 @@ export function LandingPage({
     <main className="shell op-app landing-center-shell">
       <section className="landing-center-content">
         <div className="op-brand" aria-label="Yareon">
-          <span className="op-brand-mark">YA</span>
+          <BrandLogo className="op-brand-mark" />
           <span>
             <strong>Yareon</strong>
             <small>Policy-controlled spending</small>
@@ -95,7 +96,7 @@ export function ProgramCreatePage({
       <section className="program-create-card">
         <div className="program-create-topbar">
           <div className="op-brand" aria-label="Yareon">
-            <span className="op-brand-mark">YA</span>
+            <BrandLogo className="op-brand-mark" />
             <span>
               <strong>Yareon</strong>
               <small>New program</small>

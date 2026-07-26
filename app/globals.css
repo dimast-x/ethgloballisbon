@@ -175,13 +175,9 @@ button.live-brand {
 .brand-mark {
   width: 32px;
   height: 32px;
-  display: grid;
-  place-items: center;
+  display: block;
+  flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 11px;
-  letter-spacing: 0.04em;
 }
 
 .brand small {
@@ -1281,14 +1277,9 @@ button.live-brand {
 .landing-center-content .op-brand-mark {
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
+  display: block;
+  flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--op-ink);
-  color: var(--op-paper);
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.04em;
 }
 
 .landing-center-content .op-brand > span:last-child {
@@ -1450,13 +1441,9 @@ button.live-brand {
 .program-create-card .op-brand-mark {
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
+  display: block;
+  flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--op-ink);
-  color: var(--op-paper);
-  font-size: 11px;
-  font-weight: 850;
 }
 
 .program-create-card .op-brand > span:last-child {

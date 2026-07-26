@@ -60,6 +60,7 @@ import {
   createControlPanelPreviewSession,
 } from "./control-panel-preview";
 import { AgentkitDemoPanel } from "./agentkit-demo-panel";
+import { BrandLogo } from "./brand-logo";
 
 const tabs = [
   "Overview",
@@ -1114,7 +1115,7 @@ export function YareonApp() {
     <main className="program-cabinet">
       <aside className="op-program-sidebar">
         <div className="cabinet-brand" aria-label="Yareon">
-          <span className="brand-mark">CH</span>
+          <BrandLogo className="brand-mark" />
           <span>
             <strong>Yareon</strong>
             <small>Program cabinet</small>
