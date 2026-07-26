@@ -1850,8 +1850,14 @@ function SuppliersPanel({
     <div className="marketplace-layout suppliers">
       <section className="supplier-brief">
         <div className="allocation-manager supplier-manager">
-          <div className="section-label allocation-section-label">
-            Current suppliers
+          <div className="supplier-manager-heading">
+            <div className="section-label allocation-section-label">
+              Current suppliers
+            </div>
+            <p>
+              Review who can sell to members and the fixed price of every
+              registered offer.
+            </p>
           </div>
           {Object.keys(vendors).length === 0 && (
             <EmptyState text="No suppliers yet. Add one to make purchases available." />
@@ -1898,13 +1904,28 @@ function SuppliersPanel({
                     </dd>
                   </div>
                   <div>
-                    <dt>Catalog</dt>
+                    <dt>
+                      {vendor.status === "APPROVED"
+                        ? "Offers and prices"
+                        : "Previous offers and prices"}
+                    </dt>
                     <dd>
-                      {vendorOffers.length
-                        ? vendorOffers
-                            .map((offer) => offer.title ?? offer.description)
-                            .join(", ")
-                        : "No active offers"}
+                      {vendorOffers.length ? (
+                        <ul className="supplier-offer-list">
+                          {vendorOffers.map((offer) => (
+                            <li key={offer.id}>
+                              <span>{offer.title ?? offer.description}</span>
+                              <strong>
+                                {toDisplay(offer.amount)} {offer.amount.asset}
+                              </strong>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="supplier-no-offers">
+                          No offers — members cannot buy from this supplier yet.
+                        </span>
+                      )}
                     </dd>
                   </div>
                 </dl>
@@ -1929,6 +1950,7 @@ function SuppliersPanel({
               <span>Supplier name</span>
               <input
                 value={draft.name}
+                placeholder="e.g. Atlas Compute"
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -1941,6 +1963,7 @@ function SuppliersPanel({
               <span>Offer title</span>
               <input
                 value={draft.title}
+                placeholder="e.g. GPU compute package"
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -1954,6 +1977,7 @@ function SuppliersPanel({
               <input
                 value={draft.amount}
                 inputMode="decimal"
+                placeholder="e.g. 150"
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
