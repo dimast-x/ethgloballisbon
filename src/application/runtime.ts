@@ -207,9 +207,6 @@ async function configureProgramSettlementOnce(
   const approvedSuppliers = Object.values(current.projection.vendors).filter(
     (vendor) => vendor.status === "APPROVED",
   );
-  if (approvedSuppliers.length === 0) {
-    throw new Error("Add at least one approved supplier before activation.");
-  }
   const missingSettlement = approvedSuppliers.filter(
     (vendor) => !vendor.settlementAccountId,
   );
@@ -363,6 +360,11 @@ export async function runProgramCommand(
   const projection = await projectionFor(mode, programId);
   if (!projection.program) {
     throw new Error(`Program ${programId} was not found.`);
+  }
+  if (mode === "testnet" && command.type === "UPSERT_SUPPLIER") {
+    await validateSupplierSettlementAccount(
+      command.vendor.settlementAccountId,
+    );
   }
   const pending = serviceFor(mode, projection.program)
     .execute(programId, command)
@@ -793,6 +795,30 @@ async function provisionProgramHedera(
       verifierAccountId: setup.verifierAccountId,
       financeAccountId: setup.financeAccountId,
     };
+  } finally {
+    client.close();
+  }
+}
+
+async function validateSupplierSettlementAccount(
+  settlementAccountId: string,
+): Promise<void> {
+  try {
+    AccountId.fromString(settlementAccountId);
+  } catch {
+    throw new Error("Supplier settlement account is not a valid Hedera account ID.");
+  }
+
+  const client = createHederaClient(hederaConfigFromEnv());
+  try {
+    const account = await new AccountInfoQuery()
+      .setAccountId(settlementAccountId)
+      .execute(client);
+    if (!account.key) {
+      throw new Error(
+        "Supplier settlement account does not expose a usable key.",
+      );
+    }
   } finally {
     client.close();
   }

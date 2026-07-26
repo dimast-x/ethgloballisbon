@@ -5,10 +5,27 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  RefreshCw,
   Settings2,
   ShieldCheck,
 } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
+
+export function AppLoadingPage({
+  message = "Restoring your workspace…",
+}: {
+  message?: string;
+}) {
+  return (
+    <main className="shell loading-shell" aria-busy="true" aria-live="polite">
+      <div className="loading-card">
+        <RefreshCw className="spin" size={24} aria-hidden="true" />
+        <strong>Loading Yareon</strong>
+        <span>{message}</span>
+      </div>
+    </main>
+  );
+}
 
 export function LandingPage({
   creating = false,
@@ -119,8 +136,8 @@ export function ProgramCreatePage({
             <span>One-minute setup</span>
             <h1>Start with a name.</h1>
             <p>
-              Yareon will create the program, validate its approved suppliers,
-              and activate supplier payments in one operation.
+              Yareon will create the program now. Activate its treasury when
+              you&apos;re ready, then add suppliers at any time.
             </p>
           </div>
           <div className="program-create-form">
@@ -190,8 +207,8 @@ export function ProgramSettlementSettings({
           <span>Program draft</span>
           <strong>Configure payments when you&apos;re ready</strong>
           <p>
-            Explore the workspace now. Activate purchases once every approved
-            supplier has its own settlement account.
+            Explore the workspace now. You can activate the program before
+            adding suppliers.
           </p>
         </div>
         <button type="button" onClick={() => onOpenChange(true)}>
@@ -209,8 +226,8 @@ export function ProgramSettlementSettings({
           <span>Program settings</span>
           <h2>Set up supplier payments</h2>
           <p>
-            Yareon will validate the settlement account stored on every approved
-            supplier before activating <b>{programName}</b>.
+            Activate <b>{programName}</b> now. Suppliers can be added later,
+            and each settlement account is validated when added.
           </p>
         </div>
         <button
@@ -228,7 +245,7 @@ export function ProgramSettlementSettings({
           <span className="program-role-copy">
             <strong>Per-supplier settlement</strong>
             <small>
-              Settlement accounts are configured when suppliers are added and
+              Each supplier has its own validated settlement account. Accounts
               are never shared across the program.
             </small>
           </span>
@@ -236,8 +253,8 @@ export function ProgramSettlementSettings({
       </div>
       <div className="program-setup-actions">
         <span>
-          Eligible purchases settle without delivery confirmation or
-          a separate finance approval.
+          The program can be active without suppliers. Purchases become
+          available after an approved supplier and offer are added.
         </span>
         <button
           className="program-settings-close"

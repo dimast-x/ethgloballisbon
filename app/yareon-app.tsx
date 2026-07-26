@@ -52,6 +52,7 @@ import {
 } from "@/src/wallet/hedera-wallet-client";
 import type { ProgramListItem } from "@/src/application/runtime";
 import {
+  AppLoadingPage,
   LandingPage,
   ProgramCreatePage,
   ProgramSettlementSettings,
@@ -152,6 +153,7 @@ const eventLabels: Record<string, string> = {
 
 export function YareonApp() {
   const [session, setSession] = useState<ProgramSession | null>(null);
+  const [initializing, setInitializing] = useState(true);
   const mode: ExecutionMode = "testnet";
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [controlSection, setControlSection] =
@@ -197,20 +199,29 @@ export function YareonApp() {
   const [programPickerOpen, setProgramPickerOpen] = useState(false);
 
   useEffect(() => {
-    void refreshReadiness().then((next) => {
-      if (!authenticationAttemptStarted.current) {
-        setAdministratorAuthenticated(Boolean(next.authorized));
-      }
-      if (next.ready && next.authorized) {
-        void loadPrograms();
-        const programId = window.localStorage.getItem(activeLiveRunKey);
-        if (programId) {
-          void resumeRun(programId);
-        } else {
-          setOperationState("idle");
+    async function initialize() {
+      try {
+        const next = await refreshReadiness();
+        if (!authenticationAttemptStarted.current) {
+          setAdministratorAuthenticated(Boolean(next.authorized));
         }
+        if (next.ready && next.authorized) {
+          const availablePrograms = await loadPrograms();
+          const programId =
+            window.localStorage.getItem(activeLiveRunKey) ??
+            availablePrograms[0]?.programId;
+          if (programId) {
+            await resumeRun(programId);
+          } else {
+            setOperationState("idle");
+          }
+        }
+      } finally {
+        setInitializing(false);
       }
-    });
+    }
+
+    void initialize();
     // Initialization intentionally runs once; subsequent state comes from Mirror.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -505,6 +516,10 @@ export function YareonApp() {
         error instanceof Error ? error.message : "Wallet disconnect failed.",
       );
     }
+  }
+
+  if (initializing) {
+    return <AppLoadingPage />;
   }
 
   if (!session?.projection.program) {
@@ -1719,9 +1734,6 @@ function SuppliersPanel({
   });
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const activeSupplierCount = Object.values(vendors).filter(
-    (vendor) => vendor.status === "APPROVED",
-  ).length;
   return (
     <div className="marketplace-layout suppliers">
       <section className="supplier-brief">
@@ -1734,6 +1746,9 @@ function SuppliersPanel({
           <div className="section-label allocation-section-label">
             Current suppliers
           </div>
+          {Object.keys(vendors).length === 0 && (
+            <EmptyState text="No suppliers yet. Add one to make purchases available." />
+          )}
           {Object.values(vendors).map((vendor) => {
             const vendorOffers = Object.values(offers).filter(
               (offer) => offer.vendorId === vendor.id,
@@ -1789,18 +1804,10 @@ function SuppliersPanel({
                 {vendor.status === "APPROVED" ? (
                   <button
                     className="danger-action"
-                    disabled={activeSupplierCount === 1}
-                    title={
-                      activeSupplierCount === 1
-                        ? "Add a replacement supplier before removing the last active supplier."
-                        : undefined
-                    }
                     onClick={() => onRemove(vendor.id)}
                   >
                     <X size={13} aria-hidden="true" />
-                    {activeSupplierCount === 1
-                      ? "Last active supplier"
-                      : "Remove access"}
+                    Remove access
                   </button>
                 ) : (
                   <span className="supplier-removed-copy">
