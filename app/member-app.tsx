@@ -10,7 +10,6 @@ import {
   LogOut,
   ReceiptText,
   Search,
-  ShieldCheck,
   Store,
   TimerReset,
   Truck,
@@ -373,11 +372,14 @@ export function MemberApp() {
         </nav>
 
         <div className="op-sidebar-foot">
-          <ShieldCheck size={17} />
-          <span>
-            <strong>Policy enforced</strong>
-            <small>Only eligible offers can be ordered</small>
-          </span>
+          <button
+            className="cabinet-disconnect"
+            type="button"
+            onClick={() => void disconnectMember()}
+          >
+            <LogOut size={14} />
+            Disconnect wallet
+          </button>
         </div>
       </aside>
 
@@ -397,12 +399,12 @@ export function MemberApp() {
               Change role
             </Link>
             <button
-              className="cabinet-disconnect"
+              className="cabinet-disconnect cabinet-disconnect-mobile"
               type="button"
               onClick={() => void disconnectMember()}
             >
               <LogOut size={14} />
-              Disconnect
+              Disconnect wallet
             </button>
           </div>
         </header>

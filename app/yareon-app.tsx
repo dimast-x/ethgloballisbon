@@ -1080,6 +1080,15 @@ export function YareonApp() {
             <strong>{program.name}</strong>
             <small>{program.status === "ACTIVE" ? "Active" : "Draft"}</small>
           </div>
+          <button
+            className="cabinet-new-program"
+            type="button"
+            onClick={beginNewProgram}
+            disabled={operationState === "pending"}
+          >
+            <Plus size={14} />
+            New program
+          </button>
           {programPickerOpen && (
             <div
               className="cabinet-program-options"
@@ -1134,11 +1143,15 @@ export function YareonApp() {
         </nav>
 
         <div className="op-sidebar-foot">
-          <ShieldCheck size={17} />
-          <span>
-            <strong>Ledger synced</strong>
-            <small>Hedera Testnet · public consensus log</small>
-          </span>
+          <button
+            className="cabinet-disconnect"
+            type="button"
+            onClick={() => void disconnectAdministrator()}
+            disabled={operationState === "pending"}
+          >
+            <WalletCards size={15} />
+            Disconnect wallet
+          </button>
         </div>
       </aside>
 
@@ -1153,20 +1166,12 @@ export function YareonApp() {
               <ArrowRight size={14} />
             </Link>
             <button
-              className="cabinet-new-program"
-              type="button"
-              onClick={beginNewProgram}
-              disabled={operationState === "pending"}
-            >
-              <Plus size={14} />
-              New program
-            </button>
-            <button
-              className="cabinet-disconnect"
+              className="cabinet-disconnect cabinet-disconnect-mobile"
               type="button"
               onClick={() => void disconnectAdministrator()}
               disabled={operationState === "pending"}
             >
+              <WalletCards size={15} />
               Disconnect wallet
             </button>
           </div>
