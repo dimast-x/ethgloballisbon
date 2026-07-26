@@ -3294,6 +3294,16 @@ button:not(:disabled):active {
   padding: 32px;
 }
 
+.activity-workspace-stack {
+  display: grid;
+  gap: 44px;
+}
+
+.activity-workspace-stack > :last-child {
+  padding-top: 36px;
+  border-top: 1px solid var(--line);
+}
+
 .secondary-nav {
   min-height: 54px;
   padding: 0 20px;
@@ -3774,6 +3784,40 @@ button:not(:disabled):active {
   text-transform: uppercase;
 }
 
+.allocation-manager-row .member-verification-status,
+.member-verification-status {
+  width: fit-content;
+  margin: 0 0 0 8px;
+  padding: 3px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.member-verification-status.verified {
+  border-color: color-mix(in srgb, var(--green) 28%, var(--line));
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.member-verification-status.pending {
+  border-color: #dec7aa;
+  background: #fff4e3;
+  color: #915112;
+}
+
+.member-verification-status.not-required {
+  border-color: var(--line);
+  background: #f4f1ea;
+  color: var(--ink-soft);
+}
+
 .allocation-manager-row.disabled .buyer-access-status {
   background: var(--orange-soft);
   color: #9b3f1c;
@@ -3795,6 +3839,155 @@ button:not(:disabled):active {
   border-color: color-mix(in srgb, var(--green) 42%, var(--line));
   background: var(--green-soft);
   color: var(--green);
+}
+
+.allocation-manager-row .member-profile-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line-dark);
+  background: white;
+  color: var(--ink);
+}
+
+.member-profile {
+  max-width: 980px;
+}
+
+.member-profile-back {
+  margin-bottom: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.member-profile-back svg {
+  transform: rotate(180deg);
+}
+
+.member-profile-sheet {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.member-profile-header {
+  min-height: 96px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  background: #f5faf7;
+}
+
+.member-profile-header > div {
+  display: grid;
+  gap: 5px;
+}
+
+.member-profile-eyebrow,
+.member-verification-card > div > span {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.member-profile-header strong {
+  font-size: 17px;
+}
+
+.member-profile-header .member-verification-status {
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 9px;
+}
+
+.member-profile-facts {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.member-profile-facts > div {
+  min-height: 92px;
+  padding: 18px 20px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.member-profile-facts > div:nth-child(3n) {
+  border-right: 0;
+}
+
+.member-profile-facts dt {
+  margin-bottom: 7px;
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.member-profile-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.member-verification-card {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.member-verification-card > div {
+  display: grid;
+  gap: 5px;
+}
+
+.member-verification-card strong {
+  font-size: 13px;
+}
+
+.member-verification-card p {
+  max-width: 600px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.member-verification-card button {
+  min-height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--green);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .allocation-manager-row:first-of-type {
@@ -5193,6 +5386,26 @@ button:not(:disabled):active {
   .member-order-amount {
     grid-column: 2;
     justify-items: start;
+  }
+
+  .member-profile-header,
+  .member-verification-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .member-profile-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .member-profile-facts > div,
+  .member-profile-facts > div:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .member-verification-card button {
+    width: 100%;
+    justify-content: center;
   }
 
   .program-cabinet .op-program-content {
