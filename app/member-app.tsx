@@ -62,6 +62,9 @@ type MemberContext = {
     paid: Money;
     remaining: Money;
     allowedCategories: string[];
+    humanVerificationRequired: boolean;
+    humanVerified: boolean;
+    humanVerifiedAt?: string;
   };
   offers: MemberOffer[];
   recommendedOfferId?: string;
@@ -108,6 +111,7 @@ export function MemberApp() {
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [query, setQuery] = useState("");
   const [purchasing, setPurchasing] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const programId =
@@ -294,6 +298,39 @@ export function MemberApp() {
     }
   }
 
+  async function verifyIdentity() {
+    if (!context) return;
+    setVerifying(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/members/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ programId: context.program.id }),
+      });
+      const body = (await response.json()) as {
+        context?: MemberContext;
+        error?: string;
+      };
+      if (!response.ok || !body.context) {
+        throw new Error(
+          body.error ?? "Identity verification could not be completed.",
+        );
+      }
+      setContext(body.context);
+      setNotice("Identity verified. You can now create orders.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Identity verification could not be completed.",
+      );
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="shell loading-shell">
@@ -431,6 +468,46 @@ export function MemberApp() {
             </div>
           )}
 
+          {context.member.humanVerificationRequired && (
+            <section
+              className={`member-self-verification${
+                context.member.humanVerified ? " verified" : ""
+              }`}
+              aria-label="Identity verification"
+            >
+              <div className="member-self-verification-icon">
+                <BadgeCheck size={20} aria-hidden="true" />
+              </div>
+              <div>
+                <span>Identity verification</span>
+                <strong>
+                  {context.member.humanVerified
+                    ? "Your identity is verified"
+                    : "Verify before creating an order"}
+                </strong>
+                <p>
+                  {context.member.humanVerified
+                    ? "Your member wallet can use this allocation to create orders."
+                    : "Confirm your identity with the connected member wallet to unlock ordering."}
+                </p>
+              </div>
+              {context.member.humanVerified ? (
+                <span className="member-self-verification-status">
+                  <Check size={14} aria-hidden="true" />
+                  Verified
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void verifyIdentity()}
+                  disabled={verifying}
+                >
+                  {verifying ? "Verifying…" : "Verify identity"}
+                </button>
+              )}
+            </section>
+          )}
+
           {activeTab === "Home" && (
             <MemberHome
               context={context}
@@ -532,11 +609,24 @@ export function MemberApp() {
                     className="primary-action"
                     type="button"
                     onClick={() => void createOrder()}
-                    disabled={purchasing}
+                    disabled={
+                      purchasing ||
+                      (context.member.humanVerificationRequired &&
+                        !context.member.humanVerified)
+                    }
                   >
                     <CircleDollarSign size={18} />
-                    {purchasing ? "Creating order…" : "Create order"}
-                    {!purchasing && <ArrowRight size={17} />}
+                    {purchasing
+                      ? "Creating order…"
+                      : context.member.humanVerificationRequired &&
+                          !context.member.humanVerified
+                        ? "Verify identity to order"
+                        : "Create order"}
+                    {!purchasing &&
+                      (!context.member.humanVerificationRequired ||
+                        context.member.humanVerified) && (
+                        <ArrowRight size={17} />
+                      )}
                   </button>
                 </div>
               )}

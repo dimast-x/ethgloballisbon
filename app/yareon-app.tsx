@@ -1412,10 +1412,6 @@ export function YareonApp() {
               onNewBuyerId={setNewBuyerId}
               onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
               onActiveBuyer={setActiveBuyerId}
-              onVerifyBuyer={() => {
-                setOperationState("failed");
-                setNotice("Human-member verification is outside this AgentKit flow.");
-              }}
               onUpfund={(buyerId) =>
                 void upfundBuyer(buyerId).catch((error) => {
                   setOperationState("failed");
@@ -1507,10 +1503,6 @@ export function YareonApp() {
               onNewBuyerId={setNewBuyerId}
               onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
               onActiveBuyer={setActiveBuyerId}
-              onVerifyBuyer={() => {
-                setOperationState("failed");
-                setNotice("Human-member verification is outside this AgentKit flow.");
-              }}
               onUpfund={(buyerId) => void upfundBuyer(buyerId)}
               onSetPurchasing={(buyerId, active) =>
                 void setBuyerPurchasing(buyerId, active)
@@ -2197,7 +2189,6 @@ function BuyerPanel({
   onNewBuyerId,
   onNewBuyerRequiresVerification,
   onActiveBuyer,
-  onVerifyBuyer,
   onUpfund,
   onSetPurchasing,
   onAddBuyer,
@@ -2227,7 +2218,6 @@ function BuyerPanel({
   onNewBuyerId: (value: string) => void;
   onNewBuyerRequiresVerification: (value: boolean) => void;
   onActiveBuyer: (buyerId: string) => void;
-  onVerifyBuyer: (buyerId: string) => void;
   onUpfund: (buyerId: string) => void;
   onSetPurchasing: (buyerId: string, active: boolean) => void;
   onAddBuyer: () => void;
@@ -2238,13 +2228,9 @@ function BuyerPanel({
   const [deliveryFilter, setDeliveryFilter] = useState<"all" | "fast">("all");
   const [sort, setSort] = useState<"fit" | "price" | "delivery">("fit");
   const [expandedOfferId, setExpandedOfferId] = useState<string | null>(null);
-  const [profileBuyerId, setProfileBuyerId] = useState<string | null>(null);
   const activeAllocations = Object.values(allocations).filter(
     (allocation) => allocation.purchasingStatus !== "DISABLED",
   );
-  const profileBuyer = profileBuyerId
-    ? allocations[profileBuyerId]
-    : undefined;
 
   const visibleOffers = offers
     .filter((offer) => {
@@ -2287,127 +2273,6 @@ function BuyerPanel({
     selectedOffer
       ? vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId
       : "";
-
-  if (view === "buyers" && profileBuyer) {
-    const backing = humanBacking[profileBuyer.buyerId];
-    const verificationState = backing
-      ? "verified"
-      : profileBuyer.humanVerificationRequired
-        ? "pending"
-        : "not-required";
-    const verificationLabel = backing
-      ? "Verified"
-      : profileBuyer.humanVerificationRequired
-        ? "Not verified"
-        : "Verification not required";
-    const memberOrders = Object.values(orders).filter(
-      (candidate) => candidate.buyerId === profileBuyer.buyerId,
-    );
-
-    return (
-      <div className="marketplace-layout buyers">
-        <section className="buyer-brief member-profile">
-          <button
-            className="member-profile-back"
-            type="button"
-            onClick={() => setProfileBuyerId(null)}
-          >
-            <ArrowRight size={14} aria-hidden="true" />
-            Back to members
-          </button>
-          <PanelHeading
-            kicker="Member profile"
-            title={profileBuyer.buyerId}
-            description="Review this member's identity, verification, purchasing authority, and access."
-          />
-          <div className="member-profile-sheet">
-            <header className="member-profile-header">
-              <div>
-                <span className="member-profile-eyebrow">Identity status</span>
-                <strong>
-                  {profileBuyer.participantType === "AGENT"
-                    ? "Delegated agent"
-                    : "Human member"}
-                </strong>
-              </div>
-              <span
-                className={`member-verification-status ${verificationState}`}
-              >
-                {backing && <BadgeCheck size={14} aria-hidden="true" />}
-                {verificationLabel}
-              </span>
-            </header>
-
-            <dl className="member-profile-facts">
-              <div>
-                <dt>Member account</dt>
-                <dd>{profileBuyer.buyerId}</dd>
-              </div>
-              <div>
-                <dt>Wallet</dt>
-                <dd>
-                  {profileBuyer.walletAccountId
-                    ? shortHederaAccount(profileBuyer.walletAccountId)
-                    : "Not assigned"}
-                </dd>
-              </div>
-              <div>
-                <dt>Total authority</dt>
-                <dd>
-                  {toDisplay(profileBuyer.totalLimit)}{" "}
-                  {profileBuyer.totalLimit.asset}
-                </dd>
-              </div>
-              <div>
-                <dt>Purchasing access</dt>
-                <dd>
-                  {profileBuyer.purchasingStatus === "DISABLED"
-                    ? "Removed"
-                    : "Active"}
-                </dd>
-              </div>
-              <div>
-                <dt>Orders</dt>
-                <dd>{memberOrders.length}</dd>
-              </div>
-              <div>
-                <dt>Allowed categories</dt>
-                <dd>
-                  {profileBuyer.allowedCategories.join(", ") ||
-                    "All policy-approved categories"}
-                </dd>
-              </div>
-            </dl>
-
-            <section className="member-verification-card">
-              <div>
-                <span>Identity verification</span>
-                <strong>{verificationLabel}</strong>
-                <p>
-                  {backing
-                    ? `Verified ${formatTime(backing.verifiedAt)}.`
-                    : profileBuyer.humanVerificationRequired
-                      ? "Verification is required before this identity can use verification-gated purchasing authority."
-                      : "This member's allocation does not require human verification."}
-                </p>
-              </div>
-              {profileBuyer.humanVerificationRequired &&
-                !backing &&
-                profileBuyer.purchasingStatus !== "DISABLED" && (
-                  <button
-                    type="button"
-                    onClick={() => onVerifyBuyer(profileBuyer.buyerId)}
-                  >
-                    <Fingerprint size={15} aria-hidden="true" />
-                    Verify identity
-                  </button>
-                )}
-            </section>
-          </div>
-        </section>
-      </div>
-    );
-  }
 
   return (
     <div className={`marketplace-layout ${view}`}>
@@ -2486,14 +2351,6 @@ function BuyerPanel({
                 disabled={item.purchasingStatus === "DISABLED"}
               >
                 Add budget
-              </button>
-              <button
-                className="member-profile-action"
-                type="button"
-                onClick={() => setProfileBuyerId(item.buyerId)}
-              >
-                View profile
-                <ArrowRight size={13} aria-hidden="true" />
               </button>
               <button
                 className={item.purchasingStatus === "DISABLED" ? "restore-action" : "danger-action"}
