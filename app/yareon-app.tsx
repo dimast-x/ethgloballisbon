@@ -1249,15 +1249,6 @@ export function YareonApp() {
 
       <div className="op-program-main">
         <header className="op-program-topbar">
-          <div className="cabinet-statuses">
-            <span className={`cabinet-status ${program.hedera ? "active" : "draft"}`}>
-              {program.hedera ? "Active" : "Draft"}
-            </span>
-            <span className="cabinet-network">
-              <span className="network-dot" />
-              Hedera Testnet
-            </span>
-          </div>
           <div className="cabinet-topbar-actions">
             <button
               className="cabinet-new-program"
@@ -1707,14 +1698,7 @@ function ProgramOverviewPanel({
       program.policy.approvalRequirements.length > 0);
   const nextAction =
     BigInt(programFunds.atomicAmount) === 0n
-      ? {
-          eyebrow: "Funding required",
-          title: "Deposit funds before allocating spend",
-          description:
-            "The program treasury is empty. Add HBAR, then assign it to members.",
-          label: "Fund the program",
-          onClick: focusFunding,
-        }
+      ? null
       : !order || order.status === "PAYMENT_EXECUTED"
         ? null
         : needsSettlement

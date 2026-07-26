@@ -803,49 +803,11 @@ button.live-brand {
   padding: 0 30px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 20px;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 253, 248, 0.84);
   backdrop-filter: blur(14px);
-}
-
-.cabinet-statuses,
-.cabinet-network {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cabinet-status,
-.cabinet-network {
-  min-height: 25px;
-  padding: 0 8px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.cabinet-status.active {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.cabinet-status.draft {
-  background: var(--orange-soft);
-  color: #9b4a28;
-}
-
-.cabinet-network {
-  color: var(--ink-soft);
-  background: #ece9e2;
-}
-
-.cabinet-network .network-dot {
-  width: 6px;
-  height: 6px;
 }
 
 .program-cabinet .op-program-content {
@@ -2835,10 +2797,6 @@ button:not(:disabled):active {
 }
 
 @media (max-width: 720px) {
-  .program-cabinet .cabinet-statuses {
-    display: none;
-  }
-
   .program-cabinet .cabinet-topbar-actions {
     width: 100%;
     justify-content: flex-end;
@@ -4343,14 +4301,6 @@ button:not(:disabled):active {
 
   .program-cabinet .op-program-topbar {
     min-height: 56px;
-  }
-
-  .program-cabinet .cabinet-statuses {
-    display: flex;
-  }
-
-  .program-cabinet .cabinet-network {
-    display: none;
   }
 
   .cabinet-disconnect {
