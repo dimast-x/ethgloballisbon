@@ -1,50 +1,72 @@
-# Yareon landing page design QA
+# Governor controls design QA
 
-- Source visual truth: `/var/folders/vm/gmbj534j7xg4g_wmm1qll3gw0000gn/T/codex-clipboard-d0bde523-394f-46dc-9239-cb71aea1f05f.png`
-- Implementation capture: `/Users/dimast/ethgloballisbon/.openai/qa/landing-after.png`
-- Mobile capture: `/Users/dimast/ethgloballisbon/.openai/qa/landing-mobile-after.png`
-- Full comparison: `/Users/dimast/ethgloballisbon/.openai/qa/landing-comparison.png`
-- Focused brand comparison: `/Users/dimast/ethgloballisbon/.openai/qa/landing-brand-comparison.png`
-- State: public, signed out, public-proof lookup pending
-- Desktop CSS viewport: 1908 × 1280 at device scale 1
-- Source pixels: 2448 × 1642
-- Implementation pixels: 1908 × 1280
-- Normalization: the source was resampled to 1908 × 1280 for the combined full-view comparison. The Codex overlay in the source image was excluded from app-design findings.
+- Source visual truth: `role-separation-audit/08-members-reference.png`
+- Implementation screenshot: `role-separation-audit/07-suppliers-consistent.png`
+- Combined comparison: `role-separation-audit/09-members-suppliers-side-by-side.png`
+- Viewport: 1280 × 720 CSS px
+- Source pixels: 1280 × 720
+- Implementation pixels: 1280 × 720
+- Device pixel ratio: 2
+- Density normalization: both captures came from the same browser, viewport, and
+  density; the combined comparison crops equivalent content regions without
+  resizing them.
+- State: populated Governor Controls panels with two active records and the
+  corresponding add-record form.
 
-## Findings and comparison history
+## Full-view comparison
 
-### Iteration 1
+The Members panel is the visual source. The Suppliers implementation now uses
+the same heading hierarchy, section label, bordered list rows, status pills,
+muted secondary metadata, destructive access action, and attached pale add form.
+The combined comparison shows both panels at the same scale.
 
-- P1 — Brand subtitle detached from the brand name.
-  - Evidence: the focused source crop shows a large unintended vertical gap between “Yareon” and “POLICY-CONTROLLED SPENDING.”
-  - Cause: `.landing-center-content small` applied footer-status spacing and typography to the nested brand subtitle.
-  - Fix: scope the footer-status selector to the direct child with `.landing-center-content > small`.
+## Focused comparison
 
-### Iteration 2
-
-- The repaired brand lockup measures 39px high with a 1px title-to-subtitle gap.
-- The subtitle now resolves to 10px, zero top margin, and the intended muted brand color.
-- The centered composition remains at a zero-pixel vertical center delta.
-- No horizontal overflow occurs at 1908 × 1280 or 390 × 844.
-- The primary create-program link remains visible at both tested viewports.
-- Browser console check returned no warnings or errors.
+The records and add forms were kept readable in the combined crop, so a separate
+detail crop was unnecessary. The comparison covers the densest surfaces:
+badges, metadata columns, inputs, primary actions, destructive actions, borders,
+row rhythm, and form attachment.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: Geist remains active; heading, kicker, brand title, subtitle, and utility text retain their existing weights and sizes. The accidental subtitle override is removed.
-- Spacing and layout rhythm: the content remains centered. Only the unintended brand gap changed.
-- Colors and visual tokens: the existing paper, ink, green, and muted tokens are unchanged.
-- Image quality and assets: no raster imagery is used by the page. The existing Lucide shield and arrow icons remain sharp.
-- Copy and content: the slogan and all product copy are unchanged.
+- Fonts and typography: same inherited Geist families, heading sizes, uppercase
+  kickers, small labels, weights, and muted metadata treatment.
+- Spacing and layout rhythm: matching section spacing, row borders and heights,
+  compact status placement, attached add form, 8 px outer radii, and 12–16 px
+  inner spacing.
+- Colors and tokens: both panels use the existing paper, panel, line, green,
+  green-soft, orange-soft, ink, and ink-soft tokens.
+- Image quality and assets: neither panel requires imagery. Existing Lucide
+  action icons are retained; no replacement assets were introduced.
+- Copy and content: Suppliers uses supplier-specific labels while retaining the
+  Members panel's information hierarchy. Members now exposes Human or Agent as
+  the allocation type.
 
-## Interaction checks
+## Interaction and console checks
 
-- Create-program CTA has the live ChatGPT sign-in URL.
-- Verification evidence remains available through the live verifier and direct HashScan links.
-- Mobile and desktop layouts render without overflow.
+- Member and supplier inputs, checkboxes, and action buttons rendered with
+  accessible names.
+- Supplier removal retains the last-active-supplier guard in production code.
+- Browser console errors checked: none.
+- No mutation was submitted during visual QA.
+
+## Comparison history
+
+1. Initial finding: Suppliers placed its add form above a visually unrelated,
+   taller registry-card design, while Members used compact rows with an attached
+   add form. Severity: P2.
+2. Fix: Suppliers was rebuilt on the Members allocation-manager structure and
+   token set; the add form moved below the list and actions/statuses were aligned.
+3. Post-fix evidence: the combined comparison shows no remaining actionable
+   P0, P1, or P2 difference. Supplier-only facts use additional columns by
+   design without changing the visual system.
+
+## Findings
+
+No actionable P0, P1, or P2 findings remain.
 
 ## Follow-up polish
 
-- None required for this fix.
+No P3 polish is required for this scoped consistency pass.
 
 final result: passed

@@ -38,24 +38,13 @@ describe("program creation", () => {
     expect(session.agentId).toBe("");
   });
 
-  it("accepts user-created data after the empty program exists", async () => {
+  it("creates a member with zero authority before it is funded", async () => {
     const session = await createProgramRun(
       { name: "Submitted program" },
       "simulation",
       "administrator_account",
     );
     const program = session.projection.program!;
-    const funded = await runProgramCommand(session.programId, "simulation", {
-      type: "UPFUND_PROGRAM",
-      idempotencyKey: crypto.randomUUID(),
-      actor: {
-        actorId: program.organizationId,
-        role: "ADMIN",
-        actorType: "HUMAN",
-      },
-      amount: { ...program.budget, atomicAmount: "100000000" },
-    });
-    expect(funded.status).toBe("CONFIRMED");
     const result = await runProgramCommand(session.programId, "simulation", {
       type: "ALLOCATE_BUYER",
       idempotencyKey: crypto.randomUUID(),
@@ -70,7 +59,7 @@ describe("program creation", () => {
         buyerId: "member_account",
         participantType: "HUMAN",
         humanVerificationRequired: false,
-        totalLimit: { ...program.budget, atomicAmount: "100000000" },
+        totalLimit: { ...program.budget, atomicAmount: "0" },
         committed: { ...program.budget, atomicAmount: "0" },
         paid: { ...program.budget, atomicAmount: "0" },
         allowedCategories: [],
@@ -78,6 +67,8 @@ describe("program creation", () => {
     });
 
     expect(result.status).toBe("CONFIRMED");
-    expect(result.projection?.allocations.member_account).toBeDefined();
+    expect(
+      result.projection?.allocations.member_account?.totalLimit.atomicAmount,
+    ).toBe("0");
   });
 });

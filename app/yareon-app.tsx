@@ -37,7 +37,6 @@ import type {
   ProtocolCommand,
 } from "@/src/application/commands";
 import type {
-  IdentityReadiness,
   LiveProgramSetup,
   ProgramSession,
   TestnetReadiness,
@@ -66,7 +65,7 @@ const tabs = [
   "Activity",
 ] as const;
 type Tab = (typeof tabs)[number];
-const controlSections = ["Policy", "Members", "Suppliers", "Agent"] as const;
+const controlSections = ["Policy", "Members", "Suppliers"] as const;
 type ControlSection = (typeof controlSections)[number];
 const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
 type PurchasingSection = (typeof purchasingSections)[number];
@@ -166,8 +165,6 @@ export function YareonApp() {
     "idle" | "pending" | "confirmed" | "failed"
   >("pending");
   const [readiness, setReadiness] = useState<TestnetReadiness | null>(null);
-  const [identityReadiness, setIdentityReadiness] =
-    useState<IdentityReadiness | null>(null);
   const [roleWallets, setRoleWallets] = useState<
     Partial<Record<"VERIFIER" | "FINANCE", string>>
   >({});
@@ -177,12 +174,10 @@ export function YareonApp() {
   const [allocationAmounts, setAllocationAmounts] = useState<Record<string, string>>({});
   const [programUpfundAmount, setProgramUpfundAmount] = useState("");
   const [newBuyerId, setNewBuyerId] = useState("");
-  const [newBuyerAmount, setNewBuyerAmount] = useState("");
   const [newBuyerRequiresVerification, setNewBuyerRequiresVerification] =
     useState(false);
   const [activeBuyerId, setActiveBuyerId] = useState("");
   const [activeOrderId, setActiveOrderId] = useState("");
-  const [agentUpfundAmount, setAgentUpfundAmount] = useState("");
   const [administratorSigningIn, setAdministratorSigningIn] = useState(false);
   const [administratorAuthenticated, setAdministratorAuthenticated] =
     useState(false);
@@ -204,9 +199,9 @@ export function YareonApp() {
   useEffect(() => {
     void refreshReadiness().then((next) => {
       if (!authenticationAttemptStarted.current) {
-        setAdministratorAuthenticated(Boolean(next.hedera.authorized));
+        setAdministratorAuthenticated(Boolean(next.authorized));
       }
-      if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
+      if (next.ready && next.authorized) {
         void loadPrograms();
         const programId = window.localStorage.getItem(activeLiveRunKey);
         if (programId) {
@@ -246,15 +241,12 @@ export function YareonApp() {
 
   async function refreshReadiness() {
     try {
-      const [hederaResponse, identityResponse] = await Promise.all([
-        fetch("/api/config/testnet", { cache: "no-store" }),
-        fetch("/api/config/identity", { cache: "no-store" }),
-      ]);
+      const hederaResponse = await fetch("/api/config/testnet", {
+        cache: "no-store",
+      });
       const nextReadiness = (await hederaResponse.json()) as TestnetReadiness;
-      const nextIdentity = (await identityResponse.json()) as IdentityReadiness;
       setReadiness(nextReadiness);
-      setIdentityReadiness(nextIdentity);
-      return { hedera: nextReadiness, identity: nextIdentity };
+      return nextReadiness;
     } catch {
       const unavailable: TestnetReadiness = {
         ready: false,
@@ -266,25 +258,7 @@ export function YareonApp() {
         },
       };
       setReadiness(unavailable);
-      setIdentityReadiness({
-        ready: false,
-        issues: ["Identity configuration status could not be loaded."],
-        publicConfig: {
-          worldChain: "eip155:480",
-          expectedDelegationHash: "",
-        },
-      });
-      return {
-        hedera: unavailable,
-        identity: {
-          ready: false,
-          issues: ["Identity configuration status could not be loaded."],
-          publicConfig: {
-            worldChain: "eip155:480" as const,
-            expectedDelegationHash: "",
-          },
-        },
-      };
+      return unavailable;
     }
   }
 
@@ -315,7 +289,7 @@ export function YareonApp() {
       let topicId = readiness?.publicConfig.topicId;
       if (!topicId) {
         const configuration = await refreshReadiness();
-        topicId = configuration.hedera.publicConfig.topicId;
+        topicId = configuration.publicConfig.topicId;
       }
       if (!topicId) {
         throw new Error("The Yareon authentication topic is not configured.");
@@ -346,7 +320,7 @@ export function YareonApp() {
       setAdministratorAuthenticated(true);
 
       const next = await refreshReadiness();
-      if (next.hedera.ready && next.hedera.authorized && next.identity.ready) {
+      if (next.ready && next.authorized) {
         const availablePrograms = await loadPrograms();
         if (destination === "control-panel") {
           const programId =
@@ -477,7 +451,6 @@ export function YareonApp() {
     setProgramUpfundAmount("");
     setAllocationAmounts({});
     setNewBuyerId("");
-    setNewBuyerAmount("");
     setNewBuyerRequiresVerification(false);
     setActiveBuyerId("");
     setActiveOrderId("");
@@ -535,10 +508,7 @@ export function YareonApp() {
   }
 
   if (!session?.projection.program) {
-    const issues = [
-      ...(readiness?.issues ?? []),
-      ...(identityReadiness?.issues ?? []),
-    ];
+    const issues = readiness?.issues ?? [];
     if (!administratorAuthenticated || administratorSigningIn) {
       return (
         <LandingPage
@@ -551,7 +521,7 @@ export function YareonApp() {
         />
       );
     }
-    if (readiness?.ready && identityReadiness?.ready) {
+    if (readiness?.ready) {
       return (
         <ProgramCreatePage
           name={programName}
@@ -878,30 +848,6 @@ export function YareonApp() {
     }
   }
 
-  async function upfundAgent() {
-    const value = agentUpfundAmount.trim();
-    if (!value || Number(value) <= 0) {
-      setOperationState("failed");
-      setNotice("Enter a positive amount to append to the agent authority.");
-      return;
-    }
-    await submitCommand(
-      {
-        type: "UPFUND_AGENT_DELEGATION",
-        idempotencyKey: `${activeSession.runId}:agent-upfund:${activeSession.agentId}:${crypto.randomUUID()}`,
-        actor: actor("ADMIN", "program-admin"),
-        agentId: activeSession.agentId,
-        amount: fromDisplay(
-          value,
-          program.budget.asset,
-          program.budget.decimals,
-        ),
-      },
-      `${activeSession.agentId}'s delegated spending authority increased by ${value} ${program.budget.asset}.`,
-    );
-    setAgentUpfundAmount("");
-  }
-
   async function upfundProgram() {
     const value = programUpfundAmount.trim();
     if (!value || Number(value) <= 0) {
@@ -977,10 +923,9 @@ export function YareonApp() {
 
   async function addBuyerAllocation() {
     const buyerId = newBuyerId.trim();
-    const value = newBuyerAmount.trim();
-    if (!buyerId || !value || Number(value) <= 0) {
+    if (!buyerId) {
       setOperationState("failed");
-      setNotice("Enter a member ID and a positive initial allocation.");
+      setNotice("Enter a member Hedera account.");
       return;
     }
     const zero = fromDisplay("0", program.budget.asset, program.budget.decimals);
@@ -996,20 +941,15 @@ export function YareonApp() {
           purchasingStatus: "ACTIVE",
           participantType: "HUMAN",
           humanVerificationRequired: newBuyerRequiresVerification,
-          totalLimit: fromDisplay(
-            value,
-            program.budget.asset,
-            program.budget.decimals,
-          ),
+          totalLimit: zero,
           committed: zero,
           paid: zero,
           allowedCategories: [...program.policy.allowedCategories],
         },
       },
-      `${buyerId} now has a live ${value} ${program.budget.asset} allocation.`,
+      `${buyerId} was added with zero purchasing authority.`,
     );
     setNewBuyerId("");
-    setNewBuyerAmount("");
     setNewBuyerRequiresVerification(false);
     setActiveBuyerId(buyerId);
   }
@@ -1318,29 +1258,6 @@ export function YareonApp() {
                 />
               )}
               <div className="workspace-body">
-          {activeTab === "Controls" && controlSection === "Agent" && (
-            <>
-              <AgentPanel
-                session={activeSession}
-                attestation={projection.humanBacking[activeSession.agentId]}
-                delegation={projection.agentDelegations[activeSession.agentId]}
-                liveReady={Boolean(identityReadiness?.ready)}
-                liveIssues={identityReadiness?.issues ?? []}
-                upfundAmount={agentUpfundAmount}
-                onUpfundAmount={setAgentUpfundAmount}
-                onUpfund={() =>
-                  void upfundAgent().catch((error) => {
-                    setOperationState("failed");
-                    setNotice(
-                      error instanceof Error
-                        ? error.message
-                        : "The agent authority could not be updated.",
-                    );
-                  })
-                }
-              />
-            </>
-          )}
           {activeTab === "Controls" && controlSection === "Policy" && (
             <PolicyPanel program={program} />
           )}
@@ -1355,7 +1272,6 @@ export function YareonApp() {
               asset={program.budget.asset}
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
-              newBuyerAmount={newBuyerAmount}
               newBuyerRequiresVerification={newBuyerRequiresVerification}
               activeBuyerId={buyerId}
               humanBacking={projection.humanBacking}
@@ -1370,7 +1286,6 @@ export function YareonApp() {
                 }))
               }
               onNewBuyerId={setNewBuyerId}
-              onNewBuyerAmount={setNewBuyerAmount}
               onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
               onActiveBuyer={setActiveBuyerId}
               onVerifyBuyer={() => {
@@ -1452,7 +1367,6 @@ export function YareonApp() {
               asset={program.budget.asset}
               allocationAmounts={allocationAmounts}
               newBuyerId={newBuyerId}
-              newBuyerAmount={newBuyerAmount}
               newBuyerRequiresVerification={newBuyerRequiresVerification}
               activeBuyerId={buyerId}
               humanBacking={projection.humanBacking}
@@ -1467,7 +1381,6 @@ export function YareonApp() {
                 }))
               }
               onNewBuyerId={setNewBuyerId}
-              onNewBuyerAmount={setNewBuyerAmount}
               onNewBuyerRequiresVerification={setNewBuyerRequiresVerification}
               onActiveBuyer={setActiveBuyerId}
               onVerifyBuyer={() => {
@@ -1539,9 +1452,6 @@ export function YareonApp() {
               events={projection.timeline}
               topicId={readiness?.publicConfig.topicId}
               order={order}
-              agentIdentity={projection.agentIdentities[activeSession.agentId]}
-              agentAttestation={projection.humanBacking[activeSession.agentId]}
-              delegation={projection.agentDelegations[activeSession.agentId]}
             />
           )}
               </div>
@@ -1808,159 +1718,6 @@ function ProgramOverviewPanel({
   );
 }
 
-function AgentPanel({
-  session,
-  attestation,
-  delegation,
-  liveReady,
-  liveIssues,
-  upfundAmount,
-  onUpfundAmount,
-  onUpfund,
-}: {
-  session: ProgramSession;
-  attestation?: import("@/src/protocol/types").HumanBackingAttestation;
-  delegation?: import("@/src/protocol/types").AgentDelegation;
-  liveReady: boolean;
-  liveIssues: string[];
-  upfundAmount: string;
-  onUpfundAmount: (value: string) => void;
-  onUpfund: () => void;
-}) {
-  const verified = attestation?.scheme === "world-agentkit";
-  return (
-    <div className="agent-management">
-      <PanelHeading
-        kicker="Delegated automation"
-        title="Agent authority"
-        description="Review who backs this agent and the exact spending boundary it must follow."
-      />
-
-      <div className={`agent-status-banner ${verified ? "verified" : "attention"}`}>
-        <span className="agent-status-icon">
-          {verified ? <Check size={17} /> : <Fingerprint size={17} />}
-        </span>
-        <div>
-          <strong>
-            {verified ? "Human backing verified" : "Human backing required"}
-          </strong>
-          <p>
-            {verified
-              ? "World AgentKit has linked this agent to a unique human."
-              : "Verify the agent before it can exercise delegated spending authority."}
-          </p>
-        </div>
-        <span className="agent-status-label">
-          {verified ? "Verified" : "Needs attention"}
-        </span>
-      </div>
-
-      <div className="agent-management-grid">
-        <section className="agent-identity-card">
-          <div className="agent-name">
-            <Fingerprint size={21} />
-            <div>
-              <span>Agent identity</span>
-              <strong>{session.agentId}</strong>
-            </div>
-          </div>
-          <dl>
-            <div>
-              <dt>Agent ID</dt>
-              <dd>{session.agentId}</dd>
-            </div>
-            <div>
-              <dt>Organization</dt>
-              <dd>{delegation?.organizationId ?? "Not available"}</dd>
-            </div>
-            <div>
-              <dt>Delegated principal</dt>
-              <dd>{delegation?.principalId ?? "Not available"}</dd>
-            </div>
-            <div>
-              <dt>Execution account</dt>
-              <dd>{session.agentExecutionAccountId}</dd>
-            </div>
-            <div>
-              <dt>World agent address</dt>
-              <dd>{delegation?.worldAgentAddress ?? "Not configured"}</dd>
-            </div>
-            <div>
-              <dt>AgentBook</dt>
-              <dd>{verified ? "Verified" : "Not verified"}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="agent-delegation-card">
-          <div className="overview-card-heading">
-            <div>
-              <span>Spending boundary</span>
-              <h2>Delegation</h2>
-            </div>
-            <span className="agent-status-label">
-              {delegation ? "Active" : "Not configured"}
-            </span>
-          </div>
-          <dl>
-            <div>
-              <dt>Per-order limit</dt>
-              <dd>
-                {delegation
-                  ? `${toDisplay(delegation.maxPerOrder)} ${delegation.maxPerOrder.asset}`
-                  : "Not available"}
-              </dd>
-            </div>
-            <div>
-              <dt>Total authority</dt>
-              <dd>
-                {delegation
-                  ? `${toDisplay(delegation.maxTotalSpend)} ${delegation.maxTotalSpend.asset}`
-                  : "Not available"}
-              </dd>
-            </div>
-            <div>
-              <dt>Categories</dt>
-              <dd>{delegation?.allowedCategories.join(", ") ?? "None"}</dd>
-            </div>
-            <div>
-              <dt>Valid until</dt>
-              <dd>
-                {delegation
-                  ? new Date(delegation.validUntil).toLocaleDateString()
-                  : "Not available"}
-              </dd>
-            </div>
-          </dl>
-          <div className="agent-funding-form">
-            <label htmlFor="agent-budget-increase">
-              Increase total authority
-            </label>
-            <div>
-              <input
-                id="agent-budget-increase"
-                inputMode="decimal"
-                value={upfundAmount}
-                onChange={(event) => onUpfundAmount(event.target.value)}
-                placeholder={`Amount in ${delegation?.maxTotalSpend.asset ?? "HBAR"}`}
-              />
-              <button type="button" onClick={onUpfund}>
-                Add authority
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {!liveReady && (
-        <p className="identity-readiness">
-          Agent verification is not fully configured. {liveIssues[0] ?? ""}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function PolicyPanel({
   program,
 }: {
@@ -2043,136 +1800,179 @@ function SuppliersPanel({
     (vendor) => vendor.status === "APPROVED",
   ).length;
   return (
-    <div>
-      <PanelHeading
-        kicker="Approved registry"
-        title="Suppliers"
-        description="Removal blocks future purchases immediately. Existing orders continue with their locked supplier, price, and settlement destination."
-      />
-      <div className="supplier-add-row">
-        <label>
-          <span>Supplier name</span>
-          <input
-            value={draft.name}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, name: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          <span>Offer title</span>
-          <input
-            value={draft.title}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, title: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          <span>Price ({asset})</span>
-          <input
-            value={draft.amount}
-            inputMode="decimal"
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, amount: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          <span>Settlement account</span>
-          <input
-            value={draft.settlementAccountId}
-            placeholder="0.0.x"
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                settlementAccountId: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <button
-          className="primary-action"
-          disabled={adding}
-          onClick={() => {
-            setError(null);
-            setAdding(true);
-            void onAdd(draft)
-              .then(() =>
-                setDraft({
-                  name: "",
-                  title: "",
-                  amount: "",
-                  settlementAccountId: "",
-                }),
-              )
-              .catch((cause) =>
-                setError(
-                  cause instanceof Error
-                    ? cause.message
-                    : "The supplier could not be added.",
-                ),
-              )
-              .finally(() => setAdding(false));
-          }}
-        >
-          {adding ? "Adding…" : "Add supplier"}
-        </button>
-      </div>
-      {error && (
-        <p className="supplier-form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="section-label supplier-section-label">
-        Current suppliers
-      </div>
-      <div className="supplier-registry">
-        {Object.values(vendors).map((vendor) => {
-          const vendorOffers = Object.values(offers).filter(
-            (offer) => offer.vendorId === vendor.id,
-          );
-          const continuingOrders = Object.values(orders).filter(
-            (order) =>
-              order.vendorId === vendor.id &&
-              order.status !== "PAYMENT_EXECUTED" &&
-              order.status !== "CANCELLED",
-          );
-          return (
-            <article className="supplier-registry-card" key={vendor.id}>
-              <div>
-                <span className={vendor.status === "APPROVED" ? "ready" : "waiting"}>
-                  {vendor.status === "APPROVED" ? "Approved" : "Removed"}
-                </span>
-                <h3>{vendor.name}</h3>
-                <code>{vendor.settlementAccountId || "Settlement account pending"}</code>
+    <div className="marketplace-layout suppliers">
+      <section className="supplier-brief">
+        <PanelHeading
+          kicker="Approved registry"
+          title="Suppliers"
+          description="Add suppliers and their first offer, or remove future purchasing access. Existing orders keep their locked supplier and settlement details."
+        />
+        <div className="allocation-manager supplier-manager">
+          <div className="section-label allocation-section-label">
+            Current suppliers
+          </div>
+          {Object.values(vendors).map((vendor) => {
+            const vendorOffers = Object.values(offers).filter(
+              (offer) => offer.vendorId === vendor.id,
+            );
+            const continuingOrders = Object.values(orders).filter(
+              (order) =>
+                order.vendorId === vendor.id &&
+                order.status !== "PAYMENT_EXECUTED" &&
+                order.status !== "CANCELLED",
+            );
+            return (
+              <div
+                className={`allocation-manager-row supplier-manager-row${
+                  vendor.status === "APPROVED" ? "" : " disabled"
+                }`}
+                key={vendor.id}
+              >
+                <div className="supplier-manager-identity">
+                  <strong>
+                    {vendor.name}
+                    <span className="buyer-access-status">
+                      {vendor.status === "APPROVED" ? "Approved" : "Removed"}
+                    </span>
+                  </strong>
+                  <span>
+                    {vendor.settlementAccountId || "Settlement account pending"}
+                  </span>
+                  <small>
+                    {vendorOffers.length} offer
+                    {vendorOffers.length === 1 ? "" : "s"} ·{" "}
+                    {continuingOrders.length} active order
+                    {continuingOrders.length === 1 ? "" : "s"}
+                  </small>
+                </div>
+                <dl className="supplier-manager-facts">
+                  <div>
+                    <dt>Categories</dt>
+                    <dd>
+                      {vendor.approvedCategories.join(", ") || "Not configured"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Catalog</dt>
+                    <dd>
+                      {vendorOffers.length
+                        ? vendorOffers
+                            .map((offer) => offer.title ?? offer.description)
+                            .join(", ")
+                        : "No active offers"}
+                    </dd>
+                  </div>
+                </dl>
+                {vendor.status === "APPROVED" ? (
+                  <button
+                    className="danger-action"
+                    disabled={activeSupplierCount === 1}
+                    title={
+                      activeSupplierCount === 1
+                        ? "Add a replacement supplier before removing the last active supplier."
+                        : undefined
+                    }
+                    onClick={() => onRemove(vendor.id)}
+                  >
+                    <X size={13} aria-hidden="true" />
+                    {activeSupplierCount === 1
+                      ? "Last active supplier"
+                      : "Remove access"}
+                  </button>
+                ) : (
+                  <span className="supplier-removed-copy">
+                    Existing orders continue
+                  </span>
+                )}
               </div>
-              <dl>
-                <div><dt>Categories</dt><dd>{vendor.approvedCategories.join(", ")}</dd></div>
-                <div><dt>Offers</dt><dd>{vendorOffers.length}</dd></div>
-                <div><dt>Orders continuing</dt><dd>{continuingOrders.length}</dd></div>
-              </dl>
-              {vendor.status === "APPROVED" && (
-                <button
-                  className="danger-action"
-                  disabled={activeSupplierCount === 1}
-                  title={
-                    activeSupplierCount === 1
-                      ? "Add a replacement supplier before removing the last active supplier."
-                      : undefined
-                  }
-                  onClick={() => onRemove(vendor.id)}
-                >
-                  <X size={15} />
-                  {activeSupplierCount === 1
-                    ? "Last active supplier"
-                    : "Remove supplier"}
-                </button>
-              )}
-            </article>
-          );
-        })}
-      </div>
+            );
+          })}
+          <div className="allocation-manager-new supplier-manager-new">
+            <label>
+              <span>Supplier name</span>
+              <input
+                value={draft.name}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Offer title</span>
+              <input
+                value={draft.title}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Price ({asset})</span>
+              <input
+                value={draft.amount}
+                inputMode="decimal"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    amount: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Settlement account</span>
+              <input
+                value={draft.settlementAccountId}
+                placeholder="0.0.x"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    settlementAccountId: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button
+              type="button"
+              disabled={adding}
+              onClick={() => {
+                setError(null);
+                setAdding(true);
+                void onAdd(draft)
+                  .then(() =>
+                    setDraft({
+                      name: "",
+                      title: "",
+                      amount: "",
+                      settlementAccountId: "",
+                    }),
+                  )
+                  .catch((cause) =>
+                    setError(
+                      cause instanceof Error
+                        ? cause.message
+                        : "The supplier could not be added.",
+                    ),
+                  )
+                  .finally(() => setAdding(false));
+              }}
+            >
+              {adding ? "Adding…" : "Add supplier"}
+            </button>
+          </div>
+          {error && (
+            <p className="supplier-form-error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2264,7 +2064,6 @@ function BuyerPanel({
   asset,
   allocationAmounts,
   newBuyerId,
-  newBuyerAmount,
   newBuyerRequiresVerification,
   activeBuyerId,
   humanBacking,
@@ -2274,7 +2073,6 @@ function BuyerPanel({
   onSelect,
   onAllocationAmount,
   onNewBuyerId,
-  onNewBuyerAmount,
   onNewBuyerRequiresVerification,
   onActiveBuyer,
   onVerifyBuyer,
@@ -2293,7 +2091,6 @@ function BuyerPanel({
   asset: string;
   allocationAmounts: Record<string, string>;
   newBuyerId: string;
-  newBuyerAmount: string;
   newBuyerRequiresVerification: boolean;
   activeBuyerId: string;
   humanBacking: Record<
@@ -2306,7 +2103,6 @@ function BuyerPanel({
   onSelect: (offerId: string) => void;
   onAllocationAmount: (buyerId: string, value: string) => void;
   onNewBuyerId: (value: string) => void;
-  onNewBuyerAmount: (value: string) => void;
   onNewBuyerRequiresVerification: (value: boolean) => void;
   onActiveBuyer: (buyerId: string) => void;
   onVerifyBuyer: (buyerId: string) => void;
@@ -2386,14 +2182,24 @@ function BuyerPanel({
               <div>
                 <strong>
                   {item.buyerId}
+                  <span className="buyer-type-badge">
+                    {item.participantType === "AGENT" ? "Agent" : "Human"}
+                  </span>
                   <span className="buyer-access-status">
                     {item.purchasingStatus === "DISABLED" ? "Access removed" : "Active"}
                   </span>
                 </strong>
                 <span>{toDisplay(item.totalLimit)} {item.totalLimit.asset}</span>
                 <small>
+                  {item.walletAccountId
+                    ? `Wallet ${shortHederaAccount(item.walletAccountId)} · `
+                    : ""}
                   {item.purchasingStatus === "DISABLED"
                     ? `${Object.values(orders).filter((candidate) => candidate.buyerId === item.buyerId && candidate.status !== "PAYMENT_EXECUTED" && candidate.status !== "CANCELLED").length} existing orders continue unchanged`
+                    : item.participantType === "AGENT"
+                      ? humanBacking[item.buyerId]
+                        ? "Agent identity verified"
+                        : "Delegated agent allocation"
                     : item.humanVerificationRequired
                       ? humanBacking[item.buyerId]
                         ? "Identity verified"
@@ -2417,7 +2223,7 @@ function BuyerPanel({
                 onClick={() => onUpfund(item.buyerId)}
                 disabled={item.purchasingStatus === "DISABLED"}
               >
-                Add authority
+                Add budget
               </button>
               {item.humanVerificationRequired &&
                 !humanBacking[item.buyerId] &&
@@ -2453,15 +2259,6 @@ function BuyerPanel({
                 value={newBuyerId}
                 onChange={(event) => onNewBuyerId(event.target.value)}
                 placeholder="e.g. 0.0.12345"
-              />
-            </label>
-            <label>
-              <span>Initial allocation</span>
-              <input
-                inputMode="decimal"
-                value={newBuyerAmount}
-                onChange={(event) => onNewBuyerAmount(event.target.value)}
-                placeholder={`0 ${asset}`}
               />
             </label>
             <label className="verification-requirement">
@@ -2866,16 +2663,10 @@ function AuditPanel({
   events,
   topicId,
   order,
-  agentIdentity,
-  agentAttestation,
-  delegation,
 }: {
   events: import("@/src/protocol/events").RecordedEvent[];
   topicId?: string;
   order?: Order;
-  agentIdentity?: import("@/src/protocol/types").ResolvedAgentIdentity;
-  agentAttestation?: import("@/src/protocol/types").HumanBackingAttestation;
-  delegation?: import("@/src/protocol/types").AgentDelegation;
 }) {
   return (
     <div>
@@ -2914,32 +2705,6 @@ function AuditPanel({
           </a>
         )}
       </div>
-      {(agentIdentity || delegation) && (
-        <div className="identity-audit-summary">
-          <div>
-            <span>Agent authority</span>
-            <strong>{agentIdentity?.publicIdentity.name ?? "Organization-issued"}</strong>
-            <code>{agentIdentity?.agentId ?? delegation?.agentId}</code>
-          </div>
-          <div>
-            <span>External identity</span>
-            <strong>{agentIdentity ? "Bound" : "Deferred"}</strong>
-            <code>{agentIdentity?.resolutionHash ?? "Not required for this run"}</code>
-          </div>
-          <div>
-            <span>AgentKit backing</span>
-            <strong>{agentAttestation?.scheme === "world-agentkit" ? "AgentBook verified" : "Not verified"}</strong>
-            <code>
-              {agentAttestation?.verificationReference ?? "No verification reference"}
-            </code>
-          </div>
-          <div>
-            <span>Delegation</span>
-            <strong>{delegation?.delegationId ?? "Pending"}</strong>
-            <code>{delegation?.integrityHash ?? "No delegation hash"}</code>
-          </div>
-        </div>
-      )}
       <div className="audit-table">
         <div className="audit-head">
           <span>Seq.</span><span>Event</span><span>Actor</span><span>Submitted</span><span>Consensus</span><span>Ledger</span>

@@ -2491,8 +2491,7 @@ button:not(:disabled):active {
   color: var(--green);
 }
 
-.agent-name span,
-.identity-audit-summary span {
+.agent-name span {
   display: block;
   margin-bottom: 3px;
   color: #7f857f;
@@ -2598,42 +2597,6 @@ button:not(:disabled):active {
 .authority-step .danger-action {
   width: 100%;
   margin: 0;
-  white-space: nowrap;
-}
-
-.identity-audit-summary {
-  margin-bottom: 14px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border: 1px solid var(--line);
-}
-
-.identity-audit-summary > div {
-  min-width: 0;
-  padding: 12px;
-  border-right: 1px solid var(--line);
-}
-
-.identity-audit-summary > div:last-child {
-  border-right: 0;
-}
-
-.identity-audit-summary strong,
-.identity-audit-summary code {
-  display: block;
-}
-
-.identity-audit-summary strong {
-  margin-bottom: 5px;
-  font-size: 11px;
-}
-
-.identity-audit-summary code {
-  overflow: hidden;
-  color: #7f857f;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 8px;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3014,18 +2977,6 @@ button:not(:disabled):active {
     grid-column: 2;
   }
 
-  .identity-audit-summary {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .identity-audit-summary > div:nth-child(2) {
-    border-right: 0;
-  }
-
-  .identity-audit-summary > div:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-
   .settlement-rail {
     grid-template-columns: 1fr;
   }
@@ -3038,19 +2989,6 @@ button:not(:disabled):active {
 
   .authority-step button {
     grid-column: 1 / -1;
-  }
-
-  .identity-audit-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .identity-audit-summary > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .identity-audit-summary > div:last-child {
-    border-bottom: 0;
   }
 
   .marketplace-tools {
@@ -3827,6 +3765,21 @@ button:not(:disabled):active {
   text-transform: uppercase;
 }
 
+.allocation-manager-row .buyer-type-badge {
+  width: fit-content;
+  margin: 0 0 0 8px;
+  padding: 3px 6px;
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f4f1ea;
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .allocation-manager-row.disabled .buyer-access-status {
   background: var(--orange-soft);
   color: #9b3f1c;
@@ -3863,7 +3816,7 @@ button:not(:disabled):active {
 
 .marketplace-layout.buyers .allocation-manager-new {
   padding: 16px;
-  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.55fr) minmax(190px, 0.8fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(190px, 0.8fr) auto;
   gap: 12px;
   align-items: end;
   border: 1px solid var(--line);
@@ -3872,6 +3825,102 @@ button:not(:disabled):active {
 }
 
 .marketplace-layout.buyers .allocation-manager-new button {
+  grid-column: auto;
+}
+
+.marketplace-layout.suppliers .supplier-brief {
+  padding: 0;
+  border: 0;
+}
+
+.marketplace-layout.suppliers .supplier-manager {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.supplier-manager-row {
+  min-height: 88px;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(300px, 1.35fr) auto;
+}
+
+.supplier-manager-row .buyer-access-status {
+  display: inline-block;
+}
+
+.supplier-manager-row.disabled .buyer-access-status {
+  background: var(--orange-soft);
+  color: #9b3f1c;
+}
+
+.supplier-manager-identity > span {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.supplier-manager-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(180px, 1.3fr);
+  gap: 18px;
+}
+
+.supplier-manager-facts > div {
+  min-width: 0;
+}
+
+.supplier-manager-facts dt {
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.supplier-manager-facts dd {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supplier-manager-row .danger-action {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d18a68;
+  background: var(--orange-soft);
+  color: #9b3f1c;
+}
+
+.supplier-removed-copy {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.marketplace-layout.suppliers .supplier-manager-new {
+  padding: 16px;
+  grid-template-columns:
+    minmax(150px, 0.9fr)
+    minmax(170px, 1fr)
+    minmax(110px, 0.55fr)
+    minmax(170px, 1fr)
+    auto;
+  gap: 12px;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  background: #fbfaf6;
+}
+
+.marketplace-layout.suppliers .supplier-manager-new button {
   grid-column: auto;
 }
 
@@ -4204,9 +4253,7 @@ button:not(:disabled):active {
   min-height: 100vh;
   place-items: center;
   padding: 48px 24px;
-  background:
-    radial-gradient(circle at 18% 12%, rgba(220, 238, 230, 0.7), transparent 32%),
-    var(--paper);
+  background: var(--paper);
 }
 
 .role-selection {
@@ -4316,7 +4363,7 @@ button:not(:disabled):active {
 }
 
 .role-entry-card.member {
-  background: #eef6f1;
+  background: var(--panel);
 }
 
 .role-entry-icon {
@@ -4374,7 +4421,7 @@ button:not(:disabled):active {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--panel) 88%, var(--green-soft) 12%);
+  background: var(--panel);
 }
 
 .agent-entry-note .role-entry-icon {
@@ -4397,6 +4444,22 @@ button:not(:disabled):active {
 .agent-entry-note > div span {
   color: var(--ink-soft);
   font-size: 11px;
+}
+
+.agent-entry-note > div a {
+  width: fit-content;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.agent-entry-note > div a:hover {
+  text-decoration: underline;
 }
 
 .agent-entry-note code {
@@ -4907,8 +4970,22 @@ button:not(:disabled):active {
     grid-template-columns: 1fr 1fr;
   }
 
-  .marketplace-layout.buyers .allocation-manager-new button {
+  .marketplace-layout.suppliers .supplier-manager-new {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .marketplace-layout.buyers .allocation-manager-new button,
+  .marketplace-layout.suppliers .supplier-manager-new button {
     grid-column: 1 / -1;
+  }
+
+  .supplier-manager-row {
+    grid-template-columns: minmax(200px, 0.8fr) minmax(260px, 1.2fr);
+  }
+
+  .supplier-manager-row > :last-child {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
 
@@ -5029,11 +5106,12 @@ button:not(:disabled):active {
     border-bottom: 0;
   }
 
-  .program-funding-row,
-  .overview-funding,
-  .allocation-manager-row,
-  .marketplace-layout.buyers .allocation-manager-new,
-  .purchase-context-bar,
+    .program-funding-row,
+    .overview-funding,
+    .allocation-manager-row,
+    .marketplace-layout.buyers .allocation-manager-new,
+    .marketplace-layout.suppliers .supplier-manager-new,
+    .purchase-context-bar,
   .supplier-add-row,
   .supplier-registry-card,
   .panel-grid,
@@ -5055,8 +5133,14 @@ button:not(:disabled):active {
   }
 
   .marketplace-layout.buyers .allocation-manager-new button,
+  .marketplace-layout.suppliers .supplier-manager-new button,
   .supplier-add-row button {
     grid-column: 1;
+  }
+
+  .supplier-manager-facts {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .marketplace-header,

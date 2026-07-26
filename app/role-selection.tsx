@@ -76,6 +76,14 @@ export function RoleSelection() {
               Agents use the same member purchasing boundary through the Yareon
               CLI and installed skill.
             </span>
+            <a
+              href="https://github.com/dimast-x/ethgloballisbon/blob/master/agent-skills/yareon-agent/SKILL.md"
+              target="_blank"
+              rel="noreferrer"
+            >
+              View and install the Yareon skill
+              <ArrowRight size={13} />
+            </a>
           </div>
           <code>
             <TerminalSquare size={14} />

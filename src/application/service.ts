@@ -1020,11 +1020,11 @@ function validateNewBuyerAllocation(
     !allocation.id ||
     !allocation.buyerId.trim() ||
     allocation.programId !== program.id ||
-    !isPositiveProgramMoney(allocation.totalLimit, program)
+    !isNonNegativeProgramMoney(allocation.totalLimit, program)
   ) {
     throw new CommandError(
       "INVALID_BUYER_ALLOCATION",
-      "A new buyer allocation requires a buyer, this program, and a positive amount in the program asset.",
+      "A new buyer allocation requires a buyer, this program, and a non-negative amount in the program asset.",
     );
   }
   assertAllocationBudget(projection, program, allocation.totalLimit);
@@ -1070,6 +1070,18 @@ function isPositiveProgramMoney(
   return (
     /^-?\d+$/.test(amount.atomicAmount) &&
     BigInt(amount.atomicAmount) > 0n &&
+    amount.asset === program.budget.asset &&
+    amount.decimals === program.budget.decimals
+  );
+}
+
+function isNonNegativeProgramMoney(
+  amount: import("../protocol/types").Money,
+  program: Program,
+): boolean {
+  return (
+    /^\d+$/.test(amount.atomicAmount) &&
+    BigInt(amount.atomicAmount) >= 0n &&
     amount.asset === program.budget.asset &&
     amount.decimals === program.budget.decimals
   );
