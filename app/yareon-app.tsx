@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { fromDisplay, toDisplay } from "@/src/protocol/money";
 import type { EvidenceReference } from "@/src/protocol/types";
 import type { Offer, Order } from "@/src/protocol/types";
@@ -56,10 +57,6 @@ import {
   ProgramCreatePage,
   ProgramSettlementSettings,
 } from "./landing-page";
-import {
-  controlPanelPreviewPrograms,
-  createControlPanelPreviewSession,
-} from "./control-panel-preview";
 import { BrandLogo } from "./brand-logo";
 
 const tabs = [
@@ -99,7 +96,7 @@ const tabDetails: Record<Tab, { title: string; description: string }> = {
       "See what is funded, what needs attention, and what happened most recently.",
   },
   Controls: {
-    title: "Program controls",
+    title: "Governor controls",
     description:
       "Manage policy, spending authority, approved suppliers, and delegated agents.",
   },
@@ -197,7 +194,7 @@ export function YareonApp() {
     verifierAccountId: "",
     financeAccountId: "",
   });
-  const [programName, setProgramName] = useState("AI Research Compute Fund");
+  const [programName, setProgramName] = useState("");
   const [showSettlementSettings, setShowSettlementSettings] = useState(false);
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [programs, setPrograms] = useState<ProgramListItem[]>([]);
@@ -205,56 +202,6 @@ export function YareonApp() {
   const [programPickerOpen, setProgramPickerOpen] = useState(false);
 
   useEffect(() => {
-    if (
-      process.env.NODE_ENV === "development" &&
-      new URLSearchParams(window.location.search).get("preview") ===
-        "control-panel"
-    ) {
-      const previewSession = createControlPanelPreviewSession();
-      const previewProgram = previewSession.projection.program!;
-      // The development-only preview is a URL-selected external mode.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSession(previewSession);
-      setActiveBuyerId(previewSession.buyerId);
-      setActiveOrderId(previewSession.orderId);
-      setPrograms(
-        controlPanelPreviewPrograms.map((item, index) => ({
-          ...item,
-          createdAt: `2026-07-${24 - index}T18:30:00.000Z`,
-          budget: previewProgram.budget,
-        })),
-      );
-      setReadiness({
-        ready: true,
-        authorized: true,
-        network: "testnet",
-        issues: [],
-        publicConfig: {
-          topicId: "0.0.4926017",
-          mirrorNodeUrl: "https://testnet.mirrornode.hedera.com",
-          walletConnectConfigured: true,
-        },
-      });
-      setIdentityReadiness({
-        ready: true,
-        issues: [],
-        publicConfig: {
-          agentEnsName: previewSession.agentIdentity.name,
-          organizationEnsName: "lisbon-university.eth",
-          agentAddress: "0x0000000000000000000000000000000000000001",
-          agentBookRegistered: true,
-          worldChain: "eip155:480",
-          ensRpcConfigured: true,
-          expectedDelegationHash:
-            previewSession.projection.agentDelegations[previewSession.agentId]
-              ?.integrityHash ?? "",
-        },
-      });
-      setAdministratorAuthenticated(true);
-      setOperationState("confirmed");
-      setNotice("Program state is current.");
-      return;
-    }
     void refreshReadiness().then((next) => {
       if (!authenticationAttemptStarted.current) {
         setAdministratorAuthenticated(Boolean(next.hedera.authorized));
@@ -324,7 +271,6 @@ export function YareonApp() {
         issues: ["Identity configuration status could not be loaded."],
         publicConfig: {
           worldChain: "eip155:480",
-          ensRpcConfigured: false,
           expectedDelegationHash: "",
         },
       });
@@ -335,7 +281,6 @@ export function YareonApp() {
           issues: ["Identity configuration status could not be loaded."],
           publicConfig: {
             worldChain: "eip155:480" as const,
-            ensRpcConfigured: false,
             expectedDelegationHash: "",
           },
         },
@@ -435,13 +380,12 @@ export function YareonApp() {
     setOperationState("pending");
     setNotice("Creating your program and confirming it through Mirror Node…");
     try {
-      const response = await fetch("/api/demos/university-gpu/runs", {
+      const response = await fetch("/api/programs", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           mode: nextMode,
           name: name.trim(),
-          setup: programSetup,
         }),
       });
       const body = (await response.json()) as ProgramSession & { error?: string };
@@ -461,18 +405,8 @@ export function YareonApp() {
     setOperationState("pending");
     setNotice("Reconstructing the active run through Mirror Node…");
     try {
-      if (
-        process.env.NODE_ENV === "development" &&
-        new URLSearchParams(window.location.search).get("preview") ===
-          "control-panel"
-      ) {
-        hydrateSession(createControlPanelPreviewSession(programId));
-        setOperationState("confirmed");
-        setNotice("Program state is current.");
-        return;
-      }
       const response = await fetch(
-        `/api/demos/university-gpu/runs?programId=${encodeURIComponent(programId)}`,
+        `/api/programs/${encodeURIComponent(programId)}`,
         { cache: "no-store" },
       );
       const body = (await response.json()) as ProgramSession & { error?: string };
@@ -664,7 +598,7 @@ export function YareonApp() {
     projection.vendors[requestedOffer.vendorId]?.status === "APPROVED"
       ? requestedOffer
       : offers[0] ?? requestedOffer ?? Object.values(projection.offers)[0];
-  const visibleTabs = tabs;
+  const visibleTabs = tabs.filter((tab) => tab !== "Purchasing");
   const advancedSettlement =
     program.policy.requireDeliveryEvidence ||
     program.policy.approvalRequirements.length > 0;
@@ -1159,7 +1093,7 @@ export function YareonApp() {
           <BrandLogo className="brand-mark" />
           <span>
             <strong>Yareon</strong>
-            <small>Program cabinet</small>
+            <small>Governor console</small>
           </span>
         </div>
 
@@ -1222,7 +1156,7 @@ export function YareonApp() {
           )}
         </section>
 
-        <nav aria-label="Program workspace">
+        <nav aria-label="Governor workspace">
           {visibleTabs.map((tab) => (
             <button
               key={tab}
@@ -1250,6 +1184,13 @@ export function YareonApp() {
       <div className="op-program-main">
         <header className="op-program-topbar">
           <div className="cabinet-topbar-actions">
+            <Link
+              className="cabinet-member-portal"
+              href={`/member?programId=${encodeURIComponent(program.id)}`}
+            >
+              Open member portal
+              <ArrowRight size={14} />
+            </Link>
             <button
               className="cabinet-new-program"
               type="button"
@@ -1353,10 +1294,6 @@ export function YareonApp() {
                   setControlSection(section);
                   setActiveTab("Controls");
                 }}
-                onPurchasing={(section) => {
-                  setPurchasingSection(section);
-                  setActiveTab("Purchasing");
-                }}
                 onActivity={() => setActiveTab("Activity")}
               />
             </>
@@ -1422,7 +1359,7 @@ export function YareonApp() {
               newBuyerRequiresVerification={newBuyerRequiresVerification}
               activeBuyerId={buyerId}
               humanBacking={projection.humanBacking}
-              selectedOfferId={selectedOffer.id}
+              selectedOfferId={selectedOffer?.id ?? ""}
               orderExists={Boolean(order)}
               orderCompleted={order?.status === "PAYMENT_EXECUTED"}
               onSelect={setChosenOfferId}
@@ -1519,7 +1456,7 @@ export function YareonApp() {
               newBuyerRequiresVerification={newBuyerRequiresVerification}
               activeBuyerId={buyerId}
               humanBacking={projection.humanBacking}
-              selectedOfferId={selectedOffer.id}
+              selectedOfferId={selectedOffer?.id ?? ""}
               orderExists={Boolean(order)}
               orderCompleted={order?.status === "PAYMENT_EXECUTED"}
               onSelect={setChosenOfferId}
@@ -1656,7 +1593,6 @@ function ProgramOverviewPanel({
   onDepositAmount,
   onDeposit,
   onControls,
-  onPurchasing,
   onActivity,
 }: {
   program: NonNullable<ProtocolProjection["program"]>;
@@ -1670,7 +1606,6 @@ function ProgramOverviewPanel({
   onDepositAmount: (value: string) => void;
   onDeposit: () => void;
   onControls: (section: ControlSection) => void;
-  onPurchasing: (section: PurchasingSection) => void;
   onActivity: () => void;
 }) {
   const focusFunding = () =>
@@ -1708,7 +1643,7 @@ function ProgramOverviewPanel({
               description:
                 "Review delivery evidence and collect the required wallet approvals.",
               label: "Continue settlement",
-              onClick: () => onPurchasing("Settlement"),
+              onClick: onActivity,
             }
           : {
               eyebrow: "Order in progress",
@@ -1716,7 +1651,7 @@ function ProgramOverviewPanel({
               description:
                 "Supplier terms are locked and the latest status is available now.",
               label: "View order",
-              onClick: () => onPurchasing("Orders"),
+              onClick: onActivity,
             };
 
   return (
@@ -2513,11 +2448,11 @@ function BuyerPanel({
           ))}
           <div className="allocation-manager-new">
             <label>
-              <span>Member or team ID</span>
+              <span>Member Hedera account</span>
               <input
                 value={newBuyerId}
                 onChange={(event) => onNewBuyerId(event.target.value)}
-                placeholder="e.g. robotics_lab"
+                placeholder="e.g. 0.0.12345"
               />
             </label>
             <label>
@@ -2988,7 +2923,7 @@ function AuditPanel({
           </div>
           <div>
             <span>External identity</span>
-            <strong>{agentIdentity ? "Bound" : "ENS deferred"}</strong>
+            <strong>{agentIdentity ? "Bound" : "Deferred"}</strong>
             <code>{agentIdentity?.resolutionHash ?? "Not required for this run"}</code>
           </div>
           <div>

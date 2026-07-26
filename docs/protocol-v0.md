@@ -50,8 +50,8 @@ policy. External public-identity resolution is an explicit policy switch:
 deployments may require it, but the live v0.2 testnet path temporarily leaves it
 optional while still binding the exact agent, principal, program, action,
 category, limits, and delegation integrity hash. Identity and humanity adapters
-are provider-independent protocol boundaries. ENS and World are the first
-implementations, not protocol requirements.
+are provider-independent protocol boundaries. World is the current
+implementation, not a protocol requirement.
 
 Protocol v0.2 adds `AGENT_IDENTITY_RESOLVED`,
 `AGENT_HUMAN_BACKING_VERIFIED`, `AGENTKIT_ACCESS_VERIFIED`, `AGENT_DELEGATION_GRANTED`,

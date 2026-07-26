@@ -51,7 +51,7 @@ npm run test:site
 This is a native Next.js application and can be imported directly into Vercel.
 Use the default Next.js build settings and configure every value from
 `.env.example` in Project Settings → Environment Variables. Keep
-`HEDERA_OPERATOR_KEY`, `ENS_RPC_URL`, and `YAREON_AUTH_SECRET` server-only.
+`HEDERA_OPERATOR_KEY` and `YAREON_AUTH_SECRET` server-only.
 Configure only the agent's public `WORLD_AGENT_ADDRESS` on the server.
 
 Deploy from the project directory with:
@@ -187,7 +187,7 @@ npm run audit:cli -- <programId> testnet
 
 - `src/protocol` — network-independent types, policy, events, and reducer.
 - `src/application` — commands, authorization, and live orchestration.
-- `src/adapters` — Hedera, Mirror Node, World, and ENS integration boundaries.
+- `src/adapters` — Hedera, Mirror Node, and World integration boundaries.
 - `app/yareon-app.tsx` — Hedera-wallet-authenticated live workflow.
 - `docs/protocol-v0.md` — protocol semantics.
 - `docs/protocol-event.schema.json` — event envelope schema.

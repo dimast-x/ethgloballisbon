@@ -15,6 +15,7 @@ never writes it to its configuration file.
 
 For a no-install trial, replace `yareon` with
 `npx --yes @yareon/cli@latest`. Run `yareon doctor` before procurement,
-`yareon context` to inspect eligible offers, and
+`yareon balance` to inspect delegated spending capacity, `yareon offers` to
+inspect the same policy-eligible catalog exposed to human members, and
 `yareon buy --offer-id <id>` to preview. Add `--execute` only after the user
 explicitly authorizes the purchase.

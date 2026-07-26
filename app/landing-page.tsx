@@ -130,7 +130,7 @@ export function ProgramCreatePage({
               autoFocus
               autoComplete="off"
               value={name}
-              placeholder="e.g. AI Research Compute Fund"
+              placeholder="Program name"
               onChange={(event) => onNameChange(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && name.trim() && !creating) {

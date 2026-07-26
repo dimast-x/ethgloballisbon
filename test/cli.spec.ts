@@ -47,6 +47,71 @@ describe("Yareon CLI contract", () => {
     );
   });
 
+  it("exposes separate member-scoped balance and offer reads", async () => {
+    const previousPublicUrl = process.env.YAREON_PUBLIC_URL;
+    const previousProgramId = process.env.YAREON_PROGRAM_ID;
+    const originalFetch = global.fetch;
+    const originalLog = console.log;
+    const output: string[] = [];
+    process.env.YAREON_PUBLIC_URL = "https://yareon.example";
+    process.env.YAREON_PROGRAM_ID = "program_1";
+    global.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          program: { id: "program_1", name: "Robotics", status: "ACTIVE" },
+          agent: { id: "agent_1" },
+          remaining: {
+            delegationAtomic: "300",
+            allocationAtomic: "250",
+            programFundsAtomic: "900",
+          },
+          offers: [
+            {
+              id: "offer_1",
+              vendorId: "vendor_1",
+              category: "GPU",
+              description: "One approved GPU hour",
+              amount: { asset: "HBAR", atomicAmount: "100", decimals: 8 },
+            },
+          ],
+          recommendedOfferId: "offer_1",
+        }),
+        { status: 200 },
+      );
+    console.log = (value?: unknown) => output.push(String(value));
+
+    try {
+      await runCli(["balance"]);
+      await runCli(["offers"]);
+      const balance = JSON.parse(output[0]) as {
+        data: Record<string, unknown>;
+      };
+      const offers = JSON.parse(output[1]) as {
+        data: Record<string, unknown>;
+      };
+      expect(balance.data).toHaveProperty("remaining");
+      expect(balance.data).not.toHaveProperty("offers");
+      expect(offers.data).toMatchObject({
+        recommendedOfferId: "offer_1",
+        offers: [{ id: "offer_1" }],
+      });
+      expect(offers.data).not.toHaveProperty("remaining");
+    } finally {
+      global.fetch = originalFetch;
+      console.log = originalLog;
+      if (previousPublicUrl === undefined) {
+        delete process.env.YAREON_PUBLIC_URL;
+      } else {
+        process.env.YAREON_PUBLIC_URL = previousPublicUrl;
+      }
+      if (previousProgramId === undefined) {
+        delete process.env.YAREON_PROGRAM_ID;
+      } else {
+        process.env.YAREON_PROGRAM_ID = previousProgramId;
+      }
+    }
+  });
+
   it("connects with public configuration only", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "yareon-cli-"));
     const previousConfigHome = process.env.YAREON_CONFIG_HOME;

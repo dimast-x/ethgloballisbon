@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { medicalSupplyFixture, universityGpuFixture } from "../src/demo/fixtures";
-import { advanceDemo, createDemoSession, type DemoAction } from "../src/demo/simulator";
+import {
+  medicalSupplyFixture,
+  universityGpuTestFixture,
+} from "./support/demo-fixtures";
+import {
+  advanceDemo,
+  createDemoSession,
+  type DemoAction,
+} from "./support/demo-simulator";
 import { createEvent, parseProtocolEvent } from "../src/protocol/events";
 import { fromDisplay, toDisplay } from "../src/protocol/money";
 import {
@@ -20,15 +27,15 @@ describe("money", () => {
 
 describe("purchase policy", () => {
   it("authorizes the compliant reference order", () => {
-    const offer = universityGpuFixture.offers.find(
-      (item) => item.id === universityGpuFixture.selectedOfferId,
+    const offer = universityGpuTestFixture.offers.find(
+      (item) => item.id === universityGpuTestFixture.selectedOfferId,
     )!;
-    const vendor = universityGpuFixture.vendors.find(
+    const vendor = universityGpuTestFixture.vendors.find(
       (item) => item.id === offer.vendorId,
     )!;
     const decision = validatePurchase({
-      program: universityGpuFixture.program,
-      allocation: universityGpuFixture.allocation,
+      program: universityGpuTestFixture.program,
+      allocation: universityGpuTestFixture.allocation,
       vendor,
       category: offer.category,
       amount: offer.amount,
@@ -38,11 +45,11 @@ describe("purchase policy", () => {
 
   it("rejects a request above the remaining allocation", () => {
     const decision = validatePurchase({
-      program: universityGpuFixture.program,
-      allocation: universityGpuFixture.allocation,
-      vendor: universityGpuFixture.vendors[2],
-      category: universityGpuFixture.offers[2].category,
-      amount: universityGpuFixture.rejectedAmount,
+      program: universityGpuTestFixture.program,
+      allocation: universityGpuTestFixture.allocation,
+      vendor: universityGpuTestFixture.vendors[2],
+      category: universityGpuTestFixture.offers[2].category,
+      amount: universityGpuTestFixture.rejectedAmount,
     });
     expect(decision.allowed).toBe(false);
     expect(decision.reasons).toContain(
@@ -51,16 +58,16 @@ describe("purchase policy", () => {
   });
 
   it("blocks new purchases when buyer access is disabled", () => {
-    const offer = universityGpuFixture.offers.find(
-      (item) => item.id === universityGpuFixture.selectedOfferId,
+    const offer = universityGpuTestFixture.offers.find(
+      (item) => item.id === universityGpuTestFixture.selectedOfferId,
     )!;
-    const vendor = universityGpuFixture.vendors.find(
+    const vendor = universityGpuTestFixture.vendors.find(
       (item) => item.id === offer.vendorId,
     )!;
     const decision = validatePurchase({
-      program: universityGpuFixture.program,
+      program: universityGpuTestFixture.program,
       allocation: {
-        ...universityGpuFixture.allocation,
+        ...universityGpuTestFixture.allocation,
         purchasingStatus: "DISABLED",
       },
       vendor,
@@ -183,7 +190,7 @@ describe("events and reducer", () => {
       programId: "program_test",
       actor: { actorId: "system", role: "SYSTEM", actorType: "SYSTEM" },
       correlationId: "correlation_test",
-      data: { program: universityGpuFixture.program },
+      data: { program: universityGpuTestFixture.program },
     });
     expect(parseProtocolEvent(event)).toEqual(event);
     expect(event.schemaVersion).toBe("0.2");
@@ -198,7 +205,7 @@ describe("events and reducer", () => {
         programId: "program_legacy",
         actor: { actorId: "system", role: "SYSTEM", actorType: "SYSTEM" as const },
         correlationId: "legacy",
-        data: { program: universityGpuFixture.program },
+        data: { program: universityGpuTestFixture.program },
       }),
       schemaVersion: "0.1" as const,
     };
@@ -206,7 +213,7 @@ describe("events and reducer", () => {
   });
 
   it("ignores duplicate event IDs", () => {
-    const session = createDemoSession(universityGpuFixture);
+    const session = createDemoSession(universityGpuTestFixture);
     const projection = reduceProtocolEvents([
       ...session.events,
       session.events[0],
@@ -216,12 +223,12 @@ describe("events and reducer", () => {
 
   it("activates a draft without rewriting supplier settlement accounts", () => {
     const program = {
-      ...universityGpuFixture.program,
+      ...universityGpuTestFixture.program,
       status: "DRAFT" as const,
       hedera: undefined,
     };
     const vendor = {
-      ...universityGpuFixture.vendors[0],
+      ...universityGpuTestFixture.vendors[0],
       settlementAccountId: "0.0.80004",
     };
     const base = {
@@ -272,7 +279,7 @@ describe("events and reducer", () => {
 
   it("activates the simplified policy without delivery or payment approvals", () => {
     const program = {
-      ...universityGpuFixture.program,
+      ...universityGpuTestFixture.program,
       status: "DRAFT" as const,
       hedera: undefined,
     };
@@ -281,7 +288,7 @@ describe("events and reducer", () => {
       requireDeliveryEvidence: false,
       approvalRequirements: [],
     };
-    const vendor = universityGpuFixture.vendors[0];
+    const vendor = universityGpuTestFixture.vendors[0];
     const base = {
       runId: "run_direct_policy",
       organizationId: program.organizationId,
@@ -322,7 +329,7 @@ describe("events and reducer", () => {
   });
 
   it("completes the lifecycle once despite duplicate commands", () => {
-    let session = createDemoSession(universityGpuFixture);
+    let session = createDemoSession(universityGpuTestFixture);
     const actions: DemoAction[] = [
       "REJECT_OVER_LIMIT",
       "CREATE_ORDER",

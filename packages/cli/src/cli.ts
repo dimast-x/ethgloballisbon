@@ -104,6 +104,8 @@ const HELP = `Yareon CLI ${CLI_VERSION}
 Usage:
   yareon connect <url> --program-id <id>
   yareon doctor [--base-url <url>] [--program-id <id>]
+  yareon balance [--base-url <url>] [--program-id <id>]
+  yareon offers [--base-url <url>] [--program-id <id>]
   yareon context [--base-url <url>] [--program-id <id>]
   yareon buy [--offer-id <id>] [--execute]
   yareon order --order-id <id>
@@ -151,6 +153,20 @@ export async function runCli(args: string[]): Promise<void> {
   const connection = await resolveConnection(parsed.options);
   if (command === "doctor") {
     printSuccess(command, await doctor(connection));
+  } else if (command === "balance") {
+    const context = await getContext(connection);
+    printSuccess(command, {
+      program: context.program,
+      agent: context.agent,
+      remaining: context.remaining,
+    });
+  } else if (command === "offers") {
+    const context = await getContext(connection);
+    printSuccess(command, {
+      program: context.program,
+      offers: context.offers,
+      recommendedOfferId: context.recommendedOfferId,
+    });
   } else if (command === "context") {
     printSuccess(command, await getContext(connection));
   } else if (command === "buy") {
@@ -225,6 +241,8 @@ function validateOptions(parsed: ParsedArguments): void {
   const allowed = new Map<string, Set<string>>([
     ["connect", new Set(["base-url", "program-id", "help"])],
     ["doctor", new Set(["base-url", "program-id", "help"])],
+    ["balance", new Set(["base-url", "program-id", "help"])],
+    ["offers", new Set(["base-url", "program-id", "help"])],
     ["context", new Set(["base-url", "program-id", "help"])],
     ["buy", new Set(["base-url", "program-id", "offer-id", "execute", "help"])],
     ["order", new Set(["base-url", "program-id", "order-id", "help"])],
@@ -301,7 +319,8 @@ async function connect(parsed: ParsedArguments): Promise<void> {
     readiness,
     next: [
       "yareon skill install",
-      "yareon context",
+      "yareon balance",
+      "yareon offers",
       "yareon buy --offer-id <id>",
     ],
   });
@@ -871,6 +890,8 @@ function commandSchema() {
     commands: {
       connect: ["url", "--program-id"],
       doctor: ["--base-url", "--program-id"],
+      balance: ["--base-url", "--program-id"],
+      offers: ["--base-url", "--program-id"],
       context: ["--base-url", "--program-id"],
       buy: ["--offer-id", "--execute"],
       order: ["--order-id"],

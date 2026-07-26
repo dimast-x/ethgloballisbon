@@ -44,7 +44,6 @@ The hackathon implementation will be **Hedera-native and no-Solidity**. Hedera C
 
 The primary demo will use **university research procurement**, specifically the purchase of GPU compute by a robotics laboratory. The system is designed as a general organizational primitive that could later support governments, universities, NGOs, healthcare systems, corporations, grant programs, humanitarian programs, and DAOs.
 
-For sponsor selection, the project uses all **three partner slots**: **Hedera, World, and ENS**. Within Hedera, it targets two tracks; within World, it targets one track; and within ENS, it targets the AI-agent identity track. The integrations form one coherent trust stack: ENS identifies and exposes the agent, World proves that the agent is backed by a unique human, and Hedera enforces and records procurement execution.
 
 ---
 
@@ -67,7 +66,6 @@ Entering two Hedera tracks consumes only one partner slot because both tracks be
 |---|---|---|---|
 | 1 | Hedera | Procurement execution, consensus audit history, approval-gated payment, agentic settlement | “No Solidity Allowed” and “AI & Agentic Payments on Hedera” |
 | 2 | World | Proof that an executing procurement agent is backed by a real, unique human | “AgentKit New Use Cases” |
-| 3 | ENS | Persistent human-readable identities and discovery metadata for agents and participating entities | “Best ENS Integration for AI Agents” |
 
 The project is committing to all three partner slots.
 
@@ -75,14 +73,12 @@ The three integrations answer different questions:
 
 | Question | Partner |
 |---|---|
-| Which persistent agent or organization is this, and where can its public metadata be discovered? | ENS |
 | Is the agent backed by a real, unique human? | World |
 | Is the action permitted, what happened, and did value move? | Hedera and Yareon policy logic |
 
 The combined trust chain is:
 
 ```text
-Resolve persistent agent identity through ENS
         ↓
 Verify that the agent is human-backed through World
         ↓
@@ -97,8 +93,6 @@ Execute the approval-gated supplier payment on Hedera
 
 No partner is used only for branding:
 
-- Without ENS, the system falls back to opaque account identifiers and loses portable agent discovery.
-- Without World, an ENS-named bot could still be controlled by no accountable human.
 - Without Hedera, identity and authorization would not produce independently auditable execution or settlement.
 
 ---
@@ -166,7 +160,6 @@ The final demo must visibly show:
 
 The procurement agent performs a bounded organizational workflow:
 
-1. Resolves its own public identity through ENS.
 2. Proves human backing through World.
 3. Reads the procurement program.
 4. Checks the buyer’s remaining allocation.
@@ -245,8 +238,6 @@ Forbidden:
 
 Show three cases:
 
-1. **ENS-resolved and World-verified authorized agent:** succeeds.
-2. **ENS-resolved agent without human backing:** rejected.
 3. **World-verified agent exceeding its delegation:** rejected.
 
 The World proof must therefore change an execution or authorization decision. It is not generic login.
@@ -255,13 +246,10 @@ The project will not target World Selfie Check or Identity Check unless those si
 
 ---
 
-## 2.5 Partner 3 — ENS
 
-### ENS track — Best ENS Integration for AI Agents
 
 **Role:** Persistent, human-readable identity and discovery for procurement agents and participating organizations
 
-ENS answers:
 
 > Which agent or organization is this, how can its execution endpoint and public metadata be discovered, and which accounts or external trust references belong to it?
 
@@ -280,7 +268,6 @@ verifier.lisbon-university.eth
 treasury.lisbon-university.eth
 ```
 
-The ENS integration must improve the product beyond replacing a hexadecimal address with a name.
 
 ### Public agent metadata
 
@@ -325,11 +312,8 @@ agent.allowedCategorySummary:
 GPU_COMPUTE
 ```
 
-Sensitive authorization details are not stored publicly. ENS stores or resolves only public identity metadata and integrity references. The current active authority is still decided by Yareon’s policy engine.
 
-### Why ENS and World are not redundant
 
-ENS provides:
 
 - Persistent naming
 - Public discovery
@@ -341,7 +325,6 @@ World provides:
 
 - Proof that the agent is backed by a real, unique human
 
-An ENS name alone does not prove unique-human control. A World proof alone does not provide a stable, readable, portable agent identity.
 
 ### Qualification demonstration
 
@@ -352,7 +335,6 @@ The demo should show:
 3. The application resolves the linked organization and Hedera account.
 4. World verifies the agent’s human backing.
 5. Yareon applies the organization-specific delegation.
-6. The audit trail displays the ENS name alongside the underlying identifiers.
 
 The values must not be hard-coded in the interface.
 
@@ -368,8 +350,6 @@ Partner 1: Hedera
 Partner 2: World
   └── Track: AgentKit New Use Cases
 
-Partner 3: ENS
-  └── Track: Best ENS Integration for AI Agents
 ```
 
 This means:
@@ -380,7 +360,6 @@ This means:
 
 The integration story in one sentence is:
 
-> ENS identifies the procurement agent, World proves that it is human-backed, and Hedera records and settles its policy-controlled actions.
 
 ---
 
@@ -479,7 +458,6 @@ Audit log and dashboard update
 
 ## 4.2 Technical description
 
-> Yareon is a Hedera-native, event-sourced procurement and agent authorization system using HCS for tamper-evident operational records, Scheduled Transactions for approval-gated payments, Mirror Node for state reconstruction, World AgentKit for human-backed delegated authority, and ENS for persistent agent and organization identity.
 
 ## 4.3 Pitch-friendly description
 
@@ -522,7 +500,6 @@ A university creates an AI Research Compute Fund. The robotics laboratory needs 
   - Delegates limited authority to an AI agent
 
 - **Procurement agent — `buyer.robotics-lab.eth`**
-  - Resolves public identity and endpoint through ENS
   - Proves human backing through World
   - Compares approved offers
   - Creates a compliant order
@@ -589,7 +566,6 @@ Order value:
 3. The Robotics Laboratory receives a 5,000-unit allocation.
 4. Three GPU providers are approved for the GPU_COMPUTE category.
 5. Yareon resolves `buyer.robotics-lab.eth`, including its organization linkage, endpoint, and Hedera account.
-6. The laboratory manager authorizes the ENS-identified agent, and World confirms that it is backed by a unique human.
 7. The agent evaluates the three offers.
 8. The agent proposes Horizon Cloud.
 9. The policy engine checks:
@@ -624,7 +600,6 @@ The MVP must support:
 - Allocate a restricted buyer limit
 - Approve vendors by category
 - Register vendor offers
-- Resolve a procurement agent and organization through ENS
 - Authorize a human-backed agent through World
 - Validate a purchase against deterministic policy
 - Create an order
@@ -636,7 +611,6 @@ The MVP must support:
 - Read events and transactions through Mirror Node
 - Display a complete audit timeline
 - Show at least one rejected unauthorized action
-- Display ENS names alongside underlying Hedera and internal identifiers
 
 ---
 
@@ -710,7 +684,6 @@ An administrator can:
 
 A buyer or authorized agent can:
 
-- Resolve its public identity and organization through ENS
 
 - View remaining allocation
 - View allowed categories
@@ -778,7 +751,6 @@ The system must prevent a verifier from approving when the verifier is also:
 
 An auditor can:
 
-- Resolve human-readable ENS identities for recorded actors
 
 - View program history
 - View allocations
@@ -850,8 +822,6 @@ Example:
 Required rules:
 
 - Program is active
-- ENS identity resolves successfully when an ENS-named agent is used
-- Resolved ENS metadata matches the expected agent and organization references
 - Actor is authenticated
 - Actor has the required role
 - Agent is human-backed when agent execution is used
@@ -896,7 +866,6 @@ The architecture intentionally uses Hedera’s native services because:
 ┌────────────────────────────────────────────────────────────┐
 │                     Yareon API                        │
 │                                                            │
-│ ENS Resolver                                               │
 │ World Human-Backing Verifier                               │
 │ Delegation and Policy Engine                               │
 │ Event Builder and Reducer                                  │
@@ -906,7 +875,6 @@ The architecture intentionally uses Hedera’s native services because:
                │                │
                ▼                ▼
 ┌──────────────────────┐  ┌─────────────────────────────────┐
-│ ENS                  │  │ Hedera Native Services          │
 │                      │  │                                 │
 │ Agent names          │  │ HCS event history               │
 │ Organization names   │  │ Scheduled Transactions          │
@@ -927,7 +895,6 @@ The architecture intentionally uses Hedera’s native services because:
 ### Responsibility boundaries
 
 ```text
-ENS:
 Persistent identity, discovery, endpoint and public-account metadata
 
 World:
@@ -961,8 +928,7 @@ Example:
   "actor": {
     "hederaAccountId": "0.0.1234",
     "actorType": "HUMAN_BACKED_AGENT",
-    "principalId": "user_alice",
-    "ensName": "buyer.robotics-lab.eth"
+    "principalId": "user_alice"
   },
   "occurredAt": "2026-07-24T18:30:00Z",
   "data": {
@@ -1194,15 +1160,12 @@ Rejected actions are as important as successful actions.
 
 ---
 
-# 11. ENS Agent and Organization Identity Architecture
 
 ## 11.1 Identity model
 
-Yareon uses ENS as the public identity and discovery layer for agents and participating entities.
 
 The application maintains a distinction between:
 
-- **Human-readable public identity:** ENS name
 - **Execution identity:** Hedera account or service identity
 - **Human principal assurance:** World proof
 - **Organizational authority:** Yareon delegation
@@ -1230,7 +1193,6 @@ actor_01J...
 ## 11.2 Resolution flow
 
 ```text
-User or system receives ENS name
         ↓
 Resolve owner, addresses and public agent metadata
         ↓
@@ -1243,7 +1205,6 @@ Load current Yareon delegation
 Evaluate requested action
 ```
 
-A successful ENS resolution does not authorize an action by itself.
 
 ## 11.3 Public metadata and minimization
 
@@ -1271,7 +1232,6 @@ Do not publish:
 
 ## 11.4 Dynamic resolution requirement
 
-The UI must resolve ENS names dynamically. It should not display a hard-coded name that is unrelated to the actual action.
 
 The resolved metadata should be used to:
 
@@ -1285,16 +1245,13 @@ The resolved metadata should be used to:
 
 The system must reject or step up the action when:
 
-- The ENS name does not resolve
 - Required records are missing
 - The resolved account differs from the signing account
 - The organization reference conflicts with the requested program
 - The delegation hash differs from the active delegation
-- The ENS identity has changed since the authorization was created
 
 The authorization event should preserve both:
 
-- The ENS name and resolution result
 - The concrete account and internal identifiers used for execution
 
 ---
@@ -1318,8 +1275,6 @@ type Organization = {
 ```typescript
 type AgentIdentity = {
   id: string;
-  ensName: string;
-  organizationEnsName: string;
   hederaAccountId: string;
   endpoint?: string;
   worldVerificationReference?: string;
@@ -1328,7 +1283,6 @@ type AgentIdentity = {
 };
 ```
 
-The ENS name is the readable public identifier. The Hedera account is the concrete execution identity. The World reference and active Yareon delegation determine whether the agent may act.
 
 ## 12.3 Program
 
@@ -1499,7 +1453,6 @@ type EventEnvelope<T> = {
     hederaAccountId?: string;
     actorType: "HUMAN" | "HUMAN_BACKED_AGENT" | "SYSTEM";
     principalId?: string;
-    ensName?: string;
   };
   occurredAt: string;
   correlationId: string;
@@ -1571,9 +1524,7 @@ Every transition must validate:
 
 # 15. Security and Trust Model
 
-## 15.1 What ENS contributes
 
-ENS can provide:
 
 - Persistent, human-readable names
 - Resolution from names to accounts and endpoints
@@ -1581,7 +1532,6 @@ ENS can provide:
 - Portable identity across applications
 - A discoverable link between an agent and its declared organization
 
-ENS does not prove:
 
 - That the agent is backed by a unique human
 - That its metadata is truthful
@@ -1680,9 +1630,6 @@ Production direction:
 
 ## 15.7 Threats to demonstrate or test
 
-- ENS identity fails to resolve
-- ENS account does not match the signing account
-- ENS organization record conflicts with the requested program
 - Agent acts without World human backing
 - Agent exceeds its delegation
 - Buyer exceeds allocation
@@ -1754,7 +1701,6 @@ The demo may use a mock file store or local object storage, but the hash committ
 
 The procurement agent may:
 
-- Resolve its ENS identity, organization, endpoint, and execution account
 
 - Read program rules
 - Read remaining allocation
@@ -1833,7 +1779,6 @@ Show:
 - Allowed categories
 - Vendor offers
 - Comparison
-- ENS identity and organization resolution status
 - World human-backing status
 - Delegation status
 - Proposed selection
@@ -1887,7 +1832,6 @@ Actions:
 
 Show:
 
-- Human-readable ENS actor names and underlying identifiers
 - Complete timeline
 - HCS sequence numbers
 - Consensus timestamps
@@ -2018,7 +1962,6 @@ yareon/
 │   │   ├── mirror-node.ts
 │   │   └── accounts.ts
 │   │
-│   ├── ens/
 │   │   ├── resolver.ts
 │   │   ├── records.ts
 │   │   └── identity.ts
@@ -2107,15 +2050,12 @@ Build:
 - Delivery approval page
 - Audit timeline
 
-## Phase 4 — ENS identity and discovery
 
 Add:
 
-- Dynamic ENS name resolution
 - Agent metadata records
 - Organization linkage
 - Hedera account binding
-- Audit display using ENS names
 - Failure handling for missing or mismatched records
 
 ## Phase 5 — World AgentKit
@@ -2191,7 +2131,6 @@ Hedera tests:
 - Detect failed payment
 - Handle schedule expiration
 
-ENS tests:
 
 - Resolve agent name and required metadata
 - Reject unresolved name
@@ -2220,7 +2159,6 @@ Expected flow:
 program
 → allocation
 → vendor approval
-→ ENS identity resolution
 → World-backed agent authorization
 → order
 → scheduled payment
@@ -2267,11 +2205,9 @@ Show the resolved:
 
 Then show the laboratory manager delegating limited purchasing authority.
 
-Attempt with an ENS-resolved but World-unverified agent:
 
 > Rejected: the named agent has no valid human-backed authorization.
 
-Finally, use the ENS-resolved, World-backed agent.
 
 ## 24.4 Vendor selection
 
@@ -2320,7 +2256,6 @@ Show Hedera executing the payment.
 
 Show:
 
-- ENS agent and organization names
 - Resolved Hedera execution account
 - World-backed authorization
 - Policy evaluation
@@ -2374,17 +2309,13 @@ Emphasize:
 
 ---
 
-## ENS Best Integration for AI Agents
 
 Emphasize:
 
 - The agent identity is resolved dynamically, not hard-coded
-- ENS improves agent discovery and audit readability
 - Records bind the agent to its organization, endpoint, and Hedera execution account
 - The system checks the resolved account against the signer
-- ENS identity is used in the real procurement workflow
 - The audit timeline displays both readable names and concrete execution identifiers
-- ENS is not misrepresented as proof of human backing or organizational authorization
 
 ---
 
@@ -2392,13 +2323,11 @@ Emphasize:
 
 ## Risk: Too many integrations
 
-**Mitigation:** Hedera vertical slice first, followed by minimal ENS resolution and World authorization. Each partner must change a real execution decision.
 
 ## Risk: Agent appears cosmetic
 
 **Mitigation:** The agent must create an order or scheduled payment and produce a visible authorization decision.
 
-## Risk: ENS appears cosmetic
 
 **Mitigation:** Resolve live records and use them to bind the agent endpoint, organization, and execution account. Reject a mismatched resolution.
 
@@ -2477,7 +2406,6 @@ Emphasize:
 - HTS-based non-transferable program credits
 - Privacy-preserving bidding
 - Verifiable private AI evaluation
-- Extended ENS and credential-based vendor identity
 - External ERP integration
 - Fiat payment instruction generation
 - Multi-program treasury
@@ -2498,7 +2426,6 @@ Emphasize:
 
 1. **The ledger records authority and state transitions, not sensitive documents.**
 2. **The agent proposes and executes only within deterministic constraints.**
-3. **An ENS name identifies an actor but does not authorize it.**
 4. **Human-backed status is necessary but not sufficient for authorization.**
 5. **The buyer cannot verify its own purchase.**
 6. **Payments follow verified delivery.**
@@ -2524,9 +2451,7 @@ Emphasize:
 11. Collect two signatures.
 12. Confirm payment execution.
 13. Build the one-page audit timeline.
-14. Register or configure the demo ENS identities.
 15. Resolve `buyer.robotics-lab.eth` and required metadata dynamically.
-16. Bind the resolved ENS identity to the Hedera execution account.
 17. Add World AgentKit proof and principal mapping.
 18. Enforce the delegation and negative authorization cases.
 19. Add the procurement agent.
@@ -2542,13 +2467,10 @@ Use the following condensed context when a future conversation cannot load this 
 >
 > The primary demo is university GPU procurement. A university creates a funded program, allocates a restricted limit to a robotics laboratory, approves several GPU vendors, and lets a procurement agent choose an eligible vendor. The payment is created as a Hedera Scheduled Transaction but executes only after an independent verifier confirms delivery and a finance signer approves it. Every important state transition is written to Hedera Consensus Service, and the application reconstructs state and the audit timeline through Mirror Node.
 >
-> The project selects three partners. Under Hedera, it targets “No Solidity Allowed — Build with Hedera SDKs” and “AI & Agentic Payments on Hedera.” Under World, it targets “AgentKit New Use Cases.” Under ENS, it targets “Best ENS Integration for AI Agents.”
 >
-> ENS provides persistent human-readable identity and discovery for the procurement agent and organization. World proves that the agent is backed by a real, unique human. Yareon’s deterministic policy engine then validates organization membership, delegation, amount, category, vendor approval, expiration, and separation of duties. Hedera provides HCS, Scheduled Transactions, payment execution, and Mirror Node.
 >
 > The trust flow is: resolve `buyer.robotics-lab.eth`; verify its World human backing; validate its organizational delegation; create the order; verify delivery independently; collect payment approvals; execute the Hedera testnet payment; and display the complete audit history.
 >
-> The first milestone remains a Hedera TypeScript vertical slice: create an HCS procurement history, validate one order, create a scheduled supplier payment, collect approvals, execute a real testnet transfer, read events through Mirror Node, and print the audit timeline. ENS and World are then attached to the authorization boundary.
 >
 > Do not introduce Solidity, transferable procurement tokens, cross-chain infrastructure, or complex privacy features until the vertical slice works.
 
@@ -2572,12 +2494,7 @@ Use the following condensed context when a future conversation cannot load this 
 - World developer documentation: https://docs.world.org/
 - AgentKit integration: https://docs.world.org/agents/agent-kit/integrate
 
-## ENS
 
-- ENS developer documentation: https://docs.ens.domains/
-- Agent identity verification: https://docs.ens.domains/ensip/25/
-- Agent text records: https://docs.ens.domains/ensip/26/
-- ENS CLI: https://github.com/ensdomains/ens-cli
 
 ---
 
@@ -2590,7 +2507,6 @@ It is a reusable trust and execution layer for organizational purchasing.
 Its defining workflow is:
 
 ```text
-Persistent ENS agent identity and discovery
         +
 World-verified human backing
         +

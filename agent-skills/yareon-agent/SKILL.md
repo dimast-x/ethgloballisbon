@@ -11,8 +11,8 @@ Use the `yareon` CLI without bypassing policy, identity, or separation-of-duty c
 
 - Read eligible offers, preview and create one order, and inspect its state or evidence.
 - Never create, fund, pause, or configure programs, suppliers, buyers, offers, or delegations.
-- Submit or approve delivery, sign verifier or finance approvals, or force settlement.
-- Invent offer IDs, amounts, identities, approvals, or ledger evidence.
+- Never submit or approve delivery, sign verifier or finance approvals, or force settlement.
+- Never invent offer IDs, amounts, identities, approvals, or ledger evidence.
 - Keep `WORLD_AGENT_PRIVATE_KEY` in the agent's secret environment. Never print, transmit, or commit it.
 
 ## 1. Check readiness
@@ -29,13 +29,18 @@ If the command is unavailable, use `npx --yes @yareon/cli@latest` in place of `y
 - Execute only when `readyToExecute` is true.
 - Report failed checks exactly; never work around them.
 
-## 2. Inspect and select
+## 2. Inspect balance, offers, and select
 
 ```bash
-yareon context
+yareon balance
+yareon offers
 ```
 
-Treat `offers` as the complete eligible set at that moment. Apply the user's explicit criteria only to returned fields. Otherwise use `recommendedOfferId`, the lowest-priced eligible offer with offer ID as the stable tie-breaker.
+Treat `offers` as the complete eligible set at that moment. This is the
+headless agent equivalent of the human Member Purchasing workspace; it does not
+expose governor controls. Apply the user's explicit criteria only to returned
+fields. Otherwise use `recommendedOfferId`, the lowest-priced eligible offer
+with offer ID as the stable tie-breaker.
 
 Stop when no eligible offer exists. Never invent or recalculate amounts; the server derives all financial fields from Mirror Node-backed state.
 

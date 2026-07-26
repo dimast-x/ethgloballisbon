@@ -1,4 +1,4 @@
-import { fromDisplay } from "../protocol/money";
+import { fromDisplay } from "../../src/protocol/money";
 import type {
   AgentDelegation,
   BuyerAllocation,
@@ -6,7 +6,7 @@ import type {
   PublicIdentity,
   Program,
   Vendor,
-} from "../protocol/types";
+} from "../../src/protocol/types";
 
 export type DemoAgentFixture = {
   agentId: string;
@@ -31,7 +31,7 @@ export type DemoFixture = {
   agent: DemoAgentFixture;
 };
 
-export const universityGpuFixture: DemoFixture = {
+export const universityGpuTestFixture: DemoFixture = {
   slug: "university-gpu",
   organizationId: "org_lisbon_university",
   buyerId: "buyer_robotics_lab",
@@ -122,7 +122,7 @@ export const universityGpuFixture: DemoFixture = {
   agent: {
     agentId: "agent_robotics_lab",
     principalId: "principal_alice",
-    publicIdentity: { scheme: "ens", name: "buyer.robotics-lab.eth" },
+    publicIdentity: { scheme: "organization", name: "robotics-lab" },
     organizationName: "lisbon-university.eth",
     executionAccountId: "0.0.4859221",
     role: "PROCUREMENT_AGENT",

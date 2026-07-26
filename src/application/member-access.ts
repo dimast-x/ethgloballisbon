@@ -66,7 +66,7 @@ export async function getMemberProcurementContext(
     .sort((left, right) => {
       const difference =
         BigInt(left.amount.atomicAmount) - BigInt(right.amount.atomicAmount);
-      return difference === 0
+      return difference === 0n
         ? left.id.localeCompare(right.id)
         : difference < 0n
           ? -1

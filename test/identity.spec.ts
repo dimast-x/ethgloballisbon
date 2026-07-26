@@ -1,10 +1,7 @@
 import { AGENTKIT, createAgentkitClient } from "@worldcoin/agentkit";
-import type { Hex, PublicClient } from "viem";
+import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it, vi } from "vitest";
-import {
-  EnsPublicIdentityResolver,
-} from "../src/adapters/identity";
 import {
   agentkitVerificationReference,
   agentkitSignerConfigFromEnv,
@@ -13,51 +10,6 @@ import {
   verifyAgentkitRequest,
   WORLD_AGENT_CHAIN_ID,
 } from "../src/adapters/agentkit";
-
-describe("ENS public identity adapter", () => {
-  it("normalizes and validates the required agent and organization records", async () => {
-    const records: Record<string, string> = {
-      "com.yareon.agent-id": "agent_1",
-      "com.yareon.role": "PROCUREMENT_AGENT",
-      "com.yareon.organization": "lisbon-university.eth",
-      "com.yareon.hedera-account": "0.0.4859221",
-      "com.yareon.delegation": "sha256:delegation",
-      "com.yareon.protocol-version": "0.2",
-      url: "https://example.test/agents/1",
-      "com.yareon.organization-id": "org_lisbon_university",
-    };
-    const client = {
-      getEnsText: vi.fn(async ({ key }: { key: string }) => records[key] ?? null),
-    } as unknown as PublicClient;
-    const resolver = new EnsPublicIdentityResolver(
-      { expectedOrganizationName: "lisbon-university.eth" },
-      client,
-    );
-    const identity = await resolver.resolve({
-      scheme: "ens",
-      name: "buyer.robotics-lab.eth",
-    });
-    expect(identity).toMatchObject({
-      agentId: "agent_1",
-      organizationReference: "org_lisbon_university",
-      executionAccountId: "0.0.4859221",
-      delegationHash: "sha256:delegation",
-    });
-    expect(identity.resolutionHash).toMatch(/^sha256:[a-f0-9]{64}$/);
-  });
-
-  it("fails closed when a required record is missing", async () => {
-    const client = {
-      getEnsText: vi.fn(async () => null),
-    } as unknown as PublicClient;
-    await expect(
-      new EnsPublicIdentityResolver({}, client).resolve({
-        scheme: "ens",
-        name: "missing.eth",
-      }),
-    ).rejects.toThrow("is required");
-  });
-});
 
 describe("World AgentKit adapter", () => {
   const privateKey =

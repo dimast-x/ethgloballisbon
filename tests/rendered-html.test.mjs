@@ -77,7 +77,6 @@ test("keeps private Hedera and identity configuration out of browser assets", as
   assert.doesNotMatch(browserCode, /HEDERA_OPERATOR_KEY/);
   assert.doesNotMatch(browserCode, /operatorPrivateKey/);
   assert.doesNotMatch(browserCode, /WORLD_AGENT_PRIVATE_KEY/);
-  assert.doesNotMatch(browserCode, /ENS_RPC_URL/);
   assert.doesNotMatch(browserCode, /YAREON_AUTH_SECRET/);
 });
 

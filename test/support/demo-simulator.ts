@@ -1,8 +1,8 @@
-import { createEvent, type ProtocolEvent, type RecordedEvent } from "../protocol/events";
-import { reduceProtocolEvents, type ProtocolProjection } from "../protocol/reducer";
-import { validatePurchase } from "../protocol/policy";
-import type { DemoFixture } from "./fixtures";
-import type { EvidenceReference, Order } from "../protocol/types";
+import { createEvent, type ProtocolEvent, type RecordedEvent } from "../../src/protocol/events";
+import { reduceProtocolEvents, type ProtocolProjection } from "../../src/protocol/reducer";
+import { validatePurchase } from "../../src/protocol/policy";
+import type { DemoFixture } from "./demo-fixtures";
+import type { EvidenceReference, Order } from "../../src/protocol/types";
 
 const systemActor = {
   actorId: "yareon_demo",

@@ -1,5 +1,5 @@
-import { YareonEntry } from "./yareon-entry";
+import { RoleSelection } from "./role-selection";
 
 export default function Home() {
-  return <YareonEntry />;
+  return <RoleSelection />;
 }

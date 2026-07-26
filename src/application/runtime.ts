@@ -14,13 +14,11 @@ import {
   parseHederaPrivateKey,
 } from "../adapters/hedera";
 import {
-  EnsPublicIdentityResolver,
   sha256,
   StaticPublicIdentityResolver,
 } from "../adapters/identity";
 import {
   agentkitVerifierConfigFromEnv,
-  configuredAgentkitAddress,
   lookupConfiguredAgentHuman,
 } from "../adapters/agentkit";
 import type { EventStore, PaymentScheduler } from "../protocol/adapters";
@@ -38,7 +36,7 @@ import type {
   ScheduledPayment,
   ScheduledPaymentRequest,
 } from "../protocol/types";
-import { universityGpuFixture, type DemoFixture } from "../demo/fixtures";
+import { atomic } from "../protocol/money";
 import type {
   CommandResult,
   ExecutionMode,
@@ -108,12 +106,20 @@ function runtime(): Runtime {
   return root[runtimeKey];
 }
 
-export async function createUniversityRun(
+export type CreateProgramInput = {
+  name: string;
+  description?: string;
+  asset?: string;
+  decimals?: number;
+};
+
+export async function createProgramRun(
+  input: CreateProgramInput,
   mode: ExecutionMode = "testnet",
-  creatorActorId = "yareon",
-  setup?: LiveProgramSetup,
-  programName?: string,
+  creatorActorId: string,
 ): Promise<ProgramSession> {
+  const name = input.name.trim();
+  if (!name) throw new Error("Program name is required.");
   if (mode === "testnet") {
     const readiness = await getTestnetReadiness(true);
     if (!readiness.ready) {
@@ -123,45 +129,53 @@ export async function createUniversityRun(
     }
   }
 
-  const hedera =
-    mode === "testnet" && setup
-      ? await provisionProgramHedera(
-          setup,
-          universityGpuFixture.vendors.map(
-            (vendor) => vendor.settlementAccountId,
-          ),
-        )
-      : undefined;
   const runId = `run_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
-  const fixture = materializeFixture(
-    universityGpuFixture,
-    runId,
-    mode,
-    setup,
-    hedera,
-    programName,
-  );
-  const simulatedIdentity = resolvedFixtureIdentity(fixture);
-  runtime().identities.set(
-    `${simulatedIdentity.publicIdentity.scheme}:${simulatedIdentity.publicIdentity.name}`.toLowerCase(),
-    simulatedIdentity,
-  );
-  const service = serviceFor(mode, fixture.program);
-  const events = initialEvents(fixture, runId, creatorActorId);
-  const projection = await service.appendInitialEvents(events, true);
-  const selectedOfferId = fixture.selectedOfferId;
+  const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
+  const asset = input.asset?.trim() || "HBAR";
+  const decimals = input.decimals ?? 8;
+  const program: Program = {
+    id: `program_${suffix}`,
+    organizationId: creatorActorId,
+    name,
+    description: input.description?.trim() ?? "",
+    budget: atomic(0n, asset, decimals),
+    status: "DRAFT",
+    policy: {
+      allowedCategories: [],
+      maxOrderAmount: atomic(0n, asset, decimals),
+      requireDeliveryEvidence: false,
+      approvalRequirements: [],
+    },
+  };
+  const service = serviceFor(mode, program);
+  const projection = await service.appendInitialEvents([
+    createEvent({
+      eventId: `${runId}:PROGRAM_CREATED`,
+      eventType: "PROGRAM_CREATED",
+      runId,
+      organizationId: program.organizationId,
+      programId: program.id,
+      actor: {
+        actorId: creatorActorId,
+        role: "ADMIN",
+        actorType: "HUMAN",
+      },
+      correlationId: `${runId}:program`,
+      data: { program },
+    }),
+  ], true);
   const metadata: RunMetadata = {
     mode,
     runId,
-    programId: fixture.program.id,
-    buyerId: fixture.buyerId,
-    selectedOfferId,
-    orderId: `order_${runId.slice(-12)}`,
-    agentId: fixture.agent.agentId,
-    agentIdentity: fixture.agent.publicIdentity,
-    agentExecutionAccountId: fixture.agent.executionAccountId,
+    programId: program.id,
+    buyerId: "",
+    selectedOfferId: "",
+    orderId: "",
+    agentId: "",
+    agentIdentity: { scheme: "", name: "" },
+    agentExecutionAccountId: "",
   };
-  runtime().runs.set(fixture.program.id, metadata);
+  runtime().runs.set(program.id, metadata);
   return { ...metadata, projection };
 }
 
@@ -569,12 +583,9 @@ export type IdentityReadiness = {
   ready: boolean;
   issues: string[];
   publicConfig: {
-    agentEnsName?: string;
-    organizationEnsName?: string;
     agentAddress?: string;
     agentBookRegistered?: boolean;
     worldChain: "eip155:480";
-    ensRpcConfigured: boolean;
     expectedDelegationHash: string;
   };
 };
@@ -602,21 +613,10 @@ export async function getIdentityReadiness(
     ready: issues.length === 0,
     issues,
     publicConfig: {
-      agentEnsName:
-        process.env.YAREON_AGENT_ENS_NAME ?? process.env.CHARTER_AGENT_ENS_NAME,
-      organizationEnsName:
-        process.env.YAREON_ORGANIZATION_ENS_NAME ??
-        process.env.CHARTER_ORGANIZATION_ENS_NAME,
       agentAddress,
       agentBookRegistered,
       worldChain: "eip155:480",
-      ensRpcConfigured: Boolean(process.env.ENS_RPC_URL),
-      expectedDelegationHash: delegationIntegrityHash(
-        {
-          ...universityGpuFixture.agent.delegation,
-          worldAgentAddress: agentAddress,
-        },
-      ),
+      expectedDelegationHash: "",
     },
   };
 }
@@ -808,7 +808,7 @@ function serviceFor(
       eventStore: runtime().memoryEvents,
       paymentScheduler: runtime().memoryPayments,
       identityResolver: new StaticPublicIdentityResolver(runtime().identities),
-      settlement: { payerAccountId: "0.0.73000" },
+      settlement: { payerAccountId: "simulation-treasury" },
       pollIntervalMs: 1,
       pollTimeoutMs: 100,
     });
@@ -817,10 +817,6 @@ function serviceFor(
     return new ProtocolApplicationService({
       eventStore: testnetEventStore(),
       paymentScheduler: runtime().memoryPayments,
-      identityResolver: new EnsPublicIdentityResolver({
-        rpcUrl: process.env.ENS_RPC_URL,
-        expectedOrganizationName: process.env.YAREON_ORGANIZATION_ENS_NAME,
-      }),
       requireResolvedAgentIdentity: false,
       settlement: { payerAccountId: hederaConfigFromEnv().operatorAccountId },
     });
@@ -834,12 +830,6 @@ function serviceFor(
   const service = new ProtocolApplicationService({
     eventStore: testnetEventStore(),
     paymentScheduler: new HederaPaymentScheduler(config),
-    identityResolver: new EnsPublicIdentityResolver({
-      rpcUrl: process.env.ENS_RPC_URL,
-      expectedOrganizationName:
-        process.env.YAREON_ORGANIZATION_ENS_NAME ??
-        process.env.CHARTER_ORGANIZATION_ENS_NAME,
-    }),
     requireResolvedAgentIdentity: false,
     settlement: { payerAccountId: config.treasuryAccountId },
   });
@@ -862,227 +852,6 @@ async function projectionFor(
   return reduceProtocolEvents(await testnetEventStore().read(programId));
 }
 
-function materializeFixture(
-  source: DemoFixture,
-  runId: string,
-  mode: ExecutionMode,
-  setup?: LiveProgramSetup,
-  hedera?: ProgramHederaConfig,
-  programName?: string,
-): DemoFixture {
-  const agentEnsName =
-    process.env.YAREON_AGENT_ENS_NAME ?? process.env.CHARTER_AGENT_ENS_NAME;
-  const organizationEnsName =
-    process.env.YAREON_ORGANIZATION_ENS_NAME ??
-    process.env.CHARTER_ORGANIZATION_ENS_NAME;
-  const suffix = runId.slice(-12);
-  const programId = `${source.program.id}_${suffix}`;
-  const buyerId = `${source.buyerId}_${suffix}`;
-  const vendorIds = new Map(
-    source.vendors.map((vendor) => [vendor.id, `${vendor.id}_${suffix}`]),
-  );
-  const offerIds = new Map(
-    source.offers.map((offer) => [offer.id, `${offer.id}_${suffix}`]),
-  );
-  const delegation = {
-    ...source.agent.delegation,
-    worldAgentAddress:
-      mode === "testnet"
-        ? configuredAgentkitAddress()
-        : source.agent.delegation.worldAgentAddress,
-    integrityHash: "",
-  };
-  delegation.integrityHash = delegationIntegrityHash(delegation);
-
-  return {
-    ...source,
-    buyerId,
-    program: {
-      ...source.program,
-      id: programId,
-      name: programName?.trim() || source.program.name,
-      hedera,
-      budget:
-        mode === "testnet"
-          ? { ...source.program.budget, atomicAmount: "0" }
-          : source.program.budget,
-      status: source.program.status,
-      policy:
-        mode === "testnet" &&
-        !(setup?.verifierAccountId && setup?.financeAccountId)
-          ? {
-              ...source.program.policy,
-              requireDeliveryEvidence: false,
-              approvalRequirements: [],
-            }
-          : source.program.policy,
-    },
-    allocation: {
-      ...source.allocation,
-      id: `${source.allocation.id}_${suffix}`,
-      programId,
-      buyerId,
-      totalLimit:
-        mode === "testnet"
-          ? { ...source.allocation.totalLimit, atomicAmount: "0" }
-          : source.allocation.totalLimit,
-    },
-    vendors: source.vendors.map((vendor) => ({
-      ...vendor,
-      id: vendorIds.get(vendor.id)!,
-      settlementAccountId: vendor.settlementAccountId,
-    })),
-    offers: source.offers.map((offer) => ({
-      ...offer,
-      id: offerIds.get(offer.id)!,
-      programId,
-      vendorId: vendorIds.get(offer.vendorId)!,
-    })),
-    selectedOfferId: offerIds.get(source.selectedOfferId)!,
-    agent: {
-      ...source.agent,
-      publicIdentity:
-        mode === "testnet" && agentEnsName
-          ? {
-              scheme: "ens",
-              name: agentEnsName,
-            }
-          : source.agent.publicIdentity,
-      organizationName:
-        mode === "testnet" && organizationEnsName
-          ? organizationEnsName
-          : source.agent.organizationName,
-      delegation,
-    },
-  };
-}
-
-function initialEvents(
-  fixture: DemoFixture,
-  runId: string,
-  creatorActorId = "yareon",
-): ProtocolEvent[] {
-  const base = {
-    runId,
-    organizationId: fixture.organizationId,
-    programId: fixture.program.id,
-  };
-  return [
-    createEvent({
-      ...base,
-      actor: {
-        actorId: creatorActorId,
-        role: "ADMIN",
-        actorType: "HUMAN",
-      },
-      eventId: `${runId}:PROGRAM_CREATED`,
-      eventType: "PROGRAM_CREATED",
-      correlationId: `${runId}:program`,
-      data: { program: fixture.program },
-    }),
-    createEvent({
-      ...base,
-      actor: {
-        actorId: creatorActorId,
-        role: "ADMIN",
-        actorType: "HUMAN",
-      },
-      eventId: `${runId}:BUYER_ALLOCATED`,
-      eventType: "BUYER_ALLOCATED",
-      correlationId: `${runId}:allocation`,
-      data: { allocation: fixture.allocation },
-    }),
-    ...fixture.vendors.map((vendor) =>
-      createEvent({
-        ...base,
-        actor: {
-          actorId: creatorActorId,
-          role: "ADMIN",
-          actorType: "HUMAN",
-        },
-        eventId: `${runId}:VENDOR_APPROVED:${vendor.id}`,
-        eventType: "VENDOR_APPROVED" as const,
-        correlationId: `${runId}:vendor:${vendor.id}`,
-        data: { vendor },
-      }),
-    ),
-    ...fixture.offers.map((offer) =>
-      createEvent({
-        ...base,
-        actor: {
-          actorId: creatorActorId,
-          role: "ADMIN",
-          actorType: "HUMAN",
-        },
-        eventId: `${runId}:OFFER_REGISTERED:${offer.id}`,
-        eventType: "OFFER_REGISTERED" as const,
-        correlationId: `${runId}:offer:${offer.id}`,
-        data: { offer },
-      }),
-    ),
-    createEvent({
-      ...base,
-      actor: {
-        actorId: creatorActorId,
-        role: "ADMIN",
-        actorType: "HUMAN",
-      },
-      eventId: `${runId}:AGENT_DELEGATION_GRANTED:${fixture.agent.agentId}`,
-      eventType: "AGENT_DELEGATION_GRANTED",
-      correlationId: `${runId}:agent-delegation:${fixture.agent.agentId}`,
-      data: { delegation: fixture.agent.delegation },
-    }),
-  ];
-}
-
-function delegationIntegrityHash(
-  delegation: import("../protocol/types").AgentDelegation,
-): string {
-  const canonical = {
-    delegationId: delegation.delegationId,
-    organizationId: delegation.organizationId,
-    principalId: delegation.principalId,
-    agentId: delegation.agentId,
-    worldAgentAddress: delegation.worldAgentAddress,
-    humanVerificationRequired:
-      delegation.humanVerificationRequired !== false,
-    allowedPrograms: delegation.allowedPrograms,
-    allowedActions: delegation.allowedActions,
-    allowedCategories: delegation.allowedCategories,
-    maxPerOrder: delegation.maxPerOrder,
-    maxTotalSpend: delegation.maxTotalSpend,
-    validFrom: delegation.validFrom,
-    validUntil: delegation.validUntil,
-    revokedAt: delegation.revokedAt,
-  };
-  return sha256(
-    JSON.stringify({
-      ...canonical,
-      allowedPrograms: [...canonical.allowedPrograms].sort(),
-      allowedActions: [...canonical.allowedActions].sort(),
-      allowedCategories: [...canonical.allowedCategories].sort(),
-    }),
-  );
-}
-
-function resolvedFixtureIdentity(fixture: DemoFixture): ResolvedAgentIdentity {
-  const snapshot = {
-    agentId: fixture.agent.agentId,
-    publicIdentity: fixture.agent.publicIdentity,
-    organizationReference: fixture.organizationId,
-    executionAccountId: fixture.agent.executionAccountId,
-    role: fixture.agent.role,
-    protocolVersion: "0.2",
-    delegationHash: fixture.agent.delegation.integrityHash,
-    endpoint: "https://yareon.com/agents/reference",
-  };
-  return {
-    ...snapshot,
-    resolutionHash: sha256(JSON.stringify(snapshot)),
-    resolvedAt: new Date().toISOString(),
-  };
-}
-
 export class InMemoryEventStore implements EventStore {
   private events: RecordedEvent[] = [];
 
@@ -1092,7 +861,7 @@ export class InMemoryEventStore implements EventStore {
     );
     if (existing) return existing.ledgerReference ?? {};
     const ledgerReference = {
-      topicId: "0.0.4926017",
+      topicId: `simulation:${event.programId}`,
       sequenceNumber: this.events.length + 1,
       consensusTimestamp: new Date().toISOString(),
       transactionId: `simulated@${this.events.length + 1}`,
@@ -1126,7 +895,7 @@ class InMemoryPaymentScheduler implements PaymentScheduler {
             : "PENDING",
       };
     }
-    const scheduleId = `0.0.${7_400_000 + this.payments.size}`;
+    const scheduleId = `simulation:${crypto.randomUUID()}`;
     this.payments.set(scheduleId, {
       request,
       roles: new Set(),

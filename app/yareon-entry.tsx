@@ -14,3 +14,15 @@ const YareonApp = dynamic(
 export function YareonEntry() {
   return <YareonApp />;
 }
+
+const MemberApp = dynamic(
+  () => import("./member-app").then((module) => module.MemberApp),
+  {
+    ssr: false,
+    loading: () => <LandingPage />,
+  },
+);
+
+export function MemberEntry() {
+  return <MemberApp />;
+}
