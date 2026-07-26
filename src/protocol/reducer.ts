@@ -73,14 +73,27 @@ export function applyProtocolEvent(
       next.program = (event.data as { program: Program }).program;
       break;
     case "PROGRAM_UPFUNDED": {
-      const { amount } = event.data as { amount: Program["budget"] };
+      const { amount, depositTransactionId } = event.data as {
+        amount: Program["budget"];
+        depositTransactionId?: string;
+      };
       if (next.program) {
         next.program = {
           ...next.program,
           budget: add(next.program.budget, amount),
-          status: next.program.hedera?.fundingMode === "USER_DEPOSIT"
+          status:
+            depositTransactionId ||
+            next.program.hedera?.fundingMode === "USER_DEPOSIT"
             ? "ACTIVE"
             : next.program.status,
+        };
+      }
+      const allocations = Object.values(next.allocations);
+      if (depositTransactionId && allocations.length === 1) {
+        const allocation = allocations[0];
+        next.allocations[allocation.buyerId] = {
+          ...allocation,
+          totalLimit: add(allocation.totalLimit, amount),
         };
       }
       break;
@@ -97,9 +110,7 @@ export function applyProtocolEvent(
           ...next.program,
           hedera,
           policy: policy ?? next.program.policy,
-          status: hedera.fundingMode === "USER_DEPOSIT"
-            ? "DRAFT"
-            : "ACTIVE",
+          status: "ACTIVE",
         };
       }
       // Backward compatibility for older events that stored one program-level

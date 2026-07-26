@@ -853,7 +853,7 @@ function materializeFixture(
         mode === "testnet"
           ? { ...source.program.budget, atomicAmount: "0" }
           : source.program.budget,
-      status: mode === "testnet" ? "DRAFT" : source.program.status,
+      status: source.program.status,
       policy:
         mode === "testnet" &&
         !(setup?.verifierAccountId && setup?.financeAccountId)

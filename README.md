@@ -87,8 +87,10 @@ topic. An authenticated creator can create a draft program with only a name and
 open its workspace immediately. Yareon creates a dedicated empty treasury; it
 does not seed the treasury or use the operator account as the program's funds.
 The creator deposits HBAR from their connected wallet, and the program becomes
-active only after Mirror Node confirms the exact wallet-to-treasury transfer.
-Each confirmed deposit is recorded as a `PROGRAM_UPFUNDED` event.
+spendable after Mirror Node confirms the exact wallet-to-treasury transfer.
+Programs are active from creation. For a new program with one default buyer,
+each confirmed deposit also increases that buyer's available authority and is
+recorded as a `PROGRAM_UPFUNDED` event.
 
 Only the platform operator key remains server-side. Verifier and finance role
 keys remain inside their WalletConnect-compatible wallets. The browser submits

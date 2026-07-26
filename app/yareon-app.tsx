@@ -675,6 +675,7 @@ export function YareonApp() {
   const activeSession = session;
   const projection = activeSession.projection;
   const program = projection.program!;
+  const programFunds = activeSession.treasuryBalance ?? program.budget;
   const order = projection.orders[activeSession.orderId];
   const offers = Object.values(projection.offers).filter(
     (offer) => projection.vendors[offer.vendorId]?.status === "APPROVED",
@@ -1370,9 +1371,7 @@ export function YareonApp() {
               >
                 <Metric
                   label="Unspent program funds"
-                  value={`${toDisplay(
-                    activeSession.treasuryBalance ?? program.budget,
-                  )} ${program.budget.asset}`}
+                  value={`${toDisplay(programFunds)} ${program.budget.asset}`}
                   accent
                 />
                 <div className="cabinet-run-id">
@@ -1382,7 +1381,7 @@ export function YareonApp() {
               </section>
 
               {program.hedera?.fundingMode === "USER_DEPOSIT" &&
-                program.status === "DRAFT" && (
+                BigInt(programFunds.atomicAmount) === 0n && (
                   <section className="program-settings-callout">
                     <div className="program-settings-callout-icon">
                       <CircleDollarSign size={18} />
@@ -1484,7 +1483,7 @@ export function YareonApp() {
               vendors={projection.vendors}
               policy={program.policy}
               allocations={projection.allocations}
-              programFunds={activeSession.treasuryBalance ?? program.budget}
+              programFunds={programFunds}
               treasuryAccountId={program.hedera?.treasuryAccountId}
               asset={program.budget.asset}
               programUpfundAmount={programUpfundAmount}
@@ -1576,7 +1575,7 @@ export function YareonApp() {
               vendors={projection.vendors}
               policy={program.policy}
               allocations={projection.allocations}
-              programFunds={activeSession.treasuryBalance ?? program.budget}
+              programFunds={programFunds}
               treasuryAccountId={program.hedera?.treasuryAccountId}
               asset={program.budget.asset}
               programUpfundAmount={programUpfundAmount}

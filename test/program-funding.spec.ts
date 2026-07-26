@@ -79,7 +79,7 @@ describe("user-funded programs", () => {
     ).rejects.toThrow("exact wallet deposit");
   });
 
-  it("keeps a user-funded program draft until its first deposit", () => {
+  it("activates and funds the default buyer from a confirmed deposit", () => {
     const program: Program = {
       id: "program_deposit",
       organizationId: "org_test",
@@ -109,6 +109,22 @@ describe("user-funded programs", () => {
       }),
       createEvent({
         ...base,
+        eventType: "BUYER_ALLOCATED",
+        correlationId: "allocation",
+        data: {
+          allocation: {
+            id: "allocation_default",
+            programId: program.id,
+            buyerId: "buyer_default",
+            totalLimit: { ...amount, atomicAmount: "0" },
+            committed: { ...amount, atomicAmount: "0" },
+            paid: { ...amount, atomicAmount: "0" },
+            allowedCategories: ["GPU_COMPUTE"],
+          },
+        },
+      }),
+      createEvent({
+        ...base,
         eventType: "PROGRAM_SETTLEMENT_CONFIGURED",
         correlationId: "settlement",
         data: {
@@ -119,7 +135,7 @@ describe("user-funded programs", () => {
         },
       }),
     ]);
-    expect(projection.program?.status).toBe("DRAFT");
+    expect(projection.program?.status).toBe("ACTIVE");
 
     const funded = reduceProtocolEvents([
       ...projection.timeline,
@@ -137,5 +153,8 @@ describe("user-funded programs", () => {
       status: "ACTIVE",
       budget: amount,
     });
+    expect(
+      funded.allocations.buyer_default.totalLimit.atomicAmount,
+    ).toBe(amount.atomicAmount);
   });
 });
