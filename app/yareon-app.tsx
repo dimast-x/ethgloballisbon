@@ -25,7 +25,6 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { fromDisplay, toDisplay } from "@/src/protocol/money";
 import type { EvidenceReference } from "@/src/protocol/types";
@@ -1439,7 +1438,7 @@ export function YareonApp() {
               onCreate={() =>
                 run(
                   "CREATE_ORDER",
-                  `${toDisplay(selectedOffer.amount)} HBAR order authorized with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
+                  `${toDisplay(selectedOffer.amount)} ${selectedOffer.amount.asset} order authorized with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
                 )
               }
               onNextPurchase={() => {
@@ -1512,7 +1511,7 @@ export function YareonApp() {
               onCreate={() =>
                 run(
                   "CREATE_ORDER",
-                  `${toDisplay(selectedOffer.amount)} HBAR order created with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
+                  `${toDisplay(selectedOffer.amount)} ${selectedOffer.amount.asset} order created with ${projection.vendors[selectedOffer.vendorId]?.name ?? selectedOffer.vendorId}.`,
                 )
               }
               onNextPurchase={() => {
@@ -2310,43 +2309,6 @@ function BuyerPanel({
   const [sort, setSort] = useState<"fit" | "price" | "delivery">("fit");
   const [expandedOfferId, setExpandedOfferId] = useState<string | null>(null);
 
-  const marketplaceMeta: Record<
-    string,
-    {
-      image: string;
-      alt: string;
-      location: string;
-      availability: string;
-      configuration: string;
-      memory: string;
-    }
-  > = {
-    offer_atlas: {
-      image: "/marketplace/atlas-compute.jpg",
-      alt: "Rack-mounted research compute hardware",
-      location: "Frankfurt region",
-      availability: "Next-day capacity",
-      configuration: "4x A100",
-      memory: "320 GB HBM2e",
-    },
-    offer_nova: {
-      image: "/marketplace/nova-gpu.jpg",
-      alt: "High-density server nodes in a compute rack",
-      location: "Amsterdam region",
-      availability: "Scheduled capacity",
-      configuration: "4x A100",
-      memory: "320 GB HBM2e",
-    },
-    offer_horizon: {
-      image: "/marketplace/horizon-cloud.jpg",
-      alt: "Modern data-center aisle with compute racks",
-      location: "Lisbon region",
-      availability: "Reserved capacity",
-      configuration: "4x A100",
-      memory: "320 GB HBM2e",
-    },
-  };
-
   const visibleOffers = offers
     .filter((offer) => {
       const haystack =
@@ -2368,7 +2330,7 @@ function BuyerPanel({
           (b.deliveryDays ?? Number.MAX_SAFE_INTEGER)
         );
       }
-      return a.id === "offer_horizon" ? -1 : b.id === "offer_horizon" ? 1 : 0;
+      return 0;
     });
 
   if (view === "marketplace" && offers.length === 0) {
@@ -2577,50 +2539,49 @@ function BuyerPanel({
         <div className="offer-grid">
           {visibleOffers.map((offer) => {
             const selected = offer.id === selectedOfferId;
-            const metaKey = Object.keys(marketplaceMeta).find(
-              (key) => offer.id === key || offer.id.startsWith(`${key}_`),
-            );
-            const meta =
-              marketplaceMeta[metaKey ?? "offer_horizon"];
             const vendorName = vendors[offer.vendorId]?.name ?? offer.vendorId;
             const expanded = expandedOfferId === offer.id;
+            const attributes = Object.entries(offer.attributes ?? {});
             return (
               <article
                 className={`product-tile ${selected ? "selected" : ""}`}
                 key={offer.id}
               >
-                <div className="product-image">
-                  <Image
-                    src={meta.image}
-                    alt={meta.alt}
-                    width={600}
-                    height={360}
-                    unoptimized
-                  />
-                  <span className="vendor-verified">
-                    <BadgeCheck size={13} />
-                    Verified vendor
-                  </span>
-                </div>
                 <div className="product-content">
-                  <div className="product-vendor">{vendorName}</div>
-                  <h4>{offer.title ?? "A100 research cluster"}</h4>
-                  <p>{meta.configuration} with {meta.memory}</p>
+                  <div className="product-card-header">
+                    <div className="product-vendor">{vendorName}</div>
+                    <span className="vendor-verified">
+                      <BadgeCheck size={13} />
+                      Verified vendor
+                    </span>
+                  </div>
+                  <h4>{offer.title ?? offer.description}</h4>
+                  {offer.title && <p>{offer.description}</p>}
                   <div className="product-facts">
                     {offer.deliveryDays !== undefined && (
                       <span><Truck size={14} /> {offer.deliveryDays}-day delivery</span>
                     )}
-                    <span><MapPin size={14} /> {meta.location}</span>
+                    {offer.location && (
+                      <span><MapPin size={14} /> {offer.location}</span>
+                    )}
                   </div>
                   <div className="product-price">
-                    <strong>{toDisplay(offer.amount)} HBAR</strong>
+                    <strong>{toDisplay(offer.amount)} {offer.amount.asset}</strong>
                     <span>fixed order total</span>
                   </div>
                   {expanded && (
                     <div className="product-specs">
-                      <span><Cpu size={14} /> Dedicated research allocation</span>
                       <span><ShieldCheck size={14} /> Policy-approved supplier</span>
-                      <span><TimerReset size={14} /> {meta.availability}</span>
+                      {attributes.map(([label, value]) => (
+                        <span key={label}>
+                          <Cpu size={14} /> {label}: {value}
+                        </span>
+                      ))}
+                      {offer.deliveryDays !== undefined && (
+                        <span>
+                          <TimerReset size={14} /> Delivery estimate: {offer.deliveryDays} days
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className="product-actions">
@@ -2673,8 +2634,10 @@ function BuyerPanel({
           </div>
           <div className="summary-price">
             <span>Order total</span>
-            <strong>{toDisplay(selectedOffer.amount)} HBAR</strong>
-            <small>Within 5 HBAR limit</small>
+            <strong>{toDisplay(selectedOffer.amount)} {selectedOffer.amount.asset}</strong>
+            <small>
+              Within {toDisplay(policy.maxOrderAmount)} {policy.maxOrderAmount.asset} limit
+            </small>
           </div>
           <button
             className="primary-action"
@@ -2690,10 +2653,6 @@ function BuyerPanel({
             {!orderExists && <ArrowRight size={17} />}
           </button>
         </div>
-        <p className="catalog-attribution">
-          Catalog photography by Helpameout and Victor Grigas via Wikimedia Commons,
-          licensed under CC BY-SA 3.0.
-        </p>
       </div>}
     </div>
   );
@@ -2730,7 +2689,7 @@ function VendorPanel({
             <span>Active order</span>
             <strong>
               {vendors[typedOrder.vendorId]?.name ?? typedOrder.vendorId} ·{" "}
-              {toDisplay(typedOrder.amount)} HBAR
+              {toDisplay(typedOrder.amount)} {typedOrder.amount.asset}
             </strong>
             <code>{typedOrder.id}</code>
             <div className="order-status">{typedOrder.status.replaceAll("_", " ")}</div>
@@ -2842,7 +2801,14 @@ function ApprovalPanel({
         </div>
         <dl>
           <div><dt>Order</dt><dd>{order?.id ?? "Not available"}</dd></div>
-          <div><dt>Amount</dt><dd>{order ? `${toDisplay(order.amount)} HBAR` : "Not available"}</dd></div>
+          <div>
+            <dt>Amount</dt>
+            <dd>
+              {order
+                ? `${toDisplay(order.amount)} ${order.amount.asset}`
+                : "Not available"}
+            </dd>
+          </div>
           <div><dt>Evidence</dt><dd>{order?.evidence ? "Digest verified" : "Not submitted"}</dd></div>
           <div><dt>Schedule</dt><dd>{order?.scheduleId ?? "Not available"}</dd></div>
         </dl>
