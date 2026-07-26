@@ -8,6 +8,7 @@ import {
   CloudUpload,
   BadgeCheck,
   ChevronDown,
+  Copy,
   FileCheck2,
   Fingerprint,
   LayoutDashboard,
@@ -61,13 +62,12 @@ import { BrandLogo } from "./brand-logo";
 
 const tabs = [
   "Overview",
-  "Controls",
-  "Purchasing",
+  "Members",
+  "Suppliers",
+  "Orders",
   "Activity",
 ] as const;
-type Tab = (typeof tabs)[number];
-const controlSections = ["Members", "Suppliers", "Orders"] as const;
-type ControlSection = (typeof controlSections)[number];
+type Tab = (typeof tabs)[number] | "Purchasing";
 const purchasingSections = ["Catalog", "Orders", "Settlement"] as const;
 type PurchasingSection = (typeof purchasingSections)[number];
 const activeLiveRunKey = "yareon_active_live_program";
@@ -95,10 +95,20 @@ const tabDetails: Record<Tab, { title: string; description: string }> = {
     description:
       "See what is funded, what needs attention, and what happened most recently.",
   },
-  Controls: {
-    title: "Governor controls",
+  Members: {
+    title: "Members",
     description:
-      "Manage member budgets and approved suppliers.",
+      "Manage member budgets and purchasing access.",
+  },
+  Suppliers: {
+    title: "Suppliers",
+    description:
+      "Manage approved suppliers, offers, and settlement accounts.",
+  },
+  Orders: {
+    title: "Orders",
+    description:
+      "Review every member purchase from creation through settlement.",
   },
   Purchasing: {
     title: "Purchasing",
@@ -116,8 +126,12 @@ function TabIcon({ tab }: { tab: Tab }) {
   switch (tab) {
     case "Overview":
       return <LayoutDashboard />;
-    case "Controls":
-      return <ShieldCheck />;
+    case "Members":
+      return <Users />;
+    case "Suppliers":
+      return <Store />;
+    case "Orders":
+      return <Truck />;
     case "Purchasing":
       return <WalletCards />;
     case "Activity":
@@ -156,8 +170,6 @@ export function YareonApp() {
   const [initializing, setInitializing] = useState(true);
   const mode: ExecutionMode = "testnet";
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
-  const [controlSection, setControlSection] =
-    useState<ControlSection>("Members");
   const [purchasingSection, setPurchasingSection] =
     useState<PurchasingSection>("Catalog");
   const [notice, setNotice] = useState(
@@ -197,6 +209,7 @@ export function YareonApp() {
   const [programs, setPrograms] = useState<ProgramListItem[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
   const [programPickerOpen, setProgramPickerOpen] = useState(false);
+  const [memberInviteCopied, setMemberInviteCopied] = useState(false);
 
   useEffect(() => {
     async function initialize() {
@@ -413,6 +426,7 @@ export function YareonApp() {
 
   function hydrateSession(body: ProgramSession) {
       setSession(body);
+      setMemberInviteCopied(false);
       setRoleWallets({});
       setEvidenceFile(null);
       setRetryCommand(null);
@@ -479,6 +493,20 @@ export function YareonApp() {
     const programId =
       window.localStorage.getItem(activeLiveRunKey) ?? programs[0]?.programId;
     if (programId) void resumeRun(programId);
+  }
+
+  async function copyMemberPortalLink() {
+    const memberPortalUrl = new URL(
+      `/member?programId=${encodeURIComponent(program.id)}`,
+      window.location.origin,
+    ).toString();
+    try {
+      await navigator.clipboard.writeText(memberPortalUrl);
+      setMemberInviteCopied(true);
+    } catch {
+      setOperationState("failed");
+      setNotice("The member portal link could not be copied.");
+    }
   }
 
   async function disconnectAdministrator() {
@@ -583,7 +611,6 @@ export function YareonApp() {
     projection.vendors[requestedOffer.vendorId]?.status === "APPROVED"
       ? requestedOffer
       : offers[0] ?? requestedOffer ?? Object.values(projection.offers)[0];
-  const visibleTabs = tabs.filter((tab) => tab !== "Purchasing");
   const advancedSettlement =
     program.policy.requireDeliveryEvidence ||
     program.policy.approvalRequirements.length > 0;
@@ -1080,15 +1107,6 @@ export function YareonApp() {
             <strong>{program.name}</strong>
             <small>{program.status === "ACTIVE" ? "Active" : "Draft"}</small>
           </div>
-          <button
-            className="cabinet-new-program"
-            type="button"
-            onClick={beginNewProgram}
-            disabled={operationState === "pending"}
-          >
-            <Plus size={14} />
-            New program
-          </button>
           {programPickerOpen && (
             <div
               className="cabinet-program-options"
@@ -1122,12 +1140,21 @@ export function YareonApp() {
               ) : (
                 <p>No other programs yet.</p>
               )}
+              <button
+                className="cabinet-new-program"
+                type="button"
+                onClick={beginNewProgram}
+                disabled={operationState === "pending"}
+              >
+                <Plus size={14} />
+                New program
+              </button>
             </div>
           )}
         </section>
 
         <nav aria-label="Governor workspace">
-          {visibleTabs.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab}
               className={activeTab === tab ? "active" : ""}
@@ -1158,13 +1185,36 @@ export function YareonApp() {
       <div className="op-program-main">
         <header className="op-program-topbar">
           <div className="cabinet-topbar-actions">
-            <Link
-              className="cabinet-member-portal"
-              href={`/member?programId=${encodeURIComponent(program.id)}`}
-            >
-              Open member portal
-              <ArrowRight size={14} />
-            </Link>
+            <div className="cabinet-member-actions">
+              <Link
+                className="cabinet-member-portal"
+                href={`/member?programId=${encodeURIComponent(program.id)}`}
+              >
+                Open member portal
+                <ArrowRight size={14} />
+              </Link>
+              <button
+                className="cabinet-copy-member-link"
+                type="button"
+                aria-label={
+                  memberInviteCopied
+                    ? "Member portal link copied"
+                    : "Copy member portal link"
+                }
+                title={
+                  memberInviteCopied
+                    ? "Member portal link copied"
+                    : "Copy member portal link"
+                }
+                onClick={() => void copyMemberPortalLink()}
+              >
+                {memberInviteCopied ? (
+                  <Check size={15} />
+                ) : (
+                  <Copy size={15} />
+                )}
+              </button>
+            </div>
             <button
               className="cabinet-disconnect cabinet-disconnect-mobile"
               type="button"
@@ -1256,10 +1306,7 @@ export function YareonApp() {
                     );
                   })
                 }
-                onControls={(section) => {
-                  setControlSection(section);
-                  setActiveTab("Controls");
-                }}
+                onNavigate={setActiveTab}
                 onActivity={() => setActiveTab("Activity")}
               />
             </>
@@ -1267,14 +1314,6 @@ export function YareonApp() {
 
           {activeTab !== "Overview" && (
             <section className="workspace cabinet-workspace">
-              {activeTab === "Controls" && (
-                <SecondaryNav
-                  label="Control sections"
-                  items={controlSections}
-                  active={controlSection}
-                  onChange={setControlSection}
-                />
-              )}
               {activeTab === "Purchasing" && (
                 <SecondaryNav
                   label="Purchasing sections"
@@ -1284,7 +1323,7 @@ export function YareonApp() {
                 />
               )}
               <div className="workspace-body">
-          {activeTab === "Controls" && controlSection === "Members" && (
+          {activeTab === "Members" && (
             <BuyerPanel
               view="buyers"
               offers={offers}
@@ -1360,7 +1399,7 @@ export function YareonApp() {
               }}
             />
           )}
-          {activeTab === "Controls" && controlSection === "Suppliers" && (
+          {activeTab === "Suppliers" && (
             <SuppliersPanel
               vendors={projection.vendors}
               offers={projection.offers}
@@ -1379,7 +1418,7 @@ export function YareonApp() {
               }
             />
           )}
-          {activeTab === "Controls" && controlSection === "Orders" && (
+          {activeTab === "Orders" && (
             <GovernorOrdersPanel
               orders={projection.orders}
               vendors={projection.vendors}
@@ -1532,7 +1571,7 @@ function ProgramOverviewPanel({
   depositing,
   onDepositAmount,
   onDeposit,
-  onControls,
+  onNavigate,
   onActivity,
 }: {
   program: NonNullable<ProtocolProjection["program"]>;
@@ -1545,7 +1584,7 @@ function ProgramOverviewPanel({
   depositing: boolean;
   onDepositAmount: (value: string) => void;
   onDeposit: () => void;
-  onControls: (section: ControlSection) => void;
+  onNavigate: (tab: "Members" | "Suppliers") => void;
   onActivity: () => void;
 }) {
   const focusFunding = () =>
@@ -1671,7 +1710,7 @@ function ProgramOverviewPanel({
               atomicAmount: buyerAuthority.toString(),
             })} {program.budget.asset}
           </strong>
-          <button type="button" onClick={() => onControls("Members")}>
+          <button type="button" onClick={() => onNavigate("Members")}>
             View members
           </button>
         </article>
@@ -1679,7 +1718,7 @@ function ProgramOverviewPanel({
           <Store size={18} />
           <span>Approved suppliers</span>
           <strong>{activeSuppliers}</strong>
-          <button type="button" onClick={() => onControls("Suppliers")}>
+          <button type="button" onClick={() => onNavigate("Suppliers")}>
             Manage suppliers
           </button>
         </article>
@@ -1934,14 +1973,6 @@ function GovernorOrdersPanel({
       .filter((event) => event.eventType === "ORDER_CREATED" && event.orderId)
       .map((event) => [event.orderId!, event]),
   );
-  const completed = history.filter(
-    (order) => order.status === "PAYMENT_EXECUTED",
-  ).length;
-  const inProgress = history.filter(
-    (order) =>
-      order.status !== "PAYMENT_EXECUTED" && order.status !== "CANCELLED",
-  ).length;
-
   return (
     <div className="marketplace-layout governor-orders">
       <section className="governor-orders-brief">
@@ -1950,21 +1981,6 @@ function GovernorOrdersPanel({
           title="Orders"
           description="Review every member purchase in this program, from creation through settlement."
         />
-        <div className="governor-order-stats" aria-label="Order totals">
-          <span>
-            <strong>{history.length}</strong>
-            Total
-          </span>
-          <span>
-            <strong>{inProgress}</strong>
-            In progress
-          </span>
-          <span>
-            <strong>{completed}</strong>
-            Paid
-          </span>
-        </div>
-
         {history.length === 0 ? (
           <EmptyState text="No member orders have been created for this program." />
         ) : (
@@ -2190,7 +2206,7 @@ function BuyerPanel({
 
   if (view === "marketplace" && activeAllocations.length === 0) {
     return (
-      <EmptyState text="No members currently have purchasing access. Add a member or restore access from Controls." />
+      <EmptyState text="No members currently have purchasing access. Add a member or restore access from Members." />
     );
   }
 

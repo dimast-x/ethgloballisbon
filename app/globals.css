@@ -771,7 +771,7 @@ button.live-brand {
   opacity: 0.5;
 }
 
-.program-cabinet .cabinet-programs > .cabinet-new-program {
+.program-cabinet .cabinet-program-options > .cabinet-new-program {
   width: 100%;
   margin-top: 7px;
   justify-content: center;
@@ -3923,39 +3923,6 @@ button:not(:disabled):active {
   border: 0;
 }
 
-.governor-order-stats {
-  width: fit-content;
-  margin: -4px 0 24px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(90px, 1fr));
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfaf6;
-  overflow: hidden;
-}
-
-.governor-order-stats > span {
-  padding: 11px 14px;
-  display: grid;
-  gap: 2px;
-  border-right: 1px solid var(--line);
-  color: var(--ink-soft);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.governor-order-stats > span:last-child {
-  border-right: 0;
-}
-
-.governor-order-stats strong {
-  color: var(--ink);
-  font-size: 16px;
-  letter-spacing: -0.03em;
-}
-
 .governor-order-manager {
   margin: 0;
   padding: 0;
@@ -4613,6 +4580,38 @@ button:not(:disabled):active {
   text-decoration: none;
 }
 
+.cabinet-member-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cabinet-member-portal {
+  border-color: var(--green);
+  background: var(--green);
+  color: white;
+}
+
+.cabinet-member-portal:hover {
+  background: color-mix(in srgb, var(--green) 88%, black);
+}
+
+.cabinet-copy-member-link {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--green);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--green);
+  cursor: pointer;
+}
+
+.cabinet-copy-member-link:hover {
+  background: rgba(11, 107, 82, 0.08);
+}
+
 .member-portal .cabinet-brand {
   color: var(--ink);
   text-decoration: none;
@@ -5147,6 +5146,7 @@ button:not(:disabled):active {
   }
 
   .cabinet-member-portal,
+  .cabinet-copy-member-link,
   .member-back-link {
     display: none;
   }
@@ -5280,10 +5280,6 @@ button:not(:disabled):active {
   .supplier-manager-facts {
     grid-template-columns: 1fr;
     gap: 10px;
-  }
-
-  .governor-order-stats {
-    width: 100%;
   }
 
   .governor-order-facts {
