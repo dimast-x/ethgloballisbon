@@ -120,6 +120,19 @@ uses `yareon doctor`, `yareon context`, and `yareon buy`. Add `--execute` only
 after explicit purchase authorization. See
 `packages/cli/README.md` for the compact user workflow.
 
+## Agent skills
+
+The repository currently provides one installable skill:
+
+- [`yareon-agent`](agent-skills/yareon-agent/SKILL.md) — check readiness,
+  compare policy-eligible offers, preview and create an explicitly authorized
+  AgentKit-authenticated order, and inspect order or Hedera audit state.
+
+The skill deliberately excludes program administration, funding, supplier
+management, delivery verification, finance approval, and human wallet signing.
+See the [agent skills catalog](agent-skills/README.md) for installation,
+connection, and invocation examples.
+
 The protected resource is
 `POST /api/agents/agentkit/procure?intent=<sha256>`. An unsigned request
 receives an AgentKit `402` challenge. A registered agent retries with an
